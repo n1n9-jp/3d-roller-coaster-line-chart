@@ -328,6 +328,23 @@
 				return { x, z };
 			}
 
+			// 移動平均を計算する関数
+			function applyMovingAverage( data, windowSize ) {
+				return data.map( ( item, i ) => {
+					const start = Math.max( 0, i - Math.floor( windowSize / 2 ) );
+					const end = Math.min( data.length, i + Math.ceil( windowSize / 2 ) );
+					let sum = 0;
+					for ( let j = start; j < end; j ++ ) {
+						sum += data[ j ].close;
+					}
+					const avg = sum / ( end - start );
+					return {
+						...item,
+						close: avg
+					};
+				} );
+			}
+
 			function buildCurve( nikkeiData, stations ) {
 				const seg = buildStationSegments( stations );
 				buildStationSegmentsResult = seg; // グローバルに保存
@@ -395,8 +412,11 @@
 			] );
 			const stations = yamanoteRaw[ 0 ].station_l;
 
+			// 移動平均データを生成（ローラーコースター用）
+			const smoothedData = applyMovingAverage( nikkeiData, 15 );
+
 			// curve 生成
-			const curve = buildCurve( nikkeiData, stations );
+			const curve = buildCurve( smoothedData, stations );
 
 			geometry = new RollerCoasterGeometry( curve, 1500 );
 			material = new THREE.MeshPhongMaterial( {
@@ -543,7 +563,7 @@
 
 			const lookAt = new THREE.Vector3();
 
-			let velocity = 0.00004; // 時計回り
+			let velocity = 0.00006; // 時計回り（0.00004 * 1.5）
 			let progress = 7 / 29; // 新宿からスタート（駅索引7 / 全駅数29）
 
 			let prevTime = performance.now();
@@ -748,8 +768,8 @@
 				// 高さ勾配から速度を調整（重力効果）
 				const heightGradient = curve.getHeightGradientAt( progress );
 				velocity -= heightGradient * 0.0000001 * delta;
-				// 速度の範囲：正の値で時計回り
-				velocity = Math.max( 0.00004, Math.min( 0.0002, velocity ) );
+				// 速度の範囲：正の値で時計回り（1.5倍）
+				velocity = Math.max( 0.00006, Math.min( 0.0003, velocity ) );
 
 				// レール方向（傾斜を含む）に合わせる
 				const railDirection = new THREE.Vector3(
