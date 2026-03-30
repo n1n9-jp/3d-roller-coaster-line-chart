@@ -7,7 +7,6 @@ import {
 	TreesGeometry,
 	SkyGeometry
 } from 'three/addons/misc/RollerCoaster.js';
-import { VRButton } from 'three/addons/webxr/VRButton.js';
 
 let mesh, material, geometry;
 
@@ -239,7 +238,7 @@ const [ nikkeiData, yamanoteRaw ] = await Promise.all( [
 const stations = yamanoteRaw[ 0 ].station_l;
 
 // 移動平均データを生成（ローラーコースター用）
-const smoothedData = applyMovingAverage( nikkeiData, 15 );
+const smoothedData = applyMovingAverage( nikkeiData, 4 );
 
 // curve 生成
 const curve = buildCurve( smoothedData, stations );
