@@ -175,7 +175,7 @@
 				<button id="start-btn">START RIDE</button>
 			</div>
 			<div id="year-display"></div>
-			<div id="controls-info">Press <strong>W</strong> for overview</div>
+			<div id="controls-info"><strong>W</strong> for overview &nbsp; | &nbsp; <strong>SPACE</strong> to pause</div>
 		</div>
 		<canvas id="graphCanvas" width="200" height="200"></canvas>
 		<canvas id="mapCanvas" width="200" height="200"></canvas>
@@ -465,6 +465,7 @@
 			// 視点制御状態
 			let isFPSMode = true;
 			let isWKeyPressed = false;
+			let isSpacePressed = false;
 
 			//
 
@@ -569,6 +570,29 @@
 
 					isWKeyPressed = false;
 					updateViewMode();
+
+				}
+
+			} );
+
+			// SPACEキーでアニメーション停止
+			window.addEventListener( 'keydown', ( e ) => {
+
+				if ( e.code === 'Space' && ! e.repeat ) {
+
+					isSpacePressed = true;
+					e.preventDefault();
+
+				}
+
+			} );
+
+			window.addEventListener( 'keyup', ( e ) => {
+
+				if ( e.code === 'Space' ) {
+
+					isSpacePressed = false;
+					e.preventDefault();
 
 				}
 
@@ -773,40 +797,45 @@
 
 				//
 
-				progress += velocity;
-				progress = progress % 1;
+				// SPACEキーが押されていない場合のみ進行
+				if ( ! isSpacePressed ) {
 
-				position.copy( curve.getPointAt( progress ) );
-				position.y += 0.3;
+					progress += velocity;
+					progress = progress % 1;
 
-				train.position.copy( position );
+					position.copy( curve.getPointAt( progress ) );
+					position.y += 0.3;
 
-				tangent.copy( curve.getTangentAt( progress ) );
+					train.position.copy( position );
 
-				// 高さ勾配から速度を調整（重力効果）
-				const heightGradient = curve.getHeightGradientAt( progress );
-				velocity -= heightGradient * 0.0000001 * delta;
-				// 速度の範囲：正の値で時計回り（1.5倍）
-				velocity = Math.max( 0.00006, Math.min( 0.0003, velocity ) );
+					tangent.copy( curve.getTangentAt( progress ) );
 
-				// レール方向（傾斜を含む）に合わせる
-				const railDirection = new THREE.Vector3(
-					tangent.x,
-					heightGradient * 0.0009,
-					tangent.z
-				).normalize();
+					// 高さ勾配から速度を調整（重力効果）
+					const heightGradient = curve.getHeightGradientAt( progress );
+					velocity -= heightGradient * 0.0000001 * delta;
+					// 速度の範囲：正の値で時計回り（1.5倍）
+					velocity = Math.max( 0.00006, Math.min( 0.0003, velocity ) );
 
-				// 目標のQuaternionを計算
-				tempObject3D.position.copy( position );
-				tempObject3D.lookAt( lookAt.copy( position ).sub( railDirection ) );
-				targetQuaternion.copy( tempObject3D.quaternion );
+					// レール方向（傾斜を含む）に合わせる
+					const railDirection = new THREE.Vector3(
+						tangent.x,
+						heightGradient * 0.0009,
+						tangent.z
+					).normalize();
 
-				// 現在の回転を目標に向けて滑らかに補間
-				train.quaternion.slerp( targetQuaternion, 0.08 );
+					// 目標のQuaternionを計算
+					tempObject3D.position.copy( position );
+					tempObject3D.lookAt( lookAt.copy( position ).sub( railDirection ) );
+					targetQuaternion.copy( tempObject3D.quaternion );
 
-				// 現在位置マーカーを更新
-				positionMarker.position.copy( position );
-				positionMarker.visible = !isFPSMode; // 俯瞰視点のみ表示
+					// 現在の回転を目標に向けて滑らかに補間
+					train.quaternion.slerp( targetQuaternion, 0.08 );
+
+					// 現在位置マーカーを更新
+					positionMarker.position.copy( position );
+					positionMarker.visible = !isFPSMode; // 俯瞰視点のみ表示
+
+				}
 
 				//
 
