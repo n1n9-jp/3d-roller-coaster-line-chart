@@ -467,3 +467,182 @@ test( '向きの補間：1 フレーム（FRAME_MS）で目標との角度が 8%
 	assert.ok( Math.abs( remaining - full * 0.92 ) < 1e-6, `remaining=${remaining} full=${full}` );
 
 } );
+
+// ---- 走行の係数（reduced-motion の一人称）----
+
+import { MOTION, RAIL_SLOPE_VISUAL_SCALE, ORIENTATION_BLEND_PER_FRAME } from '../assets/js/config.js';
+
+function newRideWithMotion( options ) {
+
+	const ride = createRide( new TrackCurve( stations, dataset.smoothed, NO_LINK ), null, options );
+	ride.started = true;
+	return ride;
+
+}
+
+/** 車体の進行方向の俯仰角（ラジアン）。傾きの大きさの目安。 */
+function pitchOf( ride ) {
+
+	const forward = new Vector3( 0, 0, 1 ).applyQuaternion( ride.quaternion );
+	return Math.asin( Math.max( - 1, Math.min( 1, forward.y ) ) );
+
+}
+
+test( 'MOTION.reducedRide：傾き 0.0009 → 0.0003、向きの補間 0.08 → 0.04、速度の上限は半分', () => {
+
+	const r = MOTION.reducedRide;
+	assert.equal( r.railSlopeVisualScale, 0.0003 );
+	assert.equal( r.orientationBlendPerFrame, 0.04 );
+	assert.equal( r.speedMaxFactor, 0.5 );
+	assert.equal( RAIL_SLOPE_VISUAL_SCALE, 0.0009 );
+	assert.equal( ORIENTATION_BLEND_PER_FRAME, 0.08 );
+
+} );
+
+test( '係数を渡さないときは従来と同じ結果になる（options なし・空・events だけ、のどれでも）', () => {
+
+	const base = run( newRide(), FRAME_MS, 30 * 1000 );
+	const empty = run( newRideWithMotion( {} ), FRAME_MS, 30 * 1000 );
+	const withEvents = run( createRide( new TrackCurve( stations, dataset.smoothed, NO_LINK ), createEvents() ), FRAME_MS, 0 );
+	withEvents.started = true;
+	run( withEvents, FRAME_MS, 30 * 1000 );
+
+	assert.deepEqual( base.motion, { railSlopeVisualScale: RAIL_SLOPE_VISUAL_SCALE, orientationBlendPerFrame: ORIENTATION_BLEND_PER_FRAME, speedMaxFactor: 1 } );
+	for ( const other of [ empty, withEvents ] ) {
+
+		assert.equal( other.progress, base.progress );
+		assert.equal( other.velocity, base.velocity );
+		assert.deepEqual( other.quaternion.toArray(), base.quaternion.toArray() );
+
+	}
+
+} );
+
+test( 'options は第 2 引数（発行器のかわり）でも渡せて、events キーで発行器も渡せる', () => {
+
+	const events = createEvents();
+	const names = [];
+	events.on( 'pause', () => names.push( 'pause' ) );
+	const ride = createRide( new TrackCurve( stations, dataset.smoothed, NO_LINK ), { ...MOTION.reducedRide, events } );
+	assert.equal( ride.motion.speedMaxFactor, 0.5 );
+	ride.pause();
+	assert.deepEqual( names, [ 'pause' ] );
+
+} );
+
+test( 'reduced：同じ時間だけ走らせると、速度は上限の半分以下で、進みも少ない', () => {
+
+	const normal = newRide();
+	const gentle = newRideWithMotion( MOTION.reducedRide );
+
+	// 上限に張り付いた状態から始めて、1 回の更新で上限に収まることを見る
+	normal.velocity = SPEED_MAX;
+	gentle.velocity = SPEED_MAX;
+	normal.update( FRAME_MS );
+	gentle.update( FRAME_MS );
+	assert.ok( normal.velocity > SPEED_MAX * 0.9 );
+	assert.ok( gentle.velocity <= SPEED_MAX * 0.5 + 1e-12, `velocity=${gentle.velocity}` );
+
+	// 走らせ続けても、速度は上限の半分を超えない
+	const longNormal = newRide();
+	const longGentle = newRideWithMotion( MOTION.reducedRide );
+	let peakNormal = 0;
+	let peakGentle = 0;
+	for ( let i = 0; i < 60 * 120; i ++ ) {
+
+		longNormal.update( FRAME_MS );
+		longGentle.update( FRAME_MS );
+		peakNormal = Math.max( peakNormal, longNormal.velocity );
+		peakGentle = Math.max( peakGentle, longGentle.velocity );
+
+	}
+
+	assert.ok( peakGentle <= SPEED_MAX * 0.5 + 1e-12, `peakGentle=${peakGentle}` );
+	assert.ok( peakNormal > SPEED_MAX * 0.5, `peakNormal=${peakNormal}` ); // 比べる相手は、半分を超えるところまで出ている
+	assert.ok( longGentle.progress < longNormal.progress );
+	assert.ok( longGentle.velocity >= SPEED_MIN );
+
+} );
+
+test( 'reduced：同じ位置での車体の傾きが小さい', () => {
+
+	const normal = newRide();
+	const gentle = newRideWithMotion( MOTION.reducedRide );
+	let compared = 0;
+	for ( const t of [ 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9 ] ) {
+
+		normal.progress = t;
+		gentle.progress = t;
+		normal.updatePose( 1 );
+		gentle.updatePose( 1 );
+		const a = Math.abs( pitchOf( normal ) );
+		const b = Math.abs( pitchOf( gentle ) );
+		assert.ok( b <= a + 1e-9, `t=${t}: ${b} > ${a}` );
+		if ( a > 0.01 ) {
+
+			compared ++;
+			assert.ok( b < a * 0.6, `t=${t}: 傾き ${b} が ${a} の 6 割以上` );
+
+		}
+
+	}
+
+	assert.ok( compared >= 3, `傾きのある位置が少ない：${compared}` );
+
+} );
+
+test( 'reduced：向きの補間がゆるやか（同じ時間でも目標への近づき方が小さい）', () => {
+
+	function angleToTarget( options ) {
+
+		const ride = newRideWithMotion( options );
+		ride.progress = 0.3;
+		ride.updatePose( 1 ); // 0.3 の姿勢へ即座に合わせる
+		const before = ride.quaternion.clone();
+		ride.progress = 0.31;
+		ride.updatePose( 1 );
+		const target = ride.quaternion.clone();
+		ride.quaternion.copy( before );
+		ride.progress = 0.31;
+		ride.updatePose( 1 - Math.pow( 1 - ( ride.motion.orientationBlendPerFrame ), 1 ) ); // 1 フレーム分
+		return { moved: before.angleTo( ride.quaternion ), full: before.angleTo( target ) };
+
+	}
+
+	const normal = angleToTarget( {} );
+	const gentle = angleToTarget( { orientationBlendPerFrame: MOTION.reducedRide.orientationBlendPerFrame } );
+	assert.ok( normal.moved > 0 );
+	assert.ok( gentle.moved < normal.moved );
+
+} );
+
+test( 'setMotion：実行中に係数を差し替え、null で元に戻る。ほかの係数は従来の値のまま', () => {
+
+	const ride = newRide();
+	ride.setMotion( MOTION.reducedRide );
+	assert.equal( ride.motion.speedMaxFactor, 0.5 );
+	ride.velocity = SPEED_MAX;
+	ride.update( FRAME_MS );
+	assert.ok( ride.velocity <= SPEED_MAX * 0.5 + 1e-12 );
+
+	ride.setMotion( { speedMaxFactor: 0.25 } );
+	assert.equal( ride.motion.speedMaxFactor, 0.25 );
+	assert.equal( ride.motion.railSlopeVisualScale, RAIL_SLOPE_VISUAL_SCALE );
+
+	ride.setMotion( null );
+	assert.deepEqual( ride.motion, { railSlopeVisualScale: RAIL_SLOPE_VISUAL_SCALE, orientationBlendPerFrame: ORIENTATION_BLEND_PER_FRAME, speedMaxFactor: 1 } );
+
+	// 数でない値は無視する
+	ride.setMotion( { speedMaxFactor: 'x', railSlopeVisualScale: NaN } );
+	assert.equal( ride.motion.speedMaxFactor, 1 );
+
+} );
+
+test( '速度の上限は下限を下回らない（係数が極端に小さくても止まらない）', () => {
+
+	const ride = newRideWithMotion( { speedMaxFactor: 0.0001 } );
+	run( ride, FRAME_MS, 5000 );
+	assert.ok( ride.velocity >= SPEED_MIN );
+	assert.ok( ride.progress > 0 );
+
+} );

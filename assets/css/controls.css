@@ -1,3 +1,87 @@
 /* 操作ボタン（#hud-controls の中のボタン）。担当：操作ボタン。
-   共通の見た目は base.css の .btn / .kbd。L はアイコン・ラベル・kbd、M は 44x44 のアイコンだけ、
-   S は 4 等分で kbd を隠す。コンテナの位置は hud.css。 */
+   共通の見た目は base.css の .btn / .kbd。コンテナの位置とサイズは hud.css（変えない）。
+   L（1024px 以上）：アイコン・ラベル・kbd チップを並べた横長。
+   M（721〜1023px）と短い横長：44x44 のアイコンだけ（ラベルと kbd は隠す。名前は aria-label が伝える）。
+   S（720px 以下）：画面下に 4 等分。アイコンとラベルを横に並べ、kbd は出さない。 */
+
+#hud-controls .ctl-btn {
+	position: relative;
+	height: 44px;
+	touch-action: manipulation;
+}
+
+#hud-controls .ctl-label {
+	min-width: 0;
+}
+
+/* ---- 出入り（仕様 5：HUD。上の要素は −8px、下の要素は +8px から 0 へ。帯のあと 60ms 遅らせる）---- */
+#hud-controls {
+	opacity: 0;
+	transform: translateY( calc( -1 * var( --shift-md ) ) );
+	transition: opacity 300ms var(--ease-out), transform 300ms var(--ease-out);
+}
+
+#hud.visible #hud-controls {
+	opacity: 1;
+	transform: none;
+	transition-delay: 260ms;
+}
+
+/* ---- M と短い横長：アイコンだけ ---- */
+@media (max-width: 1023.98px), (max-height: 520px) and (orientation: landscape) {
+	#hud-controls .ctl-btn {
+		width: 44px;
+		padding: 0;
+	}
+
+	#hud-controls .ctl-label,
+	#hud-controls .kbd {
+		display: none;
+	}
+}
+
+/* ---- S（短い横長を除く）：4 等分、アイコンとラベルを横に ---- */
+@media (max-width: 720px) and (min-height: 521px), (max-width: 720px) and (orientation: portrait) {
+	#hud-controls {
+		transform: translateY( var( --shift-md ) );
+	}
+
+	#hud.visible #hud-controls {
+		transform: none;
+	}
+
+	#hud-controls .ctl-btn {
+		flex: 1 1 0;
+		width: auto;
+		min-width: 0;
+		height: 48px;
+		padding: 0 4px;
+		gap: 4px;
+		font-size: var(--fs-13);
+	}
+
+	#hud-controls .ctl-label {
+		display: inline;
+	}
+}
+
+/* 幅 360 前後：4 つのラベルが収まるよう、アイコンと文字を少し詰める */
+@media (max-width: 380px) and (min-height: 521px), (max-width: 380px) and (orientation: portrait) {
+	#hud-controls .ctl-btn {
+		padding: 0 2px;
+		gap: 3px;
+		font-size: var(--fs-12);
+	}
+
+	#hud-controls .ctl-btn svg {
+		width: 18px;
+		height: 18px;
+	}
+}
+
+/* reduced-motion：移動はトークンで 0 になる。ここでは opacity の時間だけ 150ms にする */
+@media (prefers-reduced-motion: reduce) {
+	#hud-controls {
+		transition-duration: 150ms;
+	}
+}

@@ -2,24 +2,50 @@
 //   SPACE : 一時停止と再生のトグル
 //   W     : 押している間だけ俯瞰（離すと、押す前の視点に戻る）
 //   R     : 最初から
-// フォーカスがボタン・リンク・入力欄にあるときは SPACE を横取りしない（ボタンの操作を優先する）。
+// フォーカスがボタン・リンク・入力欄にあるときは SPACE を横取りしない（ボタンの操作を優先する。
+// Space・Enter はそのボタンの click になるので、ショートカットと二重に働かない）。
+// W を押しているあいだに、画面上のボタンで視点を選び直したときは、離したあとその視点にとどまる。
 // 修飾キー（Ctrl / Cmd / Alt）つきは無視する（Ctrl+R のリロードなどを妨げない）。
 // 画面上のボタンは ui/buttons.js。
 
 const INTERACTIVE = 'button, a[href], input, select, textarea, summary, [role="button"], [contenteditable=""], [contenteditable="true"]';
 const TEXT_INPUT = 'input, select, textarea, [contenteditable=""], [contenteditable="true"]';
 
-export function createControls( { ride, view } ) {
+export function createControls( { ride, view, events = null } ) {
 
 	let viewBeforeW = null; // W を押しているあいだだけ入る
+	let changingByW = false; // W 自身による視点の切り替え中
+
+	function setViewByW( next ) {
+
+		changingByW = true;
+		try {
+
+			view.setView( next );
+
+		} finally {
+
+			changingByW = false;
+
+		}
+
+	}
 
 	function releaseW() {
 
 		if ( viewBeforeW === null ) return;
-		view.setView( viewBeforeW );
+		const back = viewBeforeW;
 		viewBeforeW = null;
+		setViewByW( back );
 
 	}
+
+	// W を押している最中に、ボタンなど W 以外で視点が変わったら、それが「戻る先」になる
+	const stopWatchingView = events?.on( 'viewchange', ( { view: next } ) => {
+
+		if ( viewBeforeW !== null && ! changingByW ) viewBeforeW = next;
+
+	} );
 
 	function onKeyDown( e ) {
 
@@ -38,7 +64,7 @@ export function createControls( { ride, view } ) {
 
 			if ( e.repeat || viewBeforeW !== null ) return;
 			viewBeforeW = view.current;
-			view.setView( 'overview' );
+			setViewByW( 'overview' );
 
 		} else if ( e.key === 'r' || e.key === 'R' ) {
 
@@ -66,6 +92,7 @@ export function createControls( { ride, view } ) {
 			window.removeEventListener( 'keydown', onKeyDown );
 			window.removeEventListener( 'keyup', onKeyUp );
 			window.removeEventListener( 'blur', releaseW );
+			stopWatchingView?.();
 
 		}
 	};
