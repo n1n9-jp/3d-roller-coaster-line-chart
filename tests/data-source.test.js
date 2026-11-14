@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregateWeekly, mondayOf, parseCsv, buildMeta } from '../scripts/fetch-nikkei.mjs';
+import { parseCsv, buildMeta } from '../scripts/fetch-nikkei.mjs';
+import { aggregateWeekly, mondayOf } from '../scripts/lib/weekly.mjs';
 import { buildDataset, dateToIndex, dataModeFromSearch } from '../assets/js/data.js';
 import { readJson } from './helpers.js';
 

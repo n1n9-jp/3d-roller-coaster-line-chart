@@ -1,0 +1,18 @@
+{
+	"id": "usdjpy",
+	"kind": "real",
+	"label": "ドル円の為替レート",
+	"valueLabel": "週の最終営業日の値",
+	"unit": "円",
+	"decimals": 2,
+	"source": "米連邦準備制度理事会（FRB）統計 H.10「Foreign Exchange Rates」（日本円。ニューヨーク市場の正午の買値、1ドルあたり）",
+	"sourceUrl": "https://www.federalreserve.gov/releases/h10/hist/",
+	"license": "FRB ウェブサイトの利用条件（特記のない限りパブリックドメイン。出典を示す）",
+	"licenseUrl": "https://www.federalreserve.gov/disclaimer.htm",
+	"attribution": "出典：米連邦準備制度理事会（FRB）「Foreign Exchange Rates - H.10」（https://www.federalreserve.gov/releases/h10/hist/）を加工して作成",
+	"processing": "FRB が公表する日次の値（ニューヨーク市場の正午の買値）のうち、値のある日を、月曜始まりの週ごとに、その週の最終営業日の値へまとめました（日付は週の月曜日、単位は円、小数2桁）。",
+	"fetchedAt": "2026-11-14",
+	"start": "1971-01-04",
+	"end": "2026-11-02",
+	"count": 2912
+}

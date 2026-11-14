@@ -1,6 +1,6 @@
 // 日経平均株価の実データを FRED から取得し、週次終値の data/local/ に書き出す。
 //
-//   npm run fetch-data
+//   npm run fetch-nikkei   （fetch-data でも同じ）
 //   node scripts/fetch-nikkei.mjs --from-file <保存済みの CSV>
 //
 // 出力（どちらも git の管理外）:
@@ -10,37 +10,17 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
+import { aggregateWeekly, mondayOf } from './lib/weekly.mjs';
+
+// 週次集計は scripts/lib/weekly.mjs に移した。これまでの import 先のために再公開する。
+export { aggregateWeekly, mondayOf };
 
 export const FRED_CSV_URL = 'https://fred.stlouisfed.org/graph/fredgraph.csv?id=NIKKEI225&cosd=1990-01-01';
 export const START_DATE = '1990-01-01';
 const USER_AGENT = 'curl/8.5.0';
-const DAY_MS = 86400000;
 
 const root = join( dirname( fileURLToPath( import.meta.url ) ), '..' );
 const outDir = join( root, 'data', 'local' );
-
-/** 'YYYY-MM-DD' → UTC のエポック日数。 */
-function toDays( date ) {
-
-	return Math.floor( Date.parse( `${date}T00:00:00Z` ) / DAY_MS );
-
-}
-
-function fromDays( days ) {
-
-	return new Date( days * DAY_MS ).toISOString().slice( 0, 10 );
-
-}
-
-/** その日を含む週（月曜始まり）の月曜日の日付。 */
-export function mondayOf( date ) {
-
-	const days = toDays( date );
-	// 1970-01-01 は木曜日。月曜 = 0 とした曜日は (days + 3) % 7
-	const weekday = ( ( days + 3 ) % 7 + 7 ) % 7;
-	return fromDays( days - weekday );
-
-}
 
 /** FRED の CSV（observation_date,NIKKEI225）を [{ date, close }] にする。休場日（空・"."）は除く。 */
 export function parseCsv( text ) {
@@ -58,26 +38,6 @@ export function parseCsv( text ) {
 	}
 
 	return rows;
-
-}
-
-/**
- * 日次終値を、月曜始まりの週ごとに「その週の最終営業日の終値」へまとめる。
- * date は週の月曜日。営業日のない週の行は作らない。close は小数 2 桁。
- */
-export function aggregateWeekly( daily ) {
-
-	const sorted = [ ...daily ].sort( ( a, b ) => ( a.date < b.date ? - 1 : a.date > b.date ? 1 : 0 ) );
-	const weeks = new Map();
-	for ( const { date, close } of sorted ) {
-
-		weeks.set( mondayOf( date ), close ); // 日付順なので、最後に入った値がその週の最終営業日
-
-	}
-
-	return [ ...weeks ]
-		.sort( ( a, b ) => ( a[ 0 ] < b[ 0 ] ? - 1 : 1 ) )
-		.map( ( [ date, close ] ) => ( { date, close: Math.round( close * 100 ) / 100 } ) );
 
 }
 

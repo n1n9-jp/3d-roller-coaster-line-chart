@@ -7,6 +7,9 @@
   "scripts": {
     "start": "python3 -m http.server 8000",
     "fetch-data": "node scripts/fetch-nikkei.mjs",
+    "fetch-nikkei": "node scripts/fetch-nikkei.mjs",
+    "fetch-usdjpy": "node scripts/fetch-usdjpy.mjs",
+    "fetch-jgb10": "node scripts/fetch-jgb10.mjs",
     "test": "node --test \"tests/**/*.test.js\""
   }
 }
