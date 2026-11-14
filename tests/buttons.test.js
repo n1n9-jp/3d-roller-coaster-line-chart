@@ -7,6 +7,16 @@ import { MOTION } from '../assets/js/config.js';
 
 // ---- 状態 → ラベル・aria-label・アイコン ----
 
+test( '音：オンのときは「音を消す（M）」、オフのときは「音を出す（M）」', () => {
+
+	const on = describeButtons( { soundOn: true } ).sound;
+	assert.deepEqual( on, { label: '音', ariaLabel: '音を消す（M）', icon: 'soundOn', disabled: false, pressed: true } );
+	const off = describeButtons( { soundOn: false } ).sound;
+	assert.deepEqual( off, { label: '音', ariaLabel: '音を出す（M）', icon: 'soundOff', disabled: false, pressed: false } );
+	assert.equal( describeButtons().sound.pressed, true, '既定はオン' );
+
+} );
+
 test( '通常（走行中・一人称）：一時停止／俯瞰／最初から／情報', () => {
 
 	const d = describeButtons( { paused: false, finished: false, view: 'ride', infoOpen: false } );
@@ -130,7 +140,8 @@ function setupKeyboard() {
 	};
 	const calls = [];
 	const ride = { started: true, finished: false, togglePause: () => calls.push( 'toggle' ), restart: () => calls.push( 'restart' ) };
-	const controls = createControls( { ride, view, events } );
+	const sound = { toggles: 0, toggle() { this.toggles ++; } };
+	const controls = createControls( { ride, view, events, sound } );
 
 	function key( type, init ) {
 
@@ -140,12 +151,22 @@ function setupKeyboard() {
 	}
 
 	return {
-		view, calls, controls,
+		view, calls, controls, sound,
 		down: ( k, init = {} ) => key( 'keydown', { key: k, code: k === ' ' ? 'Space' : `Key${k.toUpperCase()}`, ...init } ),
 		up: ( k, init = {} ) => key( 'keyup', { key: k, ...init } )
 	};
 
 }
+
+test( 'M：音を切り替える（乗車前でも効く。押しっぱなしの繰り返しは無視）', () => {
+
+	const kb = setupKeyboard();
+	kb.down( 'm' );
+	kb.down( 'M', { repeat: true } );
+	assert.equal( kb.sound.toggles, 1 );
+	kb.controls.dispose();
+
+} );
 
 test( 'W：押している間だけ俯瞰で、離すと押す前の視点に戻る', () => {
 

@@ -47,7 +47,13 @@ function takeFocusMark() {
 
 }
 
-export function createStartScreen() {
+const SOUND_ICONS = {
+	on: '<path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M15.5 9a4.2 4.2 0 0 1 0 6"/><path d="M18 6.5a8 8 0 0 1 0 11"/>',
+	off: '<path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M16 9.5l5 5"/><path d="M21 9.5l-5 5"/>'
+};
+
+/** sound：{ enabled, toggle() }（sound-pref.js）。省略すると、音の切り替えは出さない。events：M キーなど外からの変更にも追従する。 */
+export function createStartScreen( { sound = null, events = null } = {} ) {
 
 	const $ = ( id ) => document.getElementById( id );
 	const screen = $( 'start-screen' );
@@ -55,6 +61,32 @@ export function createStartScreen() {
 	const buttonLabel = button.querySelector( '.start-btn-label' );
 	const message = $( 'start-message' );
 	const hud = $( 'hud' );
+
+	// ---- 音の切り替え（設定は sound-pref.js。ここは表示と、押したときの toggle だけ） ----
+
+	const soundBox = document.querySelector( '.start-sound' );
+	const soundButton = $( 'start-sound-btn' );
+	if ( soundBox && ! sound ) soundBox.hidden = true;
+
+	function renderSound() {
+
+		if ( ! sound || ! soundButton ) return;
+		const on = sound.enabled;
+		soundButton.setAttribute( 'aria-pressed', String( on ) );
+		soundButton.querySelector( '.start-sound-label' ).textContent = on ? '音：オン' : '音：オフ';
+		soundButton.querySelector( 'svg' ).innerHTML = SOUND_ICONS[ on ? 'on' : 'off' ];
+		$( 'start-sound-note' ).hidden = ! on;
+
+	}
+
+	soundButton?.addEventListener( 'click', () => {
+
+		sound?.toggle();
+		renderSound();
+
+	} );
+	events?.on( 'soundchange', renderSound );
+	renderSound();
 
 	// ---- データの切り替え（リンクの組。選ぶとその URL で開き直す） ----
 

@@ -106,6 +106,13 @@
 						<button id="start-reload" class="btn" type="button" hidden>再読み込み</button>
 					</div>
 				</div>
+				<div class="start-sound">
+					<button id="start-sound-btn" class="btn start-sound-btn" type="button" aria-pressed="true">
+						<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"></svg>
+						<span class="start-sound-label">音：オン</span>
+					</button>
+					<p id="start-sound-note" class="start-sound-note">乗車すると音楽が流れます</p>
+				</div>
 				<button id="start-info-btn" class="start-info-btn" type="button" disabled>操作方法と出典</button>
 			</div>
 			<p id="start-credits"></p>
@@ -143,6 +150,11 @@
 					<svg class="ctl-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"></svg>
 					<span class="ctl-label">トップ</span>
 					<kbd class="kbd" aria-hidden="true">T</kbd>
+				</button>
+				<button type="button" id="sound-btn" class="btn ctl-btn" data-action="sound" aria-label="音を消す（M）" aria-keyshortcuts="M" aria-pressed="true">
+					<svg class="ctl-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"></svg>
+					<span class="ctl-label">音</span>
+					<kbd class="kbd" aria-hidden="true">M</kbd>
 				</button>
 				<button type="button" id="info-btn" class="btn ctl-btn" data-action="info" aria-label="情報パネルを開く（I）" aria-keyshortcuts="I" aria-expanded="false" aria-controls="info-panel">
 					<svg class="ctl-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"></svg>
@@ -232,6 +244,7 @@
 								<tr><th scope="row">俯瞰</th><td><kbd class="kbd">W</kbd>（押している間）／「俯瞰」ボタン（押すたびに切り替え）</td></tr>
 								<tr><th scope="row">最初から</th><td><kbd class="kbd">R</kbd>／「最初から」ボタン</td></tr>
 								<tr><th scope="row">スタート画面へ戻る</th><td><kbd class="kbd">T</kbd>／「トップ」ボタン</td></tr>
+								<tr><th scope="row">音を出す・消す</th><td><kbd class="kbd">M</kbd>／「音」ボタン</td></tr>
 								<tr><th scope="row">情報パネル</th><td><kbd class="kbd">I</kbd>／「情報」ボタン。閉じるのは <kbd class="kbd">Esc</kbd></td></tr>
 							</tbody>
 						</table>

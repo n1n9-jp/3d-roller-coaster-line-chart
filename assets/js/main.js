@@ -11,6 +11,7 @@ import { createScene } from './scene.js';
 import { createRide } from './ride.js';
 import { createView } from './view.js';
 import { createStartScreen } from './ui/start.js';
+import { createSoundPref } from './sound-pref.js';
 
 import { createEnvironment } from './environment.js';
 import { createRail } from './rail.js';
@@ -54,7 +55,11 @@ let sceneParts = null;
 
 async function boot() {
 
-	startScreen = createStartScreen();
+	// 音の設定は、スタート画面（データの読み込み前）でも使うので、events と一緒に最初に作る
+	const events = createEvents();
+	const sound = createSoundPref( { events } );
+
+	startScreen = createStartScreen( { sound, events } );
 	// どのデータか（<html data-dataset>）。読み込みの前に、URL から決めておく（読み込み中・エラーの表示にも使える）
 	document.documentElement.dataset.dataset = datasetIdFromSearch( window.location.search );
 	startScreen.showLoading();
@@ -92,7 +97,6 @@ async function boot() {
 	// コースは螺旋（角度は日付、進行位置は時間に比例。track.js）
 	const curve = new TrackCurve( dataset.smoothed );
 
-	const events = createEvents();
 	const ride = createRide( curve, events );
 	const view = createView( { scene, camera, train, events, curve, ride } );
 
@@ -128,7 +132,7 @@ async function boot() {
 		startScreen
 	};
 
-	const ctx = { renderer, scene, camera, train, dataset, curve, ride, view, ui, events, config };
+	const ctx = { renderer, scene, camera, train, dataset, curve, ride, view, ui, events, config, sound };
 
 	// ---- 状態（毎フレーム、全モジュールへ同じものを渡す）----
 	let nowMs = 0;

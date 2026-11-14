@@ -171,8 +171,8 @@
 	#hud-readout {
 		left: calc(var(--hud-m) + var(--safe-l));
 		right: auto;
-		/* 右の操作ボタン（44 x 5 + gap 8 x 4 = 252）と重ならない幅 */
-		width: min(360px, calc(100vw - 2 * var(--hud-m) - 252px - 12px));
+		/* 右の操作ボタン（44 x 6 + gap 8 x 5 = 304）と重ならない幅 */
+		width: min(360px, calc(100vw - 2 * var(--hud-m) - 304px - 12px));
 		min-width: 0;
 	}
 

@@ -1,8 +1,8 @@
 /* 操作ボタン（#hud-controls の中のボタン）。
    共通の見た目は base.css の .btn / .kbd。コンテナの位置とサイズは hud.css（変えない）。
-   L（1200px 以上）：アイコン・ラベル・kbd チップを並べた横長。
-   M（721〜1199px）と短い横長：44x44 のアイコンだけ（ラベルと kbd は隠す。名前は aria-label が伝える）。
-   S（720px 以下）：画面下に 5 等分。アイコンの下にラベルを置き、kbd は出さない。 */
+   L（1240px 以上。6 つのボタンが帯と重ならない幅）：アイコン・ラベル・kbd チップを並べた横長。
+   M（721〜1239px）と短い横長：44x44 のアイコンだけ（ラベルと kbd は隠す。名前は aria-label が伝える）。
+   S（720px 以下）：画面下に 6 等分。アイコンの下にラベルを置き、kbd は出さない。 */
 
 #hud-controls .ctl-btn {
 	position: relative;
@@ -28,7 +28,7 @@
 }
 
 /* ---- M と短い横長：アイコンだけ ---- */
-@media (max-width: 1199.98px), (max-height: 520px) and (orientation: landscape) {
+@media (max-width: 1239.98px), (max-height: 520px) and (orientation: landscape) {
 	#hud-controls .ctl-btn {
 		width: 44px;
 		padding: 0;
@@ -40,7 +40,7 @@
 	}
 }
 
-/* ---- S（短い横長を除く）：5 等分、アイコンの下にラベル ---- */
+/* ---- S（短い横長を除く）：6 等分、アイコンの下にラベル ---- */
 @media (max-width: 720px) and (min-height: 521px), (max-width: 720px) and (orientation: portrait) {
 	#hud-controls {
 		gap: 6px;

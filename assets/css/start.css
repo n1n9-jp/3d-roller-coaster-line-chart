@@ -296,6 +296,50 @@
 	margin-top: 12px;
 }
 
+/* ---- 音の切り替え（「乗車する」の下。トグルのボタンと、短い説明） ---- */
+.start-sound {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	gap: 4px 12px;
+	margin-top: 12px;
+}
+
+.start-sound[hidden],
+.start-sound-note[hidden] {
+	display: none;
+}
+
+.start-sound-btn {
+	min-height: 44px;
+	padding: 0 14px;
+	background: transparent;
+}
+
+.start-sound-btn[aria-pressed="true"] {
+	background: var(--c-seg-selected-bg);
+	border-color: var(--c-accent);
+	color: var(--c-accent-text);
+}
+
+.start-sound-btn:focus-visible {
+	outline: 2px solid var(--c-focus);
+	outline-offset: 2px;
+}
+
+.start-sound-note {
+	margin: 0;
+	color: var(--c-text-2);
+	font-size: var(--fs-13);
+	line-height: var(--lh-13);
+}
+
+/* エラーのときは、乗車できないので出さない */
+#start-screen[data-state="error"] .start-sound {
+	display: none;
+}
+
 /* ---- 文字ボタン ---- */
 .start-info-btn {
 	min-height: 44px;
@@ -388,6 +432,12 @@
 	.start-error {
 		max-width: 100%;
 	}
+
+	.start-sound {
+		margin-top: 8px;
+		flex-direction: column;
+		gap: 2px;
+	}
 }
 
 /* ---- 短い横長（高さ 520px 以下かつ landscape）：縦を詰める ---- */
@@ -440,6 +490,14 @@
 
 	#start-btn {
 		min-height: 48px;
+	}
+
+	.start-sound {
+		margin-top: 4px;
+	}
+
+	.start-sound-btn {
+		min-height: 40px;
 	}
 
 	.start-info-btn {

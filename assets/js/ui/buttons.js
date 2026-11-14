@@ -1,4 +1,4 @@
-// 操作ボタン（#hud-controls）：一時停止／再生、俯瞰／一人称、最初から、トップ（スタート画面へ戻る）、情報。
+// 操作ボタン（#hud-controls）：一時停止／再生、俯瞰／一人称、最初から、トップ（スタート画面へ戻る）、音、情報。
 //
 // ボタンは index.html の [hud-controls] に書いてある（data-action で見分ける）。ここでは次の 3 つをする。
 //   1. 押されたら ride / view / events を呼ぶ（click だけ。タッチもキーボード（Space・Enter）も同じ経路）。
@@ -20,15 +20,18 @@ const ICONS = {
 	restart: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
 	// トップ（家）
 	home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M10 20v-6h4v6"/>',
+	// 音（スピーカー。オフは斜線つき）
+	soundOn: '<path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M15.5 9a4.2 4.2 0 0 1 0 6"/><path d="M18 6.5a8 8 0 0 1 0 11"/>',
+	soundOff: '<path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M16 9.5l5 5"/><path d="M21 9.5l-5 5"/>',
 	info: '<circle cx="12" cy="12" r="9.5"/><path d="M12 16.5v-5"/><path d="M12 7.6h.01"/>'
 };
 
 /**
- * 状態から、5 つのボタンの表示を決める（DOM に依存しない）。
- * @param {{ paused?: boolean, finished?: boolean, view?: 'ride'|'overview', infoOpen?: boolean }} state
+ * 状態から、6 つのボタンの表示を決める（DOM に依存しない）。
+ * @param {{ paused?: boolean, finished?: boolean, view?: 'ride'|'overview', infoOpen?: boolean, soundOn?: boolean }} state
  * @returns 各ボタンの { label, ariaLabel, icon, disabled }（情報は expanded も）
  */
-export function describeButtons( { paused = false, finished = false, view = 'ride', infoOpen = false } = {} ) {
+export function describeButtons( { paused = false, finished = false, view = 'ride', infoOpen = false, soundOn = true } = {} ) {
 
 	return {
 		'toggle-pause': paused
@@ -39,6 +42,9 @@ export function describeButtons( { paused = false, finished = false, view = 'rid
 			: { label: '俯瞰', ariaLabel: '俯瞰で見る（W）', icon: 'eye', disabled: false },
 		restart: { label: '最初から', ariaLabel: '最初から乗り直す（R）', icon: 'restart', disabled: false },
 		home: { label: 'トップ', ariaLabel: 'スタート画面に戻る（T）', icon: 'home', disabled: false },
+		sound: soundOn
+			? { label: '音', ariaLabel: '音を消す（M）', icon: 'soundOn', disabled: false, pressed: true }
+			: { label: '音', ariaLabel: '音を出す（M）', icon: 'soundOff', disabled: false, pressed: false },
 		info: { label: '情報', ariaLabel: '情報パネルを開く（I）', icon: 'info', disabled: false, expanded: Boolean( infoOpen ) }
 	};
 
@@ -91,7 +97,7 @@ export function createButtons( ctx ) {
 
 	function render() {
 
-		const next = describeButtons( { paused: ride.paused, finished: ride.finished, view: view.current, infoOpen } );
+		const next = describeButtons( { paused: ride.paused, finished: ride.finished, view: view.current, infoOpen, soundOn: ctx.sound?.enabled ?? true } );
 
 		for ( const [ action, button ] of Object.entries( buttons ) ) {
 
@@ -105,6 +111,7 @@ export function createButtons( ctx ) {
 			if ( button.icon ) setIcon( button.icon, d.icon );
 			button.el.setAttribute( 'aria-label', d.ariaLabel );
 			button.el.disabled = d.disabled;
+			if ( 'pressed' in d ) button.el.setAttribute( 'aria-pressed', String( d.pressed ) );
 			if ( 'expanded' in d ) button.el.setAttribute( 'aria-expanded', String( d.expanded ) );
 
 		}
@@ -126,6 +133,7 @@ export function createButtons( ctx ) {
 		},
 		// スタート画面へ戻る。ページを開き直す（URL の ?data= は残るので、選んでいたデータのスタート画面になる）
 		home: () => ( ctx.ui?.goHome ?? goHome )(),
+		sound: () => ctx.sound?.toggle(),
 		// trigger を渡す：クリックでボタンにフォーカスが移らないブラウザ（Safari、macOS の Firefox）でも、閉じたあとここへ戻せる
 		info: () => events.emit( 'infopanel:toggle', { trigger: buttons.info?.el } )
 	};
@@ -154,6 +162,7 @@ export function createButtons( ctx ) {
 
 	// ---- ride・view・情報パネルの状態への追従 ----
 	for ( const name of [ 'start', 'pause', 'resume', 'restart', 'finish', 'viewchange' ] ) removers.push( events.on( name, render ) );
+	removers.push( events.on( 'soundchange', render ) );
 	removers.push( events.on( 'infopanel:change', ( payload ) => {
 
 		infoOpen = Boolean( payload?.open );
