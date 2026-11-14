@@ -4,9 +4,8 @@
 
 import * as config from './config.js';
 import { MAX_DELTA_MS, MOVING_AVERAGE_WINDOW } from './config.js';
-import { loadData, buildDataset, LocalDataMissingError } from './data.js';
+import { loadData, buildDataset, LocalDataMissingError, pointAtIndex } from './data.js';
 import { TrackCurve } from './track.js';
-import { pointAtIndex } from './loop.js';
 import { createEvents } from './events.js';
 import { createScene } from './scene.js';
 import { createRide } from './ride.js';
@@ -41,7 +40,7 @@ const MODULES = [
 	createReadout, // HUD：現在値の帯
 	createLegend, // HUD：凡例
 	createChart, // HUD：ミニグラフ
-	createMap, // HUD：路線図
+	createMap, // HUD：螺旋の図
 	createAnnotations, // HUD：イベントのキャプション
 	createButtons, // UI：操作ボタン
 	createEndScreen, // UI：終了画面
@@ -84,11 +83,11 @@ async function boot() {
 	}
 
 	const { renderer, scene, camera, train } = sceneParts;
-	const { stations } = loaded;
 
 	// 表示値・グラフは生データ（dataset.raw）、レールの形は移動平均後（dataset.smoothed）
 	const dataset = buildDataset( loaded.nikkei, MOVING_AVERAGE_WINDOW, loaded.meta );
-	const curve = new TrackCurve( stations, dataset.smoothed );
+	// コースは螺旋（角度は日付、進行位置は時間に比例。track.js）
+	const curve = new TrackCurve( dataset.smoothed );
 
 	const events = createEvents();
 	const ride = createRide( curve, events );
@@ -126,7 +125,7 @@ async function boot() {
 		startScreen
 	};
 
-	const ctx = { renderer, scene, camera, train, dataset, stations, curve, ride, view, ui, events, config };
+	const ctx = { renderer, scene, camera, train, dataset, curve, ride, view, ui, events, config };
 
 	// ---- 状態（毎フレーム、全モジュールへ同じものを渡す）----
 	let nowMs = 0;
@@ -186,7 +185,7 @@ async function boot() {
 
 	}
 
-	// 開始前も、1990 年 1 月の位置に車体を置いておく
+	// 開始前も、最初の週の位置に車体を置いておく
 	train.position.copy( ride.position );
 	train.quaternion.copy( ride.quaternion );
 
@@ -196,7 +195,6 @@ async function boot() {
 		const dataIndex = curve.progressToIndex( progress );
 		return {
 			progress,
-			phase: curve.isLink( progress ) ? 'link' : 'data',
 			deltaMs,
 			timeMs,
 			nowMs,
@@ -205,7 +203,7 @@ async function boot() {
 			finished: ride.finished,
 			view: view.current,
 			dataIndex,
-			point: dataIndex === null ? null : pointAtIndex( dataset.raw, dataIndex )
+			point: pointAtIndex( dataset.raw, dataIndex )
 		};
 
 	}

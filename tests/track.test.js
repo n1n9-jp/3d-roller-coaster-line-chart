@@ -1,259 +1,395 @@
+// 螺旋のコース（track.js の TrackCurve）：角度と半径、進行位置と日付、両端、弧長の対応。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { geoToXZ, xzToGeo, buildStationSegments, getXZAt, TrackCurve } from '../assets/js/track.js';
-import { Y_MIN, Y_MAX, LOOP } from '../assets/js/config.js';
-import { loadFixtures } from './helpers.js';
+import { TrackCurve, decimalYear, spiralAngle, normalizeAngle } from '../assets/js/track.js';
+import { buildDataset, dateToIndex } from '../assets/js/data.js';
+import { Y_MIN, Y_MAX, SPIRAL } from '../assets/js/config.js';
+import { loadFixtures, stretchedSeries } from './helpers.js';
 
-const { nikkei, stations } = loadFixtures();
+const { nikkei } = loadFixtures();
 
-test( 'geoToXZ と xzToGeo は往復で元に戻る', () => {
+// 開始年の違う 3 つのデータ（1971 年始まり 約 5.6 周、1986 年始まり 約 4 周、1990 年始まりの同梱サンプル）
+const SERIES = [
+	[ '1971 年始まり', stretchedSeries( nikkei, '1971-01-04', '2026-11-09' ) ],
+	[ '1986 年始まり', stretchedSeries( nikkei, '1986-07-07', '2026-11-09' ) ],
+	[ '1990 年始まり（サンプル）', nikkei ]
+];
+const curves = SERIES.map( ( [ name, data ] ) => [ name, new TrackCurve( buildDataset( data ).smoothed ) ] );
+const sample = new TrackCurve( nikkei );
 
-	for ( const s of stations ) {
+const DAY_ANGLE = 2 * Math.PI / ( SPIRAL.yearsPerTurn * 365.25 ); // 1 日分の角度
+/** 2 つの角度の差（周回を除いた最小の差）。 */
+const angleDiff = ( a, b ) => {
 
-		const { x, z } = geoToXZ( s.lon, s.lat );
-		const { lon, lat } = xzToGeo( x, z );
-		assert.ok( Math.abs( lon - s.lon ) < 1e-9, `lon ${s.station_name}` );
-		assert.ok( Math.abs( lat - s.lat ) < 1e-9, `lat ${s.station_name}` );
+	const d = normalizeAngle( a - b );
+	return Math.min( d, 2 * Math.PI - d );
 
-	}
+};
+/** 水平位置の角度（北が 0、時計回り）。 */
+const bearing = ( p ) => Math.atan2( p.x, - p.z );
 
-	const center = geoToXZ( 139.739138, 35.678777 );
-	assert.ok( Math.abs( center.x ) < 1e-9 && Math.abs( center.z ) < 1e-9 );
+test( 'decimalYear：1 月 1 日で整数、年の途中は時間の割合', () => {
 
-} );
-
-test( '弧長の正規化：segTStart は 0 から 1 へ単調増加する', () => {
-
-	const seg = buildStationSegments( stations );
-	const { segTStart, points, segLengths } = seg;
-	assert.equal( segTStart.length, stations.length + 1 );
-	assert.equal( points.length, stations.length + 1 );
-	assert.deepEqual( points.at( - 1 ), points[ 0 ] ); // ループが閉じている
-	assert.equal( segTStart[ 0 ], 0 );
-	assert.equal( segTStart.at( - 1 ), 1 );
-	for ( let i = 1; i < segTStart.length; i ++ ) {
-
-		assert.ok( segTStart[ i ] > segTStart[ i - 1 ], `index ${i}` );
-
-	}
-
-	// 区間の長さに比例して t が進む
-	const total = segLengths.reduce( ( a, b ) => a + b, 0 );
-	assert.ok( Math.abs( total - seg.totalLength ) < 1e-9 );
-	for ( let i = 0; i < segLengths.length - 1; i ++ ) {
-
-		assert.ok( Math.abs( ( segTStart[ i + 1 ] - segTStart[ i ] ) - segLengths[ i ] / total ) < 1e-12 );
-
-	}
+	assert.equal( decimalYear( Date.UTC( 1990, 0, 1 ) ), 1990 );
+	assert.equal( decimalYear( Date.UTC( 2000, 0, 1 ) ), 2000 );
+	assert.ok( Math.abs( decimalYear( Date.UTC( 2001, 6, 2, 12 ) ) - 2001.5 ) < 1e-12 ); // 2001 年は 365 日。7 月 2 日 12 時が半分
+	assert.ok( decimalYear( Date.UTC( 1999, 11, 31, 23 ) ) < 2000 );
 
 } );
 
-test( 'getXZAt：t = 0 は最初の駅、各区間の開始位置は対応する駅', () => {
+test( '設定：1 周 10 年、内側の半径 16、間隔 13（config.js の SPIRAL）。options で変えられる', () => {
 
-	const seg = buildStationSegments( stations );
-	const first = geoToXZ( stations[ 0 ].lon, stations[ 0 ].lat );
-	const at0 = getXZAt( 0, seg );
-	assert.ok( Math.abs( at0.x - first.x ) < 1e-9 && Math.abs( at0.z - first.z ) < 1e-9 );
-
-	for ( let i = 0; i < stations.length; i ++ ) {
-
-		const expected = geoToXZ( stations[ i ].lon, stations[ i ].lat );
-		const actual = getXZAt( seg.segTStart[ i ], seg );
-		assert.ok( Math.abs( actual.x - expected.x ) < 1e-6, `x ${i}` );
-		assert.ok( Math.abs( actual.z - expected.z ) < 1e-6, `z ${i}` );
-
-	}
+	assert.deepEqual( SPIRAL, { yearsPerTurn: 10, innerRadius: 16, turnGap: 13 } );
+	const curve = new TrackCurve( nikkei, { yearsPerTurn: 5, innerRadius: 20, turnGap: 10 } );
+	assert.ok( Math.abs( curve.radiusAt( 0 ) - 20 ) < 1e-9 );
+	assert.ok( Math.abs( curve.turns - curve.years / 5 ) < 1e-12 );
+	assert.ok( Math.abs( curve.radiusAt( 1 ) - ( 20 + 10 * curve.years / 5 ) ) < 1e-9 );
 
 } );
 
-test( 'TrackCurve：t = 0 は 1990 年 1 月のデータ点の高さ、範囲は Y_MIN..Y_MAX', () => {
+test( '年代の境目（1980 年・1990 年…の 1 月 1 日）は、開始年の違うどのデータでも北を向く', () => {
 
-	const curve = new TrackCurve( stations, nikkei );
-	const p0 = curve.getPointAt( 0 );
-	assert.ok( Math.abs( p0.y - curve.valueToY( nikkei[ 0 ].close ) ) < 1e-9 );
-	assert.equal( nikkei[ 0 ].date, '1990-01-01' );
+	const expectedYears = {
+		'1971 年始まり': [ 1980, 1990, 2000, 2010, 2020 ],
+		'1986 年始まり': [ 1990, 2000, 2010, 2020 ],
+		'1990 年始まり（サンプル）': [ 1990, 2000, 2010, 2020 ]
+	};
+	for ( const [ name, curve ] of curves ) {
+
+		const boundaries = curve.decadeBoundaries();
+		assert.deepEqual( boundaries.map( ( b ) => b.year ), expectedYears[ name ], name );
+		for ( const { year, progress } of boundaries ) {
+
+			// 進行位置は、その年の 1 月 1 日
+			assert.ok( Math.abs( curve.timeAt( progress ) - Date.UTC( year, 0, 1 ) ) < 1, `${name} ${year}` );
+			assert.ok( Math.abs( curve.dateToProgress( `${year}-01-01` ) - progress ) < 1e-12 );
+			assert.ok( Math.abs( curve.progressToYear( progress ) - year ) < 1e-9 );
+			// 北（x = 0、z < 0）
+			const p = curve.getXZAt( progress );
+			assert.ok( Math.abs( p.x ) < 1e-6 && p.z < 0, `${name} ${year}: ${p.x}, ${p.z}` );
+			assert.ok( angleDiff( curve.angleAt( progress ), 0 ) < 1e-9, `${name} ${year}` );
+			assert.ok( Math.abs( - p.z - curve.radiusAt( progress ) ) < 1e-6 );
+
+		}
+
+		// 半径は 1 周ごとに turnGap ずつ外へ
+		for ( let i = 1; i < boundaries.length; i ++ ) {
+
+			const r0 = curve.radiusAt( boundaries[ i - 1 ].progress );
+			const r1 = curve.radiusAt( boundaries[ i ].progress );
+			assert.ok( Math.abs( r1 - r0 - SPIRAL.turnGap ) < 1e-6, `${name}: 周の間隔 ${r1 - r0}` );
+
+		}
+
+	}
+
+	// 1990 年 1 月 1 日始まりのサンプルは、始点（t = 0）が境目
+	assert.equal( sample.decadeBoundaries()[ 0 ].progress, 0 );
+
+} );
+
+test( '同じ月日は、どの年代でも同じ角度（1975 年・1985 年・1995 年…の 6 月 30 日。うるう年の違いは 1 日分まで）。データが違っても同じ', () => {
+
+	const isLeap = ( year ) => new Date( Date.UTC( year, 1, 29 ) ).getUTCMonth() === 1;
+	for ( const monthDay of [ '01-01', '03-15', '06-30', '09-01', '12-31' ] ) {
+
+		const angles = [];
+		for ( const [ name, curve ] of curves ) {
+
+			for ( let year = 1971; year <= 2025; year ++ ) {
+
+				const date = `${year}-${monthDay}`;
+				const ms = Date.parse( `${date}T00:00:00Z` );
+				if ( ms < curve.startMs || ms > curve.endMs ) continue;
+				angles.push( { name, year, leap: isLeap( year ), angle: bearing( curve.getXZAt( curve.dateToProgress( date ) ) ) } );
+
+			}
+
+		}
+
+		for ( const a of angles ) {
+
+			// 年代の中の同じ年（西暦の下 1 桁が同じ）で、うるう年でない最初の年と比べる
+			const base = angles.find( ( b ) => ! b.leap && ( b.year - a.year ) % SPIRAL.yearsPerTurn === 0 );
+			if ( ! base ) continue;
+
+			// うるう年は 2 月 29 日の分だけ（3 月以降で 1 日分まで）ずれる。それ以外の年はぴったり同じ
+			const limit = a.leap ? DAY_ANGLE * 1.01 : 1e-9;
+			assert.ok( angleDiff( a.angle, base.angle ) < limit, `${monthDay} ${a.name} ${a.year}: ${angleDiff( a.angle, base.angle )}` );
+
+		}
+
+		// 比べた組が十分にある（下 1 桁ごとに複数の年代）
+		assert.ok( angles.length > 100 );
+
+	}
+
+	// 角度は暦だけで決まる（spiralAngle）：2001 年の真ん中は 1.5 年分 = 0.15 周
+	assert.ok( angleDiff( spiralAngle( 2001.5 ), 2 * Math.PI * 0.15 ) < 1e-9 );
+	assert.ok( angleDiff( spiralAngle( decimalYear( Date.UTC( 2001, 6, 2, 12 ) ) ), 2 * Math.PI * 0.15 ) < 1e-9 );
+
+} );
+
+test( '上から見て時計回り（北 → 東 → 南 → 西）、内側から外側へ', () => {
+
+	for ( const [ name, curve ] of curves ) {
+
+		// 角度も半径も単調に増える
+		let prevAngle = - Infinity;
+		let prevRadius = - Infinity;
+		for ( let i = 0; i <= 400; i ++ ) {
+
+			const t = i / 400;
+			const a = curve.angleAt( t );
+			const r = curve.radiusAt( t );
+			assert.ok( a > prevAngle && r > prevRadius, `${name} t=${t}` );
+			prevAngle = a;
+			prevRadius = r;
+			const p = curve.getXZAt( t );
+			assert.ok( Math.abs( Math.hypot( p.x, p.z ) - r ) < 1e-9 );
+
+		}
+
+	}
+
+	// 1990 年 1 月（北）の 2.5 年後は東、5 年後は南、7.5 年後は西
+	const at = ( date ) => sample.getXZAt( sample.dateToProgress( date ) );
+	const east = at( '1992-07-02' );
+	const south = at( '1995-01-01' );
+	const west = at( '1997-07-02' );
+	assert.ok( east.x > 0 && Math.abs( east.z ) < 0.2, JSON.stringify( east ) );
+	assert.ok( south.z > 0 && Math.abs( south.x ) < 1e-6, JSON.stringify( south ) );
+	assert.ok( west.x < 0 && Math.abs( west.z ) < 0.2, JSON.stringify( west ) );
+
+} );
+
+test( '高さ：t = 0 は最初の週、t = 1 は最後の週の高さ。範囲は Y_MIN..Y_MAX', () => {
+
+	const curve = new TrackCurve( nikkei );
+	assert.ok( Math.abs( curve.getPointAt( 0 ).y - curve.valueToY( nikkei[ 0 ].close ) ) < 1e-9 );
+	assert.ok( Math.abs( curve.getPointAt( 1 ).y - curve.valueToY( nikkei.at( - 1 ).close ) ) < 1e-9 );
 	assert.ok( Math.abs( curve.valueToY( curve.closeMin ) - Y_MIN ) < 1e-9 );
 	assert.ok( Math.abs( curve.valueToY( curve.closeMax ) - Y_MAX ) < 1e-9 );
+	for ( let i = 0; i <= 500; i ++ ) {
 
-	for ( let i = 0; i <= 200; i ++ ) {
-
-		const y = curve.getPointAt( i / 200 ).y;
+		const y = curve.getPointAt( i / 500 ).y;
 		assert.ok( y >= Y_MIN - 1e-9 && y <= Y_MAX + 1e-9 );
 
 	}
 
-} );
+	// 各週の日付の位置で、その週の値の高さ
+	for ( const i of [ 1, 100, 1000, nikkei.length - 2 ] ) {
 
-test( 'TrackCurve：接線は水平な単位ベクトル、t は周期 1', () => {
-
-	const curve = new TrackCurve( stations, nikkei );
-	for ( const t of [ 0, 0.13, 0.5, 0.999 ] ) {
-
-		const tangent = curve.getTangentAt( t );
-		assert.equal( tangent.y, 0 );
-		assert.ok( Math.abs( tangent.length() - 1 ) < 1e-9 );
-
-	}
-
-	const a = curve.getPointAt( 0.25 ).clone();
-	const b = curve.getPointAt( 1.25 ).clone();
-	assert.ok( a.distanceTo( b ) < 1e-9 );
-
-} );
-
-// ---- 連絡区間の口：dataEnd / isLink / progressToIndex / indexToProgress ----
-
-test( 'LOOP.linkFraction の既定は 0.03 で、dataEnd は 0.97。linkFraction: 0 なら連絡区間なしで dataEnd は 1', () => {
-
-	assert.equal( LOOP.linkFraction, 0.03 );
-	const curve = new TrackCurve( stations, nikkei );
-	assert.ok( Math.abs( curve.dataEnd - 0.97 ) < 1e-12 );
-	assert.equal( curve.isLink( 0.98 ), true );
-	const none = new TrackCurve( stations, nikkei, { linkFraction: 0 } );
-	assert.equal( none.dataEnd, 1 );
-	assert.equal( none.isLink( 1 ), false );
-
-} );
-
-test( 'linkFraction が 0 のとき：progressToIndex は t * ( n - 1 )、indexToProgress と往復で一致する', () => {
-
-	const curve = new TrackCurve( stations, nikkei, { linkFraction: 0 } );
-	const n = nikkei.length;
-	assert.equal( curve.progressToIndex( 0 ), 0 );
-	assert.equal( curve.progressToIndex( 1 ), n - 1 );
-	for ( const t of [ 0, 0.1, 0.25, 0.5, 0.731, 0.999, 1 ] ) {
-
-		assert.ok( Math.abs( curve.progressToIndex( t ) - t * ( n - 1 ) ) < 1e-9 );
-		assert.ok( Math.abs( curve.indexToProgress( curve.progressToIndex( t ) ) - t ) < 1e-12 );
-
-	}
-
-	for ( const u of [ 0, 1, 100.5, n - 2, n - 1 ] ) {
-
-		assert.ok( Math.abs( curve.progressToIndex( curve.indexToProgress( u ) ) - u ) < 1e-9 );
+		const t = curve.dateToProgress( nikkei[ i ].date );
+		assert.ok( Math.abs( curve.getYAt( t ) - curve.valueToY( nikkei[ i ].close ) ) < 1e-9, `i=${i}` );
 
 	}
 
 } );
 
-test( 'linkFraction が 0.03 のとき：データ区間は 0..0.97、往復で一致し、連絡区間では null', () => {
+test( 't = 0 と t = 1 で折り返さない：t = 1 の点は外の端で、範囲外は端に張り付く', () => {
 
-	const curve = new TrackCurve( stations, nikkei, { linkFraction: 0.03 } );
-	const n = nikkei.length;
-	assert.ok( Math.abs( curve.dataEnd - 0.97 ) < 1e-12 );
+	for ( const [ name, curve ] of curves ) {
 
-	assert.equal( curve.progressToIndex( 0 ), 0 );
-	assert.ok( Math.abs( curve.progressToIndex( curve.dataEnd ) - ( n - 1 ) ) < 1e-9 );
-	assert.equal( curve.isLink( curve.dataEnd ), false );
-	assert.equal( curve.isLink( 0.9701 ), true );
-	assert.equal( curve.progressToIndex( 0.9701 ), null );
-	assert.equal( curve.progressToIndex( 1 ), null );
-
-	for ( const t of [ 0, 0.1, 0.5, 0.9, 0.97 ] ) {
-
-		const u = curve.progressToIndex( t );
-		assert.ok( Math.abs( u - t / 0.97 * ( n - 1 ) ) < 1e-9 );
-		assert.ok( Math.abs( curve.indexToProgress( u ) - t ) < 1e-12, `t=${t}` );
+		const end = curve.getPointAt( 1 ).clone();
+		const start = curve.getPointAt( 0 ).clone();
+		// 外の端：半径が最大（内側の半径 + 間隔 × 周の数）。始点は内側の半径
+		assert.ok( Math.abs( Math.hypot( end.x, end.z ) - ( SPIRAL.innerRadius + SPIRAL.turnGap * curve.turns ) ) < 1e-6, name );
+		assert.ok( Math.abs( Math.hypot( start.x, start.z ) - SPIRAL.innerRadius ) < 1e-9, name );
+		// 終点は直前の点のすぐ隣（中心へ飛ばない）
+		const before = curve.getPointAt( 1 - 1e-6 ).clone();
+		assert.ok( end.distanceTo( before ) < 0.01, `${name}: ${end.distanceTo( before )}` );
+		// 範囲外は端
+		assert.ok( curve.getPointAt( 1.2 ).distanceTo( end ) < 1e-9 );
+		assert.ok( curve.getPointAt( 1 + 1e-9 ).distanceTo( end ) < 1e-9 );
+		assert.ok( curve.getPointAt( - 0.3 ).distanceTo( start ) < 1e-9 );
+		// 標本化の終わり（同梱の RollerCoaster.js は i / D を D まで引く）で、隣の標本との距離は 1 区間分
+		const D = 2000;
+		const a = curve.arcCurve.getPointAt( ( D - 1 ) / D ).clone();
+		const b = curve.arcCurve.getPointAt( 1 ).clone();
+		assert.ok( Math.hypot( a.x - b.x, a.z - b.z ) < 1.5 * curve.totalLength / D, name );
 
 	}
 
-	for ( const u of [ 0, 1, 100.5, n - 2, n - 1 ] ) {
+} );
+
+test( '接線：水平な単位ベクトルで、進行方向を向く。両端で反対側の点を混ぜない', () => {
+
+	for ( const [ name, curve ] of curves ) {
+
+		for ( const t of [ 0, 1e-7, 0.01, 0.2, 0.37, 0.5, 0.73, 0.95, 1 - 1e-7, 1 ] ) {
+
+			const tangent = curve.getTangentAt( t ).clone();
+			assert.equal( tangent.y, 0 );
+			assert.ok( Math.abs( tangent.length() - 1 ) < 1e-9 );
+			// 差分の向き（両端では内側だけを使う）
+			const a = curve.getXZAt( Math.max( 0, t - 1e-5 ) );
+			const b = curve.getXZAt( Math.min( 1, t + 1e-5 ) );
+			const len = Math.hypot( b.x - a.x, b.z - a.z );
+			const dot = ( tangent.x * ( b.x - a.x ) + tangent.z * ( b.z - a.z ) ) / len;
+			assert.ok( dot > 0.9999, `${name} t=${t} dot=${dot}` );
+
+		}
+
+		// 弧長で引ける曲線の接線も同じ
+		const f = 0.5;
+		const t = curve.progressAtArcFraction( f );
+		assert.ok( curve.arcCurve.getTangentAt( f ).clone().distanceTo( curve.getTangentAt( t ).clone() ) < 1e-12 );
+
+	}
+
+} );
+
+test( '高さの勾配：両端では内側の片側差分（反対側の高さを混ぜない）', () => {
+
+	const curve = new TrackCurve( buildDataset( nikkei ).smoothed );
+	const h = 86400000 / curve.spanMs;
+	const g0 = curve.getHeightGradientAt( 0 );
+	assert.ok( Math.abs( g0 - ( curve.getYAt( h ) - curve.getYAt( 0 ) ) / h ) < 1e-6 );
+	const g1 = curve.getHeightGradientAt( 1 );
+	assert.ok( Math.abs( g1 - ( curve.getYAt( 1 ) - curve.getYAt( 1 - h ) ) / h ) < 1e-6 );
+	assert.equal( curve.getHeightGradientAt( 1.5 ), g1 );
+	assert.ok( Number.isFinite( curve.getHeightGradientAt( 0.5 ) ) );
+
+} );
+
+test( 't あたりの水平距離：位置ごとの差分と一致し、外側の周ほど長い', () => {
+
+	for ( const [ name, curve ] of curves ) {
+
+		for ( const t of [ 0.001, 0.1, 0.5, 0.9, 0.999 ] ) {
+
+			const h = 1e-6;
+			const a = curve.getXZAt( t - h );
+			const b = curve.getXZAt( t + h );
+			const numeric = Math.hypot( b.x - a.x, b.z - a.z ) / ( 2 * h );
+			const analytic = curve.lengthPerProgressAt( t );
+			assert.ok( Math.abs( numeric / analytic - 1 ) < 1e-4, `${name} t=${t}: ${numeric} / ${analytic}` );
+
+		}
+
+		assert.ok( curve.lengthPerProgressAt( 0.9 ) > 2 * curve.lengthPerProgressAt( 0.05 ), name );
+
+	}
+
+} );
+
+test( '弧長：全長は折れ線の長さと一致。弧長の割合で引いた点は等間隔。t ↔ 弧長の割合は往復で一致する', () => {
+
+	for ( const [ name, curve ] of curves ) {
+
+		// 全長は、細かく標本化した折れ線の長さとほぼ同じ
+		let length = 0;
+		let prev = curve.getXZAt( 0 );
+		for ( let i = 1; i <= 200000; i ++ ) {
+
+			const p = curve.getXZAt( i / 200000 );
+			length += Math.hypot( p.x - prev.x, p.z - prev.z );
+			prev = p;
+
+		}
+
+		assert.ok( Math.abs( length / curve.totalLength - 1 ) < 1e-4, `${name}: ${length} / ${curve.totalLength}` );
+		assert.equal( curve.arcCurve.totalLength, curve.totalLength );
+
+		// 等間隔：隣り合う点の距離が、全長 / 分割数の ±1%（内側の周でも外側の周でも）
+		const D = 3000;
+		const step = curve.totalLength / D;
+		let prevP = curve.arcCurve.getPointAt( 0 ).clone();
+		let min = Infinity;
+		let max = 0;
+		for ( let i = 1; i <= D; i ++ ) {
+
+			const p = curve.arcCurve.getPointAt( i / D ).clone();
+			const d = Math.hypot( p.x - prevP.x, p.z - prevP.z );
+			min = Math.min( min, d );
+			max = Math.max( max, d );
+			prevP = p;
+
+		}
+
+		assert.ok( min > step * 0.99 && max < step * 1.01, `${name}: ${min}..${max}（${step}）` );
+
+		// 往復
+		assert.equal( curve.arcFractionAt( 0 ), 0 );
+		assert.ok( Math.abs( curve.arcFractionAt( 1 ) - 1 ) < 1e-12 );
+		for ( const t of [ 0, 0.001, 0.123, 0.5, 0.77, 0.999, 1 ] ) {
+
+			assert.ok( Math.abs( curve.progressAtArcFraction( curve.arcFractionAt( t ) ) - t ) < 1e-9, `${name} t=${t}` );
+
+		}
+
+		for ( const f of [ 0, 0.01, 0.4, 0.95, 1 ] ) {
+
+			assert.ok( Math.abs( curve.arcFractionAt( curve.progressAtArcFraction( f ) ) - f ) < 1e-9, `${name} f=${f}` );
+
+		}
+
+		// 内側の周は t あたりの距離が短いので、弧長の割合は t より遅れる
+		assert.ok( curve.arcFractionAt( 0.3 ) < 0.3, name );
+
+	}
+
+} );
+
+test( '日付 ↔ t：往復で一致し、t は時間に比例する（系列の添字とは日付で対応する）', () => {
+
+	const curve = new TrackCurve( nikkei );
+	const dataset = buildDataset( nikkei );
+	assert.equal( curve.dateToProgress( nikkei[ 0 ].date ), 0 );
+	assert.equal( curve.dateToProgress( nikkei.at( - 1 ).date ), 1 );
+	assert.equal( curve.dateToProgress( '1980-01-01' ), 0 ); // 範囲外は端
+	assert.equal( curve.dateToProgress( '2099-01-01' ), 1 );
+
+	for ( const i of [ 0, 1, 17, 500, 1234, nikkei.length - 1 ] ) {
+
+		const t = curve.dateToProgress( nikkei[ i ].date );
+		assert.ok( Math.abs( curve.indexToProgress( i ) - t ) < 1e-12, `i=${i}` );
+		assert.ok( Math.abs( curve.progressToIndex( t ) - i ) < 1e-9, `i=${i}` );
+		assert.ok( Math.abs( curve.timeAt( t ) - Date.parse( `${nikkei[ i ].date}T00:00:00Z` ) ) < 1e-3 );
+
+	}
+
+	// 時間に比例：t = 0.5 は最初と最後の日付の真ん中
+	assert.ok( Math.abs( curve.timeAt( 0.5 ) - ( curve.startMs + curve.endMs ) / 2 ) < 1e-3 );
+
+	// 系列の添字との対応は data.js の dateToIndex と同じ
+	for ( const date of [ '1995-05-17', '2008-09-15', '2020-03-01' ] ) {
+
+		assert.ok( Math.abs( curve.progressToIndex( curve.dateToProgress( date ) ) - dateToIndex( dataset, date ) ) < 1e-9, date );
+
+	}
+
+	for ( const u of [ 0, 0.5, 100.25, nikkei.length - 1.5, nikkei.length - 1 ] ) {
 
 		assert.ok( Math.abs( curve.progressToIndex( curve.indexToProgress( u ) ) - u ) < 1e-9, `u=${u}` );
 
 	}
 
-} );
-
-test( '連絡区間があっても、データ区間の端の高さは系列の端（t = dataEnd で最後の点）', () => {
-
-	const curve = new TrackCurve( stations, nikkei, { linkFraction: 0.03 } );
-	assert.ok( Math.abs( curve.getYAt( 0 ) - curve.valueToY( nikkei[ 0 ].close ) ) < 1e-9 );
-	assert.ok( Math.abs( curve.getYAt( curve.dataEnd ) - curve.valueToY( nikkei.at( - 1 ).close ) ) < 1e-9 );
-	assert.ok( Number.isFinite( curve.getYAt( 0.985 ) ) );
+	// t → 年
+	assert.ok( Math.abs( curve.progressToYear( 0 ) - 1990 ) < 1e-12 );
+	assert.equal( Math.floor( curve.progressToYear( curve.dateToProgress( '2008-06-30' ) ) ), 2008 );
 
 } );
 
-test( 'getXZAt：t = 1 と t = 1 - 1e-9 は最初の駅の位置（最後の区間が終点で閉じる）', () => {
+test( '週が 1 つ抜けたデータでも、各週は日付どおりの角度と高さ（添字で決めない）', () => {
 
-	const seg = buildStationSegments( stations );
-	const first = geoToXZ( stations[ 0 ].lon, stations[ 0 ].lat );
+	const full = new TrackCurve( nikkei );
+	const gap = nikkei.filter( ( _, i ) => i !== 700 ); // 700 番目の週を抜く
+	const curve = new TrackCurve( gap );
+	assert.equal( curve.startMs, full.startMs );
+	assert.equal( curve.endMs, full.endMs );
 
-	for ( const t of [ 1, 1 - 1e-9 ] ) {
+	for ( const item of [ nikkei[ 699 ], nikkei[ 701 ], nikkei[ 1500 ], nikkei[ 1800 ], nikkei.at( - 1 ) ] ) {
 
-		const p = getXZAt( t, seg );
-		assert.ok( Math.abs( p.x - first.x ) < 1e-6, `x t=${t}` );
-		assert.ok( Math.abs( p.z - first.z ) < 1e-6, `z t=${t}` );
+		const a = full.getXZAt( full.dateToProgress( item.date ) );
+		const b = curve.getXZAt( curve.dateToProgress( item.date ) );
+		assert.ok( Math.hypot( a.x - b.x, a.z - b.z ) < 1e-9, item.date );
+		assert.ok( Math.abs( curve.getYAt( curve.dateToProgress( item.date ) ) - curve.valueToY( item.close ) ) < 1e-9 );
 
 	}
 
-} );
-
-test( 'getXZAt：すべての区間の中点（segTStart の中間の t）が、区間の両端の駅の中点に一致する（最後の区間を含む）', () => {
-
-	const seg = buildStationSegments( stations );
-	const { points, segTStart } = seg;
-	const n = points.length - 1; // 区間の数
-
-	for ( let i = 0; i < n; i ++ ) {
-
-		const t = ( segTStart[ i ] + segTStart[ i + 1 ] ) / 2;
-		const p = getXZAt( t, seg );
-		const mx = ( points[ i ].x + points[ i + 1 ].x ) / 2;
-		const mz = ( points[ i ].z + points[ i + 1 ].z ) / 2;
-		assert.ok( Math.abs( p.x - mx ) < 1e-6, `x 区間 ${i}` );
-		assert.ok( Math.abs( p.z - mz ) < 1e-6, `z 区間 ${i}` );
-
-	}
-
-	// 最後の区間は「最後の駅 → 最初の駅」
-	const last = geoToXZ( stations.at( - 1 ).lon, stations.at( - 1 ).lat );
-	const first = geoToXZ( stations[ 0 ].lon, stations[ 0 ].lat );
-	const tLast = ( segTStart[ n - 1 ] + segTStart[ n ] ) / 2;
-	const p = getXZAt( tLast, seg );
-	assert.ok( Math.abs( p.x - ( last.x + first.x ) / 2 ) < 1e-6 );
-	assert.ok( Math.abs( p.z - ( last.z + first.z ) / 2 ) < 1e-6 );
-
-} );
-
-test( 'TrackCurve：接線は進行方向（区間の中点で、駅 i → 駅 i+1 の向き）を向く', () => {
-
-	const curve = new TrackCurve( stations, nikkei );
-	const { points, segTStart } = curve.seg;
-	const n = points.length - 1;
-
-	for ( let i = 0; i < n; i ++ ) {
-
-		const t0 = segTStart[ i ];
-		const t1 = segTStart[ i + 1 ];
-		// 中央差分の幅（DELTA = 1e-4）が区間をまたがないことを前提にする
-		assert.ok( ( t1 - t0 ) / 2 > 1e-4, `区間 ${i} が短すぎる` );
-
-		const dx = points[ i + 1 ].x - points[ i ].x;
-		const dz = points[ i + 1 ].z - points[ i ].z;
-		const len = Math.hypot( dx, dz );
-		const tangent = curve.getTangentAt( ( t0 + t1 ) / 2 );
-		assert.ok( Math.abs( tangent.x - dx / len ) < 1e-6, `x 区間 ${i}` );
-		assert.ok( Math.abs( tangent.z - dz / len ) < 1e-6, `z 区間 ${i}` );
-
-	}
-
-} );
-
-test( 'TrackCurve：接線は getPointAt の水平移動の向きと一致する（t の周期境界を含む）', () => {
-
-	const curve = new TrackCurve( stations, nikkei );
-
-	for ( const t of [ 0.01, 0.2, 0.37, 0.5, 0.73, 0.95 ] ) {
-
-		const a = curve.getPointAt( t - 1e-5 ).clone();
-		const b = curve.getPointAt( t + 1e-5 ).clone();
-		const dir = { x: b.x - a.x, z: b.z - a.z };
-		const len = Math.hypot( dir.x, dir.z );
-		const tangent = curve.getTangentAt( t );
-		const dot = ( tangent.x * dir.x + tangent.z * dir.z ) / len;
-		assert.ok( dot > 0.999, `t=${t} dot=${dot}` );
-
-	}
+	// 抜けた週の日付は、前後の週の間を日数で補間した位置（添字 699.5）
+	assert.ok( Math.abs( curve.progressToIndex( curve.dateToProgress( nikkei[ 700 ].date ) ) - 699.5 ) < 1e-9 );
 
 } );

@@ -20,40 +20,66 @@ export const DATA_SOURCES = {
 		meta: './data/local/meta.json'
 	}
 };
-export const YAMANOTE_URL = './data/train-yamanote.json';
 // レール形状に使う移動平均の窓（週数）。HUD の表示値は移動平均をかけない生データ。
 export const MOVING_AVERAGE_WINDOW = 4;
 
-// ---- 座標 ----
-// 山手線の経緯度を three.js のワールド座標（x：東、z：南）へ写す
-export const GEO_CENTER = { lon: 139.739138, lat: 35.678777 };
-export const GEO_SCALE = 1500;
+// ---- 座標とコース（螺旋） ----
+// ワールド座標は x：東、z：南（北は −z）。コースはアルキメデスの螺旋で、上から見て時計回りに内側（古い）から外側（新しい）へ進む。
+//   角度：暦で決める。yearsPerTurn 年で 1 周し、西暦が yearsPerTurn の倍数の年（1980、1990、2000…）の 1 月 1 日が北（角度 0）を向く。
+//   半径：データの最初の日付で innerRadius。そこから経過年数に比例して広がり、1 周ごとに turnGap ずつ外へ出る。
+// 進行位置 t（0..1）は時間に比例する（t = 0 が最初の週の日付、t = 1 が最後の週の日付）。track.js の TrackCurve。
+export const SPIRAL = {
+	yearsPerTurn: 10,
+	innerRadius: 16,
+	turnGap: 13
+};
+// 内側の半径 16：最初の周で前方 20 先（デスクトップ）・10 先（モバイル）が画面に入る（12 では外れる）。
+// 間隔 13：56 年分（5.6 周）で外側の半径 約 89。出来事のアーチ（直径 6.4）との余裕 6.6。
 
 // レールの高さ（ワールド座標の y）の範囲。移動平均後の系列の最小・最大に対応する。
 export const Y_MIN = 3;
 export const Y_MAX = 35;
 
 // ---- 走行 ----
-// progress は 0..1（1 周 = 1）。以下は 1 ミリ秒あたりの progress の増分。
-// 元の値（60fps の 1 フレームあたり）を FRAME_MS で割って換算している。
-export const SPEED_MIN = 0.00006 / FRAME_MS; // 3.6e-6 /ms（1 周 約 278 秒）
-export const SPEED_MAX = 0.0003 / FRAME_MS; // 1.8e-5 /ms
-export const SPEED_INITIAL = SPEED_MIN;
-// 速度は、勾配から決まる「目標の速度」へ一次遅れで近づく（ride.js）。
-//   目標 = SPEED_CRUISE × exp( - GRAVITY × 高さ勾配 )（SPEED_MIN..上限に収める）
-//   速度 ← 目標 + ( 速度 - 目標 ) × exp( - delta / SPEED_RESPONSE_MS )
-// 平らなところで SPEED_CRUISE、下り（勾配が負）で速く、上りで遅くなる。勾配はデータの週ごとの揺れで細かく変わるので、
-// 一次遅れでならし、長い下り・上りでだけ速度がはっきり変わるようにする（1 周 約 150〜160 秒）。
-export const SPEED_CRUISE = 5e-6; // /ms（平らなところの速度）
-// 高さ勾配 dy/dt（ワールドの y / progress）1 あたりの、目標の速度の対数の変化。勾配 ±230（中央値くらい）で 約 2 倍 / 半分
-export const GRAVITY = 0.003;
+// progress は 0..1（データの最初の週 = 0、最後の週 = 1。時間に比例）。
+// 速度は「データの 1 年を何秒で走るか」の逆数（年/秒）で持ち、データの期間 T 年で progress/ms に換算する（ride.js）：
+//   基準の速さ base( r ) = yearsPerSecond × ( r / referenceRadius )^(−radiusExponent)   [年/秒]
+//   倍率       m        = clamp( exp( − gravityPerYear × 1 年あたりの高さの変化 dy/dτ ), minFactor, maxFactor )
+//   目標の速さ          = base( r ) × m。速さはこれへ一次遅れ（SPEED_RESPONSE_MS）で近づき、base × minFactor .. base × maxFactor に収める
+//   progress / ms       = 年/秒 ÷ ( T × 1000 )
+// 平らなところで base、下り（勾配が負）で速く、上りで遅くなる。勾配は年あたりなので、期間の違うデータでも同じ効き方になる。
+// 半径による補正：螺旋は外側の周ほど 1 年あたりの距離が長く、補正なし（radiusExponent = 0。データの時間あたり一定）では
+// 外側の見た目の速さが内側の 4〜5 倍になる。0.25 で内側を速め・外側を抑える（試作の計測。scratchpad/specs/spiral-params.md）。
+// 所要時間の見込み：56 年分 約 265 秒、40 年分 約 177 秒、37 年分 約 163 秒。
+export const SPEED = {
+	yearsPerSecond: 0.244,
+	referenceRadius: 16,
+	radiusExponent: 0.25,
+	gravityPerYear: 0.08, // 1 年あたりの高さの変化（ワールドの y / 年）1 あたりの、倍率の対数の変化
+	minFactor: 0.85,
+	maxFactor: 2.5,
+	// 年数を持たない曲線（テスト用）の期間
+	fallbackYears: 36
+};
 // 一次遅れの時定数（ms）。この時間で目標との差が 1/e になる
 export const SPEED_RESPONSE_MS = 1000;
+
+/**
+ * 期間 years 年のデータで、1 フレーム（MAX_DELTA_MS）に進みうる progress の最大（内側の周、下りの上限の倍率）。
+ * 出来事のキャプションの「位置が飛んだ」の判定（ANNOT.caption.maxStepProgress）に使う。
+ */
+export function maxProgressPerFrame( years ) {
+
+	const yearsPerSecond = SPEED.yearsPerSecond * Math.pow( SPIRAL.innerRadius / SPEED.referenceRadius, - SPEED.radiusExponent ) * SPEED.maxFactor;
+	return MAX_DELTA_MS * yearsPerSecond / ( years * 1000 );
+
+}
+
 // 向きの補間：60fps で 1 フレームあたり 8% 目標へ近づく
 export const ORIENTATION_BLEND_PER_FRAME = 0.08;
-// 開始位置（0 = 大崎、1990 年 1 月）
+// 開始位置（0 = データの最初の週）
 export const START_PROGRESS = 0;
-// 車体の傾き：レールの実際の勾配（dy / 水平の長さ = 高さ勾配 / 周長 curve.seg.totalLength）に対する比率。
+// 車体の傾き：レールの実際の勾配（dy / 水平の長さ = 高さ勾配 dy/dt / その位置の t あたりの水平距離 ds/dt）に対する比率。
 // 1 でレールと同じ傾き。小さくすると、急な上り下りで前方のレールが画面の上下へ外れる
 export const RAIL_SLOPE_RATIO = 0.7;
 // 車体の傾きに使う勾配：進行位置の前後この長さ（水平。ワールドの単位）の弦の勾配
@@ -63,10 +89,21 @@ export const RAIL_SLOPE_WINDOW = 5;
 // 画角・カメラの位置・俯瞰の視点は SCENE（下）にある
 export const TRAIN_RAIL_OFFSET = 0.3; // レール上面から車体の位置までの高さ
 
-// ---- ジオメトリの分割数 ----
-export const RAIL_DIVISIONS = 1500;
-export const LIFTER_DIVISIONS = 100;
-export const SHADOW_DIVISIONS = 500;
+// ---- ジオメトリの分割 ----
+// レール・支柱・足跡・カーテンは、曲線を弧長（水平）で等間隔に標本化する（curve.arcCurve）。
+// 分割数は全長 / 区間の長さ（切り上げ）。rail-colors.js・curtain.js はレールと同じ分割数を使う。
+export const TRACK_SAMPLING = {
+	railSegment: 0.3, // レールの 1 区間の長さ（枕木は 2 区間に 1 本）
+	lifterSpacing: 4.7, // 支柱の間隔
+	shadowSegment: 0.94 // 床の足跡の 1 区間の長さ
+};
+
+/** 全長 length のときの分割数（区間の長さ segment）。 */
+export function divisionsFor( length, segment ) {
+
+	return Math.max( 2, Math.ceil( length / segment ) );
+
+}
 
 // =====================================================================
 // ステージ2：デザインの共有定数。各節は機能担当が中身を足す場所。
@@ -84,8 +121,6 @@ export const PALETTE = {
 	railAheadYellow: 0x8d9bbf, // レール：これから、黄色部（中央管・枕木）
 	railRiddenWhite: 0xf2b84b, // レール：走行済み、白レール
 	railRiddenYellow: 0xc98500, // レール：走行済み、黄色部
-	railDeadheadWhite: 0x6c7899, // レール：回送、白レール
-	railDeadheadYellow: 0x3e4a6b, // レール：回送、黄色部
 	pillar: 0x2c3b61, // 支柱
 	shadow: 0x1d335f, // 影（床の足跡）
 	marker: 0xe86a9a, // 現在位置マーカー
@@ -120,14 +155,6 @@ export const HUD_COLORS = {
 	contourLabel: '#dbe4f7',
 	contourLabelBg: 'rgba(11, 23, 51, 0.72)'
 };
-
-// ---- 周回 ----
-// linkFraction：周回の最後に置く連絡区間（回送）が progress 全体に占める割合。
-// 0 のあいだは連絡区間なし。連絡区間の担当が 0.03 にする。
-// データ区間は progress 0 .. 1 - linkFraction（TrackCurve の dataEnd）。
-// maxLinkPitchDeg：連絡区間の最大の傾斜角（度）の目標。超えるときは、両端の勾配をデータ側の勾配から直線の勾配へ近づけて収める
-// （段差が大きすぎて直線でも超える場合は、直線にする）。
-export const LOOP = { linkFraction: 0.03, maxLinkPitchDeg: 45 };
 
 // ---- 以下は空の節。各担当が自分の節にだけ値を足す ----
 
@@ -171,13 +198,13 @@ export const SCENE = {
 		pitchDegPortrait: - 14
 	},
 	// 俯瞰：南（+z）から仰角 elevationDeg で見下ろす。
-	// 構図は view.js が、輪の点（curtain.js が view.setOverviewSubject で渡す、レールの上端と床の点）を画面に投影して決める：
-	//   画面から HUD を避けた余白（px）を引いた範囲に、輪の外接矩形を収める（中央に置く）。
-	//   ただし輪の幅・高さは画面の maxWidth・maxHeight（割合）まで。
+	// 構図は view.js が、螺旋の点（curtain.js が view.setOverviewSubject で渡す、レールの上端と床の点）を画面に投影して決める：
+	//   画面から HUD を避けた余白（px）を引いた範囲に、螺旋の外接矩形を収める（中央に置く）。
+	//   ただし螺旋の幅・高さは画面の maxWidth・maxHeight（割合）まで。
 	//   モードは hud.css と同じ：short（高さ 520 以下かつ横長）／ narrow（幅 720 以下）／ medium（721〜1023。M）／ wide（L）。
 	//   余白は、サンプルデータでは frame.insets[ モード ]、実データ（dataset.meta.kind === 'real'）では
 	//   出来事のキャプションを避けた frame.captionInsets[ モード ]（キャプションは実データのときだけ出る）。
-	// 輪の点がまだ無いときは、従来の式（target から距離 radius / sin( min( vfov, hfov ) / 2 )）。
+	// 螺旋の点がまだ無いときは、従来の式（target から距離 radius / sin( min( vfov, hfov ) / 2 )）。
 	overview: {
 		target: { x: 0, y: 15, z: 0 },
 		elevationDeg: 48,
@@ -213,7 +240,7 @@ export const SCENE = {
 };
 
 // RAIL：レールの定数（材質、色分けの設定、支柱・足跡の設定など）。担当：レールの色分け・シーン。
-// 色はすべて PALETTE（railAhead* / railRidden* / railDeadhead* / pillar / shadow / marker / markerRing / railEmissive）。
+// 色はすべて PALETTE（railAhead* / railRidden* / pillar / shadow / marker / markerRing / railEmissive）。
 export const RAIL = {
 	// レールの材質（MeshPhongMaterial、vertexColors。emissive は PALETTE.railEmissive）
 	material: { shininess: 60, specular: 0x334466 },
@@ -223,7 +250,7 @@ export const RAIL = {
 	shadow: { opacity: 0.9, y: 0.05 },
 	// 現在位置マーカー（俯瞰のときだけ表示）
 	marker: {
-		// 俯瞰のカメラは輪から約 220（以前は 260）。画面上の大きさを以前と同じにするため 0.85 倍にした
+		// 俯瞰のカメラは山手線の輪から約 220（以前は 260）のときに決めた大きさ（0.85 倍）
 		radius: 2.1, widthSegments: 24, heightSegments: 16, // 球
 		ringInner: 2.7, ringOuter: 3.15, ringSegments: 48, // カメラに向く白い輪
 		ringOpacity: 0.9, ringOpacityMin: 0.4, pulseMs: 1600, // 脈動 0.9 → 0.4 → 0.9（reduced-motion では 0.9 のまま）
@@ -231,18 +258,17 @@ export const RAIL = {
 	},
 	// カーテン（curtain.js）：レールの真下、床からレールの高さまでの縦の面。AdditiveBlending、depthWrite: false。
 	// 頂点の alpha は上端 topAlpha → 床 bottomAlpha。材質の opacity は一人称 rideOpacity、俯瞰 overviewOpacity（補間に合わせて変える）。
-	// 色：これから PALETTE.contour、走行済み PALETTE.railRiddenYellow、連絡区間 PALETTE.railDeadheadYellow（alpha × linkAlphaFactor）。
+	// 色：これから PALETTE.contour、走行済み PALETTE.railRiddenYellow。
 	// renderOrder：グリッド・足跡（0）より後に描く
 	curtain: {
 		topAlpha: 0.9,
 		bottomAlpha: 0.06,
-		linkAlphaFactor: 0.35,
 		rideOpacity: 0.15,
 		overviewOpacity: 1,
 		renderOrder: 2
 	},
 	// 俯瞰のときだけの、レール上端の帯（床と平行。幅 width、レールの上 lift）。
-	// 色：これから PALETTE.railAheadWhite、走行済み PALETTE.railRiddenWhite、連絡区間 PALETTE.railDeadheadWhite。
+	// 色：これから PALETTE.railAheadWhite、走行済み PALETTE.railRiddenWhite。
 	// 視点切り替えの補間（view.blend 0..1）が fadeFrom を超えたところから現れる
 	topBand: {
 		width: 1.3,
@@ -317,8 +343,10 @@ export const ANNOT = {
 		minShowMs: 3000, // 表示中に次の出来事が来たとき、入れ替えるまでに最低限見せる時間
 		maxWaitMs: 3000, // 通過してからこれ以上待たされた出来事は、画面の位置と合わなくなるので出さない
 		outMs: 180, // 出（入れ替えるとき、次を出す前にフェードアウトを待つ時間。実時間）
-		// 1 フレームで進みうる progress の最大（MAX_DELTA_MS × SPEED_MAX）の 2 倍。これより大きい変化は「位置が飛んだ」とみなし、飛び越えた出来事を出さない
-		maxStepProgress: 2 * MAX_DELTA_MS * SPEED_MAX
+		// 1 フレームで進みうる progress の最大の 2 倍。これより大きい変化は「位置が飛んだ」とみなし、飛び越えた出来事を出さない。
+		// progress あたりの速さはデータの期間で変わるので、データごとに maxProgressPerFrame( curve.years ) × 2 を使うのが正しい。
+		// この既定値は、想定する最も短いデータ（30 年）の値（短いほど大きい = 判定がゆるい側）
+		maxStepProgress: 2 * maxProgressPerFrame( 30 )
 	},
 	// 3D の目印（長さはワールド座標の単位。レールの高さは 3〜35）
 	marker: {
@@ -354,8 +382,8 @@ export const MOTION = {
 	reducedRide: {
 		railSlopeRatio: 0.45, // RAIL_SLOPE_RATIO 0.7 の代わり（傾きを控えめに。前方のレールは画面に残る範囲）
 		orientationBlendPerFrame: 0.04, // ORIENTATION_BLEND_PER_FRAME 0.08 の代わり
-		speedMaxFactor: 0.5, // SPEED_MAX に掛ける
-		gravityFactor: 0.5, // GRAVITY に掛ける（勾配による速度の変わり方を半分に）
+		speedMaxFactor: 0.5, // 速さの上限の倍率（SPEED.maxFactor）に掛ける（minFactor より下げない）
+		gravityFactor: 0.5, // SPEED.gravityPerYear に掛ける（勾配による速度の変わり方を半分に）
 		speedResponseMs: 2000 // SPEED_RESPONSE_MS 1000 の代わり（速度の変化をよりゆっくりに）
 	}
 };

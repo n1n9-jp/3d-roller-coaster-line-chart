@@ -4,9 +4,7 @@
 // - raw      : 取得したままの週次終値。HUD の表示値とグラフに使う。
 // - smoothed : 移動平均後の系列。レールの形状に使う。
 
-import { DATA_SOURCES, YAMANOTE_URL, MOVING_AVERAGE_WINDOW } from './config.js';
-
-import { progressToIndex } from './loop.js';
+import { DATA_SOURCES, MOVING_AVERAGE_WINDOW } from './config.js';
 
 /** ?data=local なのに data/local/ のファイルが無いときのエラー。 */
 export class LocalDataMissingError extends Error {
@@ -43,7 +41,7 @@ async function fetchJson( url, { missingIsLocal = false } = {} ) {
 }
 
 /**
- * 日経平均の週次データ・そのメタ情報と、山手線の駅一覧を取得する。
+ * 日経平均の週次データとそのメタ情報を取得する。
  * search：URL の検索部（省略時は現在のページの ?data=）。
  * 戻り値の meta は { kind: 'sample' | 'real', label, ... }。
  */
@@ -53,13 +51,10 @@ export async function loadData( search = globalThis.location?.search ?? '' ) {
 	const source = DATA_SOURCES[ mode ];
 	const options = { missingIsLocal: mode === 'local' };
 
-	const [ nikkei, meta, yamanote ] = await Promise.all( [
+	const [ nikkei, meta ] = await Promise.all( [
 		fetchJson( source.nikkei, options ),
-		fetchJson( source.meta, options ),
-		fetchJson( YAMANOTE_URL )
+		fetchJson( source.meta, options )
 	] );
-
-	const stations = yamanote?.[ 0 ]?.station_l;
 
 	if ( ! Array.isArray( nikkei ) || nikkei.length < 2 ) {
 
@@ -73,13 +68,7 @@ export async function loadData( search = globalThis.location?.search ?? '' ) {
 
 	}
 
-	if ( ! Array.isArray( stations ) || stations.length < 2 ) {
-
-		throw new Error( `${YAMANOTE_URL} の形式が正しくありません` );
-
-	}
-
-	return { nikkei, stations, meta };
+	return { nikkei, meta };
 
 }
 
@@ -119,22 +108,102 @@ export function closeRange( series ) {
 
 }
 
-/** t（0..1）が指すデータ点の添字（切り捨て）。連絡区間（dataEnd より先）では最後の点。 */
-export function indexAt( series, t, linkFraction ) {
+// ---- 日付と系列上の位置 ----
+// 進行位置 t（0..1）は時間に比例する（t = 0 が最初の日付、t = 1 が最後の日付。track.js）。
+// 系列上の位置（小数の添字）とは、前後のデータ点の間を日数で線形補間して対応させる（週が抜けていてもよい）。
 
-	const u = progressToIndex( t, series.length, linkFraction ) ?? series.length - 1;
+/** 'YYYY-MM-DD'（UTC の 0 時）→ ミリ秒。数値はそのまま返す。 */
+export function toTime( date ) {
+
+	if ( typeof date === 'number' ) return date;
+	const ms = Date.parse( `${date}T00:00:00Z` );
+	if ( Number.isNaN( ms ) ) throw new Error( `日付の形式が正しくありません：${date}` );
+	return ms;
+
+}
+
+const timesCache = new WeakMap();
+
+/** 系列の各点の日付（ms）。系列ごとに 1 回だけ作る。 */
+export function seriesTimes( series ) {
+
+	let times = timesCache.get( series );
+	if ( ! times || times.length !== series.length ) {
+
+		times = Float64Array.from( series, ( item ) => toTime( item.date ) );
+		timesCache.set( series, times );
+
+	}
+
+	return times;
+
+}
+
+/** 日時（ms）→ 系列上の位置（小数）。範囲外は両端に張り付く。 */
+export function timeToIndex( times, ms ) {
+
+	const last = times.length - 1;
+	if ( ! ( ms > times[ 0 ] ) ) return 0;
+	if ( ms >= times[ last ] ) return last;
+
+	// ms 以前で最後のデータ点を二分探索（lo の日付 <= ms < hi の日付）
+	let lo = 0;
+	let hi = last;
+	while ( hi - lo > 1 ) {
+
+		const mid = ( lo + hi ) >> 1;
+		if ( times[ mid ] <= ms ) lo = mid;
+		else hi = mid;
+
+	}
+
+	return lo + ( ms - times[ lo ] ) / ( times[ hi ] - times[ lo ] );
+
+}
+
+/** 系列上の位置（小数）→ 日時（ms）。範囲外は両端に張り付く。 */
+export function indexToTime( times, u ) {
+
+	const last = times.length - 1;
+	if ( ! ( u > 0 ) ) return times[ 0 ];
+	if ( u >= last ) return times[ last ];
+	const i = Math.floor( u );
+	return times[ i ] + ( times[ i + 1 ] - times[ i ] ) * ( u - i );
+
+}
+
+/** 進行位置 t（0..1。時間に比例）→ 系列上の位置（小数）。 */
+export function progressToSeriesIndex( series, t ) {
+
+	const times = seriesTimes( series );
+	const clamped = Math.min( 1, Math.max( 0, t ) );
+	return timeToIndex( times, times[ 0 ] + clamped * ( times[ times.length - 1 ] - times[ 0 ] ) );
+
+}
+
+/** 系列上の位置（小数）が指すデータ点（切り捨て、範囲に丸める）。 */
+export function pointAtIndex( series, u ) {
+
+	return series[ Math.min( series.length - 1, Math.max( 0, Math.floor( u ) ) ) ];
+
+}
+
+/** t（0..1。時間に比例）が指すデータ点の添字（切り捨て）。 */
+export function indexAt( series, t ) {
+
+	const u = progressToSeriesIndex( series, t );
 	return Math.min( series.length - 1, Math.max( 0, Math.floor( u ) ) );
 
 }
 
-/** t（0..1）における終値を隣り合うデータ点の線形補間で返す。連絡区間では最後の点の値。 */
-export function interpolateClose( series, t, linkFraction ) {
+/** t（0..1。時間に比例）における終値。前後のデータ点を日数で線形補間する。 */
+export function interpolateClose( series, t ) {
 
 	const n = series.length;
-	const raw = progressToIndex( t, n, linkFraction ) ?? n - 1;
-	const i0 = Math.min( n - 1, Math.max( 0, Math.floor( raw ) ) );
+	const u = progressToSeriesIndex( series, t );
+	const i0 = Math.min( n - 1, Math.max( 0, Math.floor( u ) ) );
 	const i1 = Math.min( i0 + 1, n - 1 );
-	const frac = raw - i0;
+	const frac = u - i0;
 	return series[ i0 ].close * ( 1 - frac ) + series[ i1 ].close * frac;
 
 }
@@ -142,33 +211,11 @@ export function interpolateClose( series, t, linkFraction ) {
 /**
  * 日付 'YYYY-MM-DD' が指す系列上の位置（小数の添字）。
  * 前後のデータ点の間は日数で線形補間する（間隔が 7 日でなくてもよい）。範囲外は両端に張り付く。
- * これは系列の添字で、進行位置 progress ではない（周回には連絡区間があり、データ区間は 0 .. dataEnd）。
- * 進行位置へは curve.indexToProgress（loop.js の indexToProgress）で変換する。
+ * これは系列の添字で、進行位置 progress ではない。進行位置へは curve.indexToProgress か curve.dateToProgress で変換する。
  */
 export function dateToIndex( dataset, date ) {
 
-	const series = dataset.raw;
-	const last = series.length - 1;
-	const target = Date.parse( `${date}T00:00:00Z` );
-
-	if ( Number.isNaN( target ) ) throw new Error( `日付の形式が正しくありません：${date}` );
-	if ( target <= Date.parse( `${series[ 0 ].date}T00:00:00Z` ) ) return 0;
-	if ( target >= Date.parse( `${series[ last ].date}T00:00:00Z` ) ) return last;
-
-	// date 以前で最後のデータ点を二分探索（lo の日付 <= target < hi の日付）
-	let lo = 0;
-	let hi = last;
-	while ( hi - lo > 1 ) {
-
-		const mid = ( lo + hi ) >> 1;
-		if ( Date.parse( `${series[ mid ].date}T00:00:00Z` ) <= target ) lo = mid;
-		else hi = mid;
-
-	}
-
-	const t0 = Date.parse( `${series[ lo ].date}T00:00:00Z` );
-	const t1 = Date.parse( `${series[ hi ].date}T00:00:00Z` );
-	return lo + ( target - t0 ) / ( t1 - t0 );
+	return timeToIndex( seriesTimes( dataset.raw ), toTime( date ) );
 
 }
 

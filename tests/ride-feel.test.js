@@ -9,29 +9,30 @@ import { buildDataset } from '../assets/js/data.js';
 import { overviewSubjectPoints } from '../assets/js/curtain.js';
 import { Scene, PerspectiveCamera, Object3D } from '../assets/js/three.core.js';
 import {
-	FRAME_MS, SPEED_MIN, SPEED_MAX, LOOP, SCENE, MOTION, TRAIN_RAIL_OFFSET
+	FRAME_MS, SPEED, SCENE, MOTION, TRAIN_RAIL_OFFSET
 } from '../assets/js/config.js';
-import { loadFixtures } from './helpers.js';
+import { loadFixtures, stretchedSeries } from './helpers.js';
 
-const { nikkei, stations } = loadFixtures();
+const { nikkei } = loadFixtures();
 
-// サンプル（同梱）と、手元にあれば実データ（data/local/。git には入らない）
+// サンプル（同梱、36 年）と、手元にあれば実データ（data/local/。git には入らない）、1971 年始まりの仮のデータ（56 年、約 5.6 周）
 const SERIES = [ [ 'サンプル', nikkei ] ];
 const localUrl = new URL( '../data/local/nikkei225.json', import.meta.url );
 if ( existsSync( localUrl ) ) SERIES.push( [ '実データ', JSON.parse( readFileSync( localUrl, 'utf8' ) ) ] );
+SERIES.push( [ '1971 年始まり', stretchedSeries( nikkei, '1971-01-04', '2026-11-09' ) ] );
 
-const curves = SERIES.map( ( [ name, data ] ) => [ name, new TrackCurve( stations, buildDataset( data ).smoothed ) ] );
+const curves = SERIES.map( ( [ name, data ] ) => [ name, new TrackCurve( buildDataset( data ).smoothed ) ] );
 const MOTIONS = [ [ '通常', {} ], [ 'reduced', MOTION.reducedRide ] ];
 const CAMERA_LIFT = TRAIN_RAIL_OFFSET + SCENE.ride.height;
 
-/** 点 p の真下（水平の距離が最小）のレールの高さ。t の近くを粗く探してから細かく探す。 */
+/** 点 p の真下（水平の距離が最小）のレールの高さ。t より少し手前を粗く探してから細かく探す。 */
 function railHeightBelow( curve, p, t ) {
 
 	let best = t;
 	let bestD = Infinity;
 	const scan = ( from, to, step ) => {
 
-		for ( let s = Math.max( 0, from ); s <= Math.min( curve.dataEnd, to ); s += step ) {
+		for ( let s = Math.max( 0, from ); s <= Math.min( 1, to ); s += step ) {
 
 			const q = curve.getPointAt( s );
 			const d = Math.hypot( q.x - p.x, q.z - p.z );
@@ -46,13 +47,15 @@ function railHeightBelow( curve, p, t ) {
 
 	};
 
-	scan( t - 0.004, t + 0.004, 2e-5 );
-	scan( best - 4e-5, best + 4e-5, 1e-7 );
+	// カメラは進行位置より back（1.6）だけ後ろ。内側の周では t あたりの距離が短いので、t の幅は広めに
+	const width = 3 * SCENE.ride.back / curve.lengthPerProgressAt( t );
+	scan( t - width, t + 1e-4, width / 300 );
+	scan( best - width / 150, best + width / 150, width / 30000 );
 	return { y: curve.getPointAt( best ).y, distance: bestD };
 
 }
 
-test( '一人称のカメラ：全区間で、真下のレールとの高さの差が一定（レール面 + 車体 + カメラの高さ）', () => {
+test( '一人称のカメラ：全区間（内側の周でも外側の周でも）で、真下のレールとの高さの差が一定（レール面 + 車体 + カメラの高さ）', () => {
 
 	for ( const [ name, curve ] of curves ) {
 
@@ -66,7 +69,13 @@ test( '一人称のカメラ：全区間で、真下のレールとの高さの�
 
 			let min = Infinity;
 			let max = - Infinity;
-			for ( let t = 0; t < curve.dataEnd; t += 0.0007 ) {
+			const firstTurn = 1 / curve.turns;
+			let inner = 0;
+			let outer = 0;
+			for ( let t = 0; t <= 1; t += 0.0015 ) {
+
+				if ( t < firstTurn ) inner ++;
+				if ( t > 1 - firstTurn ) outer ++;
 
 				ride.progress = t;
 				ride.updatePose( 1 );
@@ -83,6 +92,7 @@ test( '一人称のカメラ：全区間で、真下のレールとの高さの�
 			}
 
 			assert.ok( Math.abs( min - CAMERA_LIFT ) < 0.02 && Math.abs( max - CAMERA_LIFT ) < 0.02, `${name} ${label}: 高さの差 ${min.toFixed( 3 )}〜${max.toFixed( 3 )}（${CAMERA_LIFT} のはず）` );
+			assert.ok( inner > 50 && outer > 50, `${name}: 内側 ${inner} 点、外側 ${outer} 点` );
 
 		}
 
@@ -103,7 +113,7 @@ test( '一人称のカメラ：進行位置よりレールに沿って back だ�
 	// 途中：カメラの真下の点と進行位置の点の 3D の距離が back（曲がり角では、水平に back 戻った点が back より近いことがあり、そこで止める）
 	let exact = 0;
 	let count = 0;
-	for ( let t = 0.01; t < curve.dataEnd; t += 0.002 ) {
+	for ( let t = 0.01; t <= 1; t += 0.002 ) {
 
 		rideCameraPosition( curve, t, out );
 		const train = curve.getPointAt( t ).clone();
@@ -118,27 +128,28 @@ test( '一人称のカメラ：進行位置よりレールに沿って back だ�
 
 } );
 
-/** 1 周を 60fps で走らせて、速度の分布と跳びの回数を数える。 */
+/** 最初から最後まで 60fps で走らせて、速さの倍率（その位置の基準の速さに対する倍率）の分布と跳びの回数を数える。 */
 function lap( curve, motion ) {
 
 	const ride = createRide( curve, null, motion );
 	ride.started = true;
-	const max = Math.max( SPEED_MIN, SPEED_MAX * ( motion.speedMaxFactor ?? 1 ) );
-	const eps = 1e-3 * ( max - SPEED_MIN );
+	const min = SPEED.minFactor;
+	const max = Math.max( min, SPEED.maxFactor * ( motion.speedMaxFactor ?? 1 ) );
+	const eps = 1e-3 * ( max - min );
 	let frames = 0;
 	let middle = 0;
 	let jumps = 0;
 	let maxStep = 0;
 	let peak = 0;
-	let prev = ride.velocity;
+	let prev = ride.factor;
 	while ( ! ride.finished && frames < 60 * 600 ) {
 
 		ride.update( FRAME_MS );
 		frames ++;
-		const v = ride.velocity;
-		if ( v > SPEED_MIN + eps && v < max - eps ) middle ++;
+		const v = ride.factor;
+		if ( v > min + eps && v < max - eps ) middle ++;
 		const step = Math.abs( v - prev );
-		if ( step > 0.5 * ( max - SPEED_MIN ) ) jumps ++;
+		if ( step > 0.5 * ( max - min ) ) jumps ++;
 		maxStep = Math.max( maxStep, step );
 		peak = Math.max( peak, v );
 		prev = v;
@@ -149,7 +160,7 @@ function lap( curve, motion ) {
 
 }
 
-test( '速度：1 周で、上限と下限の間の跳びがほとんどなく、中間の値をとる時間が半分以上。1 周は 140〜180 秒（60fps）', () => {
+test( '速度：最初から最後まで、上限と下限の間の跳びがほとんどなく、中間の値をとる時間が半分以上。所要時間は 36 年分で 150〜200 秒、56 年分で 230〜300 秒（60fps）', () => {
 
 	for ( const [ name, curve ] of curves ) {
 
@@ -157,9 +168,10 @@ test( '速度：1 周で、上限と下限の間の跳びがほとんどなく�
 		assert.ok( r.finished, name );
 		assert.ok( r.jumps <= 3, `${name}: 跳び ${r.jumps} 回` );
 		assert.ok( r.middleShare >= 0.5, `${name}: 中間の割合 ${r.middleShare}` );
-		assert.ok( r.seconds >= 140 && r.seconds <= 180, `${name}: 1 周 ${r.seconds} 秒` );
-		// 1 フレームの変化は、速度の範囲の 5% 未満
-		assert.ok( r.maxStep < 0.05 * ( SPEED_MAX - SPEED_MIN ), `${name}: 1 フレームの最大の変化 ${r.maxStep}` );
+		const [ lo, hi ] = curve.years > 50 ? [ 230, 300 ] : [ 150, 200 ];
+		assert.ok( r.seconds >= lo && r.seconds <= hi, `${name}: ${curve.years.toFixed( 1 )} 年分で ${r.seconds} 秒` );
+		// 1 フレームの変化は、倍率の範囲の 5% 未満
+		assert.ok( r.maxStep < 0.05 * ( SPEED.maxFactor - SPEED.minFactor ), `${name}: 1 フレームの最大の変化 ${r.maxStep}` );
 
 	}
 
@@ -179,7 +191,7 @@ test( '速度：長い下りで速く、長い上りで遅い（区間の平均�
 			const k = Math.floor( ride.progress / 0.02 );
 			const b = bins.get( k ) ?? { g: 0, v: 0, n: 0 };
 			b.g += curve.getHeightGradientAt( ride.progress );
-			b.v += ride.velocity;
+			b.v += ride.factor; // その位置の基準の速さに対する倍率（基準の速さは外側ほど遅いので、倍率で比べる）
 			b.n ++;
 			bins.set( k, b );
 
@@ -190,7 +202,8 @@ test( '速度：長い下りで速く、長い上りで遅い（区間の平均�
 		const mean = ( list ) => list.reduce( ( s, r ) => s + r.v, 0 ) / list.length;
 		const downhill = mean( rows.slice( 0, q ) ); // 下りの強い 1/4
 		const uphill = mean( rows.slice( - q ) ); // 上りの強い 1/4
-		assert.ok( downhill > uphill * 1.25, `${name}: 下り ${downhill} / 上り ${uphill}` );
+		// 倍率の範囲（0.85〜2.5）と勾配の効き（年あたり 0.08）は控えめなので、差は 15% 以上を目安にする
+		assert.ok( downhill > uphill * 1.15, `${name}: 下り ${downhill} / 上り ${uphill}` );
 
 	}
 
@@ -202,7 +215,7 @@ test( '速度（reduced）：上限は半分で、通常より変化が緩やか
 
 		const normal = lap( curve, {} );
 		const gentle = lap( curve, MOTION.reducedRide );
-		assert.ok( gentle.peak <= SPEED_MAX * 0.5 + 1e-15, `${name}: ${gentle.peak}` );
+		assert.ok( gentle.peak <= SPEED.maxFactor * 0.5 + 1e-12, `${name}: ${gentle.peak}` );
 		assert.ok( gentle.jumps <= 3, `${name}: 跳び ${gentle.jumps} 回` );
 		assert.ok( gentle.middleShare >= 0.5, `${name}: 中間の割合 ${gentle.middleShare}` );
 		assert.ok( gentle.maxStep < normal.maxStep, `${name}: 1 フレームの最大の変化 ${gentle.maxStep} >= ${normal.maxStep}` );
@@ -211,16 +224,15 @@ test( '速度（reduced）：上限は半分で、通常より変化が緩やか
 
 } );
 
-test( 'フレームレート：本番の設定（連絡区間あり）で、30・60・120fps で 60 秒走らせた進行位置の差が小さい', () => {
+test( 'フレームレート：本番の設定で、30・60・120fps で 60 秒走らせた進行位置の差が小さい', () => {
 
-	assert.ok( LOOP.linkFraction > 0 );
 	for ( const [ name, data ] of SERIES ) {
 
 		for ( const [ label, motion ] of MOTIONS ) {
 
 			const progress = [ FRAME_MS * 2, FRAME_MS, FRAME_MS / 2 ].map( ( step ) => {
 
-				const ride = createRide( new TrackCurve( stations, buildDataset( data ).smoothed ), null, motion );
+				const ride = createRide( new TrackCurve( buildDataset( data ).smoothed ), null, motion );
 				ride.started = true;
 				const n = Math.round( 60000 / step );
 				for ( let i = 0; i < n; i ++ ) ride.update( step );
@@ -229,7 +241,7 @@ test( 'フレームレート：本番の設定（連絡区間あり）で、30�
 			} );
 
 			const spread = Math.max( ...progress ) - Math.min( ...progress );
-			assert.ok( progress[ 1 ] > 0.2, `${name} ${label}: ${progress}` );
+			assert.ok( progress[ 1 ] > 0.1, `${name} ${label}: ${progress}` );
 			assert.ok( spread < 1e-3, `${name} ${label}: ${progress.join( ' / ' )}` );
 
 		}
@@ -278,22 +290,26 @@ const CAPTION = {
 	short: ( w, h ) => ( { top: 0, bottom: h, left: 24, right: 24 + 220 } )
 };
 
-test( '俯瞰の構図（実データ）：輪が、キャプションの出る場所と重ならない', () => {
+test( '俯瞰の構図（実データ・56 年分）：螺旋が、キャプションの出る場所と重ならない', () => {
 
-	const points = overviewSubjectPoints( curves[ curves.length - 1 ][ 1 ] );
-	for ( const [ w, h ] of [ [ 1440, 900 ], [ 1024, 768 ], [ 800, 900 ], [ 390, 844 ], [ 844, 390 ] ] ) {
+	for ( const [ name, curve ] of curves.slice( 1 ) ) {
 
-		const mode = overviewMode( w, h );
-		const frame = overviewFrame( mode, 'real' );
-		const fit = fitOverview( points, { width: w, height: h, fovDeg: overviewFov( w / h ), elevationDeg: SCENE.overview.elevationDeg, ...frame } );
-		const b = fit.bounds;
-		// NDC → CSS px
-		const ring = { left: ( b.x0 + 1 ) / 2 * w, right: ( b.x1 + 1 ) / 2 * w, top: ( 1 - b.y1 ) / 2 * h, bottom: ( 1 - b.y0 ) / 2 * h };
-		const c = CAPTION[ mode ]( w, h );
-		const overlaps = ring.left < c.right && ring.right > c.left && ring.top < c.bottom && ring.bottom > c.top;
-		assert.ok( ! overlaps, `${w}x${h}（${mode}）: 輪 ${JSON.stringify( ring )} とキャプション ${JSON.stringify( c )}` );
-		// 輪が小さくなりすぎない（画面の短い辺の 4 割以上）
-		assert.ok( Math.max( ring.right - ring.left, ring.bottom - ring.top ) > 0.4 * Math.min( w, h ), `${w}x${h}: ${JSON.stringify( ring )}` );
+		const points = overviewSubjectPoints( curve.arcCurve );
+		for ( const [ w, h ] of [ [ 1440, 900 ], [ 1024, 768 ], [ 800, 900 ], [ 390, 844 ], [ 844, 390 ] ] ) {
+
+			const mode = overviewMode( w, h );
+			const frame = overviewFrame( mode, 'real' );
+			const fit = fitOverview( points, { width: w, height: h, fovDeg: overviewFov( w / h ), elevationDeg: SCENE.overview.elevationDeg, ...frame } );
+			const b = fit.bounds;
+			// NDC → CSS px
+			const box = { left: ( b.x0 + 1 ) / 2 * w, right: ( b.x1 + 1 ) / 2 * w, top: ( 1 - b.y1 ) / 2 * h, bottom: ( 1 - b.y0 ) / 2 * h };
+			const c = CAPTION[ mode ]( w, h );
+			const overlaps = box.left < c.right && box.right > c.left && box.top < c.bottom && box.bottom > c.top;
+			assert.ok( ! overlaps, `${name} ${w}x${h}（${mode}）: 螺旋 ${JSON.stringify( box )} とキャプション ${JSON.stringify( c )}` );
+			// 螺旋が小さくなりすぎない（画面の短い辺の 4 割以上）
+			assert.ok( Math.max( box.right - box.left, box.bottom - box.top ) > 0.4 * Math.min( w, h ), `${name} ${w}x${h}: ${JSON.stringify( box )}` );
+
+		}
 
 	}
 

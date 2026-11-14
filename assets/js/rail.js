@@ -1,6 +1,10 @@
 // レール・支柱・床の足跡・現在位置マーカー。機能モジュール（createRail( ctx )）。担当：レールの色分け。
 // 他のモジュールは scene.getObjectByName( 'rail' | 'lifters' | 'shadow' | 'position-marker' ) で取り出す。
-// レールの頂点カラー（これから・走行済み・連絡区間）は rail-colors.js が塗る。
+// レールの頂点カラー（これから・走行済み）は rail-colors.js が塗る。
+//
+// 同梱の RollerCoaster.js は getPointAt( i / 分割数 ) で標本化するので、曲線は弧長（水平）で引ける curve.arcCurve を渡す
+// （進行位置 t のまま渡すと、t は時間に比例するので、内側の周で点が詰まり、外側の周で粗くなる）。
+// 分割数は全長から決める（config.js の TRACK_SAMPLING と divisionsFor）。
 
 import * as THREE from 'three';
 import {
@@ -8,15 +12,19 @@ import {
 	RollerCoasterShadowGeometry,
 	RollerCoasterLiftersGeometry
 } from 'three/addons/misc/RollerCoaster.js';
-import { PALETTE, RAIL, RAIL_DIVISIONS, LIFTER_DIVISIONS, SHADOW_DIVISIONS } from './config.js';
+import { PALETTE, RAIL, TRACK_SAMPLING, divisionsFor } from './config.js';
 
 export function createRail( ctx ) {
 
 	const { scene, curve, train, camera } = ctx;
+	const arc = curve.arcCurve;
+	const railDivisions = divisionsFor( curve.totalLength, TRACK_SAMPLING.railSegment );
+	const lifterDivisions = divisionsFor( curve.totalLength, TRACK_SAMPLING.lifterSpacing );
+	const shadowDivisions = divisionsFor( curve.totalLength, TRACK_SAMPLING.shadowSegment );
 
 	// レール（頂点カラー。emissive をわずかに足して、影になる側面が背景に沈まないようにする）
 	const rail = new THREE.Mesh(
-		new RollerCoasterGeometry( curve, RAIL_DIVISIONS ),
+		new RollerCoasterGeometry( arc, railDivisions ),
 		new THREE.MeshPhongMaterial( {
 			vertexColors: true,
 			shininess: RAIL.material.shininess,
@@ -25,21 +33,21 @@ export function createRail( ctx ) {
 		} )
 	);
 	rail.name = 'rail';
-	rail.userData.divisions = RAIL_DIVISIONS; // rail-colors.js が頂点の並びを求めるのに使う
+	rail.userData.divisions = railDivisions; // rail-colors.js・curtain.js が頂点の並びと分割数に使う
 	scene.add( rail );
 
 	// 支柱（高さ 10 を超える地点は門型、それ以下は 1 本柱。同梱ファイルの条件のまま）
 	const lifters = new THREE.Mesh(
-		new RollerCoasterLiftersGeometry( curve, LIFTER_DIVISIONS ),
+		new RollerCoasterLiftersGeometry( arc, lifterDivisions ),
 		new THREE.MeshPhongMaterial( { color: PALETTE.pillar, shininess: RAIL.pillar.shininess } )
 	);
 	lifters.name = 'lifters';
 	lifters.position.y = RAIL.pillar.y;
 	scene.add( lifters );
 
-	// 床の足跡（俯瞰で山手線の輪の形が床に見える）
+	// 床の足跡（俯瞰で螺旋の形が床に見える）
 	const shadow = new THREE.Mesh(
-		new RollerCoasterShadowGeometry( curve, SHADOW_DIVISIONS ),
+		new RollerCoasterShadowGeometry( arc, shadowDivisions ),
 		new THREE.MeshBasicMaterial( {
 			color: PALETTE.shadow,
 			transparent: true,

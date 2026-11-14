@@ -1,24 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRide } from '../assets/js/ride.js';
+import { createRide, baseYearsPerSecond, speedFactor, speedFactorRange, curveYears } from '../assets/js/ride.js';
 import { Vector3, Quaternion } from '../assets/js/three.core.js';
 import { createEvents } from '../assets/js/events.js';
 import { TrackCurve } from '../assets/js/track.js';
 import { buildDataset } from '../assets/js/data.js';
 import {
-	FRAME_MS, MAX_DELTA_MS, SPEED_MIN, SPEED_MAX, SPEED_CRUISE, START_PROGRESS
+	FRAME_MS, MAX_DELTA_MS, START_PROGRESS, SPEED, SPIRAL, ANNOT, maxProgressPerFrame
 } from '../assets/js/config.js';
-import { loadFixtures } from './helpers.js';
+import { loadFixtures, stretchedSeries } from './helpers.js';
 
-const { nikkei, stations } = loadFixtures();
+const { nikkei } = loadFixtures();
 const dataset = buildDataset( nikkei );
 
-// 連絡区間なし（linkFraction: 0）の周回で確かめる。連絡区間ありの走行は tests/link.test.js と下の専用のテストで確かめる。
-const NO_LINK = { linkFraction: 0 };
 
 function newRide() {
 
-	const ride = createRide( new TrackCurve( stations, dataset.smoothed, NO_LINK ) );
+	const ride = createRide( new TrackCurve( dataset.smoothed ) );
 	ride.started = true;
 	return ride;
 
@@ -32,13 +30,14 @@ function run( ride, stepMs, totalMs ) {
 
 }
 
-test( '開始位置は progress = 0（1990 年 1 月）、初速は下限', () => {
+test( '開始位置は progress = 0（最初の週。サンプルは 1990 年 1 月）、初速は下限', () => {
 
 	const ride = newRide();
 	assert.equal( ride.progress, START_PROGRESS );
 	assert.equal( ride.progress, 0 );
 	assert.equal( dataset.rawAt( ride.progress ).date, '1990-01-01' );
-	assert.equal( ride.velocity, SPEED_MIN );
+	assert.ok( Math.abs( ride.velocity / ride.speedRange().min - 1 ) < 1e-12 );
+	assert.ok( Math.abs( ride.factor - SPEED.minFactor ) < 1e-12 );
 
 } );
 
@@ -52,18 +51,82 @@ test( '60fps 相当と 120fps 相当で、同じ時間だけ進めた progress �
 	assert.ok( at60.progress > 0.01, `progress=${at60.progress}` ); // 実際に進んでいる
 	assert.ok( Math.abs( at60.progress - at120.progress ) < 1e-3, `${at60.progress} vs ${at120.progress}` );
 	assert.ok( Math.abs( at60.progress - at30.progress ) < 2e-3, `${at60.progress} vs ${at30.progress}` );
-	assert.ok( Math.abs( at60.velocity - at120.velocity ) < SPEED_MAX * 0.05 );
+	assert.ok( Math.abs( at60.velocity - at120.velocity ) < at60.speedRange().max * 0.05 );
 
 } );
 
 test( '進行量は速度の下限・上限から計算できる範囲に収まる', () => {
 
 	const ride = newRide();
+	const start = ride.speedRange( 0 );
 	run( ride, FRAME_MS, 100 * 1000 );
-	// 勾配による加減速があるので厳密には比べず、下限〜上限の範囲に収まることを見る
-	assert.ok( ride.progress >= SPEED_MIN * 100 * 1000 - 1e-9 );
-	assert.ok( ride.progress <= SPEED_MAX * 100 * 1000 + 1e-9 );
-	assert.ok( ride.velocity >= SPEED_MIN && ride.velocity <= SPEED_MAX );
+	// 勾配による加減速があるので厳密には比べず、下限〜上限の範囲に収まることを見る（基準の速さは外側ほど遅い）
+	assert.ok( ride.progress >= ride.speedRange().min * 100 * 1000 - 1e-9 );
+	assert.ok( ride.progress <= start.max * 100 * 1000 + 1e-9 );
+	assert.ok( ride.factor >= SPEED.minFactor - 1e-12 && ride.factor <= SPEED.maxFactor + 1e-12 );
+
+} );
+
+test( '速さのモデル：年/秒で持ち、データの期間で progress/ms に換算する。基準の速さは半径で、倍率は 1 年あたりの勾配で決まる', () => {
+
+	const curve = new TrackCurve( dataset.smoothed );
+	const ride = createRide( curve );
+	assert.equal( curveYears( curve ), curve.years );
+	assert.equal( curveYears( {} ), SPEED.fallbackYears );
+	ride.speed = 0.5;
+	assert.ok( Math.abs( ride.velocity - 0.5 / ( curve.years * 1000 ) ) < 1e-18 );
+	ride.velocity = 1e-5;
+	assert.ok( Math.abs( ride.speed - 1e-5 * curve.years * 1000 ) < 1e-12 );
+
+	// 基準の速さ：内側の半径（16）で yearsPerSecond、半径 2 倍で 2^(−0.25) 倍
+	assert.equal( SPEED.referenceRadius, SPIRAL.innerRadius );
+	assert.equal( baseYearsPerSecond( SPEED.referenceRadius ), SPEED.yearsPerSecond );
+	assert.ok( Math.abs( baseYearsPerSecond( 2 * SPEED.referenceRadius ) / SPEED.yearsPerSecond - Math.pow( 2, - SPEED.radiusExponent ) ) < 1e-12 );
+	assert.equal( baseYearsPerSecond( 0 ), SPEED.yearsPerSecond ); // 半径を持たない曲線
+	assert.equal( baseYearsPerSecond( 50, { ...SPEED, radiusExponent: 0 } ), SPEED.yearsPerSecond ); // 補正なし
+	assert.ok( ride.speedRange( 0 ).cruise > ride.speedRange( 1 ).cruise ); // 外側ほど遅い（progress あたり）
+
+	// 倍率：平らで 1、下りで大きく上りで小さい。0.85..2.5 に収まる
+	assert.equal( speedFactor( 0 ), 1 );
+	assert.ok( Math.abs( speedFactor( - 2 ) - Math.exp( 0.16 ) ) < 1e-12 );
+	assert.equal( speedFactor( - 100 ), SPEED.maxFactor );
+	assert.equal( speedFactor( 100 ), SPEED.minFactor );
+	assert.deepEqual( speedFactorRange( { speedMaxFactor: 0.0001 } ), [ SPEED.minFactor, SPEED.minFactor ] );
+
+} );
+
+test( 'データの期間が違っても、1 年あたりの秒数と勾配の効き方は同じ', () => {
+
+	const long = new TrackCurve( buildDataset( stretchedSeries( nikkei, '1971-01-04', '2026-11-09' ) ).smoothed );
+	const short = new TrackCurve( dataset.smoothed );
+	// 同じ半径（始点はどちらも内側の半径）での巡航：progress/ms × 期間 が同じ
+	const a = createRide( long ).speedRange( 0 ).cruise * long.years;
+	const b = createRide( short ).speedRange( 0 ).cruise * short.years;
+	assert.ok( Math.abs( a / b - 1 ) < 1e-12 );
+	assert.ok( Math.abs( a * 1000 - SPEED.yearsPerSecond ) < 1e-12 );
+
+} );
+
+test( '1 フレームの進みは maxProgressPerFrame( 期間 ) 以下。出来事のキャプションの判定（ANNOT.caption.maxStepProgress）はその 2 倍以上', () => {
+
+	for ( const data of [ nikkei, stretchedSeries( nikkei, '1971-01-04', '2026-11-09' ) ] ) {
+
+		const curve = new TrackCurve( buildDataset( data ).smoothed );
+		const ride = createRide( curve );
+		ride.start();
+		let maxStep = 0;
+		while ( ! ride.finished ) {
+
+			const before = ride.progress;
+			ride.update( MAX_DELTA_MS );
+			maxStep = Math.max( maxStep, ride.progress - before );
+
+		}
+
+		assert.ok( maxStep <= maxProgressPerFrame( curve.years ) + 1e-12, `${maxStep} > ${maxProgressPerFrame( curve.years )}` );
+		assert.ok( ANNOT.caption.maxStepProgress >= 2 * maxProgressPerFrame( curve.years ) - 1e-12 );
+
+	}
 
 } );
 
@@ -74,7 +137,7 @@ test( '一時停止中・開始前は進まない', () => {
 	run( ride, FRAME_MS, 5000 );
 	assert.equal( ride.progress, 0 );
 
-	const idle = createRide( new TrackCurve( stations, dataset.smoothed ) );
+	const idle = createRide( new TrackCurve( dataset.smoothed ) );
 	run( idle, FRAME_MS, 5000 );
 	assert.equal( idle.progress, 0 );
 
@@ -98,7 +161,7 @@ test( 'progress は折り返さず、1 に達したところで止まって fini
 
 	const ride = newRide();
 	ride.progress = 0.99999;
-	ride.velocity = SPEED_MAX;
+	ride.velocity = ride.speedRange().max;
 	ride.update( FRAME_MS );
 	assert.equal( ride.progress, 1 );
 	assert.equal( ride.finished, true );
@@ -118,12 +181,12 @@ test( '向きの補間も時間基準：60fps と 120fps で車体の向きが�
 
 // ---- 操作 API（pause / resume / togglePause / restart / finish）と events ----
 
-function newRideWithEvents( curveOptions = NO_LINK ) {
+function newRideWithEvents() {
 
 	const events = createEvents();
 	const log = [];
 	for ( const name of [ 'start', 'pause', 'resume', 'restart', 'finish' ] ) events.on( name, ( payload ) => log.push( { name, payload } ) );
-	const ride = createRide( new TrackCurve( stations, dataset.smoothed, curveOptions ), events );
+	const ride = createRide( new TrackCurve( dataset.smoothed ), events );
 	ride.start();
 	return { ride, log, names: () => log.map( e => e.name ) };
 
@@ -161,11 +224,11 @@ test( 'togglePause：一時停止と再生を交互に切り替え、止まっ�
 
 } );
 
-test( '一周（progress が dataEnd に達する）で止まり、finished になり、「finish」は 1 回だけ発行される', () => {
+test( '最後の週（progress = 1）で止まり、finished になり、「finish」は 1 回だけ発行される', () => {
 
 	const { ride, names, log } = newRideWithEvents();
 	ride.progress = 0.9999;
-	ride.velocity = SPEED_MAX;
+	ride.velocity = ride.speedRange().max;
 	run( ride, FRAME_MS, 2000 );
 
 	assert.equal( ride.finished, true );
@@ -180,15 +243,27 @@ test( '一周（progress が dataEnd に達する）で止まり、finished に�
 
 } );
 
-test( '連絡区間があるときは、データ区間の終わり（dataEnd）で止まる', () => {
+test( '最初から最後まで走ると、t = 1 で止まり、「finish」は 1 回だけ。止まったあとの姿勢は外の端（中心へ戻らない）', () => {
 
-	const { ride, names } = newRideWithEvents( { linkFraction: 0.03 } );
-	ride.progress = 0.9699;
-	ride.velocity = SPEED_MAX;
-	run( ride, FRAME_MS, 2000 );
+	const { ride, names } = newRideWithEvents();
+	const curve = new TrackCurve( dataset.smoothed );
+	let frames = 0;
+	let prev = ride.progress;
+	while ( ! ride.finished && frames < 60 * 600 ) {
+
+		ride.update( FRAME_MS );
+		assert.ok( ride.progress >= prev ); // 戻らない
+		prev = ride.progress;
+		frames ++;
+
+	}
 
 	assert.equal( ride.finished, true );
-	assert.equal( ride.progress, 0.97 );
+	assert.equal( ride.progress, 1 );
+	assert.equal( names().filter( n => n === 'finish' ).length, 1 );
+	const end = curve.getPointAt( 1 );
+	assert.ok( Math.hypot( ride.position.x - end.x, ride.position.z - end.z ) < 1e-9 );
+	run( ride, FRAME_MS, 1000 );
 	assert.equal( names().filter( n => n === 'finish' ).length, 1 );
 
 } );
@@ -209,14 +284,15 @@ test( 'restart：progress が 0 に戻り、終了・一時停止が解除され
 
 	const { ride, names } = newRideWithEvents();
 	ride.progress = 0.9999;
-	ride.velocity = SPEED_MAX;
+	ride.velocity = ride.speedRange().max;
 	run( ride, FRAME_MS, 500 );
 	assert.equal( ride.finished, true );
 	ride.pause();
 
 	ride.restart();
 	assert.equal( ride.progress, 0 );
-	assert.equal( ride.velocity, SPEED_MIN );
+	assert.ok( Math.abs( ride.velocity / ride.speedRange().min - 1 ) < 1e-12 );
+	assert.ok( Math.abs( ride.factor - SPEED.minFactor ) < 1e-12 );
 	assert.equal( ride.finished, false );
 	assert.equal( ride.paused, false );
 	assert.equal( ride.started, true );
@@ -230,7 +306,7 @@ test( 'restart：progress が 0 に戻り、終了・一時停止が解除され
 
 test( 'restart は START 前なら started にしない（START 前は進まないまま）', () => {
 
-	const ride = createRide( new TrackCurve( stations, dataset.smoothed ) );
+	const ride = createRide( new TrackCurve( dataset.smoothed ) );
 	ride.restart();
 	assert.equal( ride.started, false );
 	run( ride, FRAME_MS, 1000 );
@@ -261,7 +337,7 @@ function forwardOf( ride ) {
 /** 直線のテスト用曲線。tangent / gradient は後から差し替えられる。 */
 function fakeCurve( { tangent = new Vector3( 1, 0, 0 ), gradient = 0 } = {} ) {
 
-	// seg（周長）を持たない曲線：車体の傾きは「勾配 × 比率」（周長 1 として扱う）
+	// t あたりの距離（lengthPerProgressAt）を持たない曲線：車体の傾きは「勾配 × 比率」（距離 1 として扱う）
 
 	const curve = {
 		tangent,
@@ -285,7 +361,7 @@ function fakeRide( options ) {
 
 test( '車体の前方ベクトルの水平成分は、レールの接線と同じ向き（後ろ向きでも 90° ずれでもない）', () => {
 
-	const curve = new TrackCurve( stations, dataset.smoothed );
+	const curve = new TrackCurve( dataset.smoothed );
 	const ride = createRide( curve );
 
 	for ( const progress of [ 0, 0.05, 0.2, 0.33, 0.5, 0.61, 0.8, 0.97 ] ) {
@@ -324,17 +400,18 @@ test( '傾斜：前方ベクトルの y 成分の符号は勾配の符号に対�
 	assert.ok( forwardOf( down ).y < - 0.1, `down y=${forwardOf( down ).y}` );
 	assert.ok( Math.abs( forwardOf( flat ).y ) < 1e-9 );
 
-	// 実データの曲線では、前後 RAIL_SLOPE_WINDOW の弦の勾配で傾く。傾きは実際の勾配（勾配 / 周長）の RAIL_SLOPE_RATIO 倍
-	const curve = new TrackCurve( stations, dataset.smoothed );
+	// 実データの曲線では、前後 RAIL_SLOPE_WINDOW（水平の長さ）の弦の勾配で傾く。
+	// 傾きは実際の勾配（dy/dt / その位置の t あたりの水平距離）の RAIL_SLOPE_RATIO 倍
+	const curve = new TrackCurve( dataset.smoothed );
 	const ride = createRide( curve );
-	const length = curve.seg.totalLength;
-	const half = RAIL_SLOPE_WINDOW / length;
 	let checked = 0;
-	for ( let i = 0; i < 400; i ++ ) {
+	for ( let i = 0; i <= 400; i ++ ) {
 
 		const progress = i / 400;
+		const length = curve.lengthPerProgressAt( progress );
+		const half = RAIL_SLOPE_WINDOW / length;
 		const t1 = Math.max( 0, progress - half );
-		const t2 = Math.min( 1 - 1e-6, progress + half );
+		const t2 = Math.min( 1, progress + half );
 		const gradient = ( curve.getPointAt( t2 ).y - curve.getPointAt( t1 ).y ) / ( t2 - t1 );
 		ride.progress = progress;
 		ride.updatePose( 1 );
@@ -351,23 +428,25 @@ test( '傾斜：前方ベクトルの y 成分の符号は勾配の符号に対�
 
 } );
 
-test( '重力：平らなところの速度（SPEED_CRUISE）から、下り（勾配が負）で増え、上り（勾配が正）で減る', () => {
+const FAKE = createRide( fakeCurve() ).speedRange(); // テスト用の曲線（半径・期間なし）の速さの範囲
+
+test( '重力：平らなところの速度（基準の速さ）から、下り（勾配が負）で増え、上り（勾配が正）で減る', () => {
 
 	const down = fakeRide( { gradient: - 100 } ).ride;
-	down.velocity = SPEED_CRUISE;
+	down.velocity = FAKE.cruise;
 	down.update( FRAME_MS );
-	assert.ok( down.velocity > SPEED_CRUISE + 1e-9, `down -> ${down.velocity}` );
+	assert.ok( down.velocity > FAKE.cruise + 1e-9, `down -> ${down.velocity}` );
 
 	const up = fakeRide( { gradient: 100 } ).ride;
-	up.velocity = SPEED_CRUISE;
+	up.velocity = FAKE.cruise;
 	up.update( FRAME_MS );
-	assert.ok( up.velocity < SPEED_CRUISE - 1e-9, `up -> ${up.velocity}` );
+	assert.ok( up.velocity < FAKE.cruise - 1e-9, `up -> ${up.velocity}` );
 
-	// 平坦なら SPEED_CRUISE のまま
+	// 平坦なら FAKE.cruise のまま
 	const flat = fakeRide( { gradient: 0 } ).ride;
-	flat.velocity = SPEED_CRUISE;
+	flat.velocity = FAKE.cruise;
 	flat.update( FRAME_MS );
-	assert.ok( Math.abs( flat.velocity - SPEED_CRUISE ) < 1e-15 );
+	assert.ok( Math.abs( flat.velocity - FAKE.cruise ) < 1e-15 );
 
 	// 同じ速度から 1 フレーム：下り > 平坦 > 上り
 	assert.ok( down.velocity > flat.velocity && flat.velocity > up.velocity );
@@ -382,23 +461,23 @@ test( '重力：下りが続けば上限へ、上りが続けば下限へ、な�
 
 		down.update( FRAME_MS );
 		// 1 フレームの変化は、速度の範囲の 1 割未満
-		assert.ok( down.velocity >= prev && down.velocity - prev < 0.1 * ( SPEED_MAX - SPEED_MIN ) );
+		assert.ok( down.velocity >= prev && down.velocity - prev < 0.1 * ( FAKE.max - FAKE.min ) );
 		prev = down.velocity;
 
 	}
 
-	assert.ok( down.velocity > SPEED_MAX * 0.99 && down.velocity <= SPEED_MAX, `${down.velocity}` );
+	assert.ok( down.velocity > FAKE.max * 0.99 && down.velocity <= FAKE.max, `${down.velocity}` );
 
 	const up = fakeRide( { gradient: 500 } ).ride;
-	up.velocity = SPEED_MAX;
+	up.velocity = FAKE.max;
 	run( up, FRAME_MS, 8000 );
-	assert.ok( up.velocity < SPEED_MIN * 1.01 && up.velocity >= SPEED_MIN, `${up.velocity}` );
+	assert.ok( up.velocity < FAKE.min * 1.01 && up.velocity >= FAKE.min, `${up.velocity}` );
 
 } );
 
 test( '実データの曲線：下りの区間で速度が増え、上りの区間で減る', () => {
 
-	const curve = new TrackCurve( stations, dataset.smoothed );
+	const curve = new TrackCurve( dataset.smoothed );
 	let checkedDown = 0;
 	let checkedUp = 0;
 
@@ -411,7 +490,7 @@ test( '実データの曲線：下りの区間で速度が増え、上りの区�
 		const ride = createRide( curve );
 		ride.start();
 		ride.progress = progress;
-		ride.velocity = SPEED_CRUISE; // 平らなところの速度から
+		ride.velocity = ride.speedRange().cruise; // 平らなところの速度から
 		const before = ride.velocity;
 		ride.update( FRAME_MS );
 		// update は先に progress を進めるので、進めた先の勾配で調整される。符号が変わらない点だけを見る
@@ -499,7 +578,7 @@ const DEFAULT_MOTION = {
 
 function newRideWithMotion( options ) {
 
-	const ride = createRide( new TrackCurve( stations, dataset.smoothed, NO_LINK ), null, options );
+	const ride = createRide( new TrackCurve( dataset.smoothed ), null, options );
 	ride.started = true;
 	return ride;
 
@@ -529,7 +608,7 @@ test( '係数を渡さないときは従来と同じ結果になる（options �
 
 	const base = run( newRide(), FRAME_MS, 30 * 1000 );
 	const empty = run( newRideWithMotion( {} ), FRAME_MS, 30 * 1000 );
-	const withEvents = run( createRide( new TrackCurve( stations, dataset.smoothed, NO_LINK ), createEvents() ), FRAME_MS, 0 );
+	const withEvents = run( createRide( new TrackCurve( dataset.smoothed ), createEvents() ), FRAME_MS, 0 );
 	withEvents.started = true;
 	run( withEvents, FRAME_MS, 30 * 1000 );
 
@@ -549,27 +628,29 @@ test( 'options は第 2 引数（発行器のかわり）でも渡せて、event
 	const events = createEvents();
 	const names = [];
 	events.on( 'pause', () => names.push( 'pause' ) );
-	const ride = createRide( new TrackCurve( stations, dataset.smoothed, NO_LINK ), { ...MOTION.reducedRide, events } );
+	const ride = createRide( new TrackCurve( dataset.smoothed ), { ...MOTION.reducedRide, events } );
 	assert.equal( ride.motion.speedMaxFactor, 0.5 );
 	ride.pause();
 	assert.deepEqual( names, [ 'pause' ] );
 
 } );
 
-test( 'reduced：同じ時間だけ走らせると、速度は上限の半分以下で、進みも少ない', () => {
+test( 'reduced：同じ時間だけ走らせると、速さの倍率の上限は半分（minFactor より下げない）で、進みも少ない', () => {
 
 	const normal = newRide();
 	const gentle = newRideWithMotion( MOTION.reducedRide );
+	const half = SPEED.maxFactor * 0.5;
 
 	// 上限に張り付いた状態から始めて、1 回の更新で上限に収まることを見る
-	normal.velocity = SPEED_MAX;
-	gentle.velocity = SPEED_MAX;
+	normal.speed = baseYearsPerSecond( SPIRAL.innerRadius ) * SPEED.maxFactor;
+	gentle.speed = normal.speed;
 	normal.update( FRAME_MS );
 	gentle.update( FRAME_MS );
-	assert.ok( normal.velocity > SPEED_MAX * 0.9 );
-	assert.ok( gentle.velocity <= SPEED_MAX * 0.5 + 1e-12, `velocity=${gentle.velocity}` );
+	assert.ok( normal.factor > SPEED.maxFactor * 0.9 );
+	assert.ok( gentle.factor <= half + 1e-12, `factor=${gentle.factor}` );
+	assert.ok( Math.abs( gentle.speedRange().max - normal.speedRange().max * 0.5 ) < 1e-18 );
 
-	// 走らせ続けても、速度は上限の半分を超えない
+	// 走らせ続けても、倍率は上限の半分を超えない
 	const longNormal = newRide();
 	const longGentle = newRideWithMotion( MOTION.reducedRide );
 	let peakNormal = 0;
@@ -578,15 +659,15 @@ test( 'reduced：同じ時間だけ走らせると、速度は上限の半分以
 
 		longNormal.update( FRAME_MS );
 		longGentle.update( FRAME_MS );
-		peakNormal = Math.max( peakNormal, longNormal.velocity );
-		peakGentle = Math.max( peakGentle, longGentle.velocity );
+		peakNormal = Math.max( peakNormal, longNormal.factor );
+		peakGentle = Math.max( peakGentle, longGentle.factor );
 
 	}
 
-	assert.ok( peakGentle <= SPEED_MAX * 0.5 + 1e-12, `peakGentle=${peakGentle}` );
-	assert.ok( peakNormal > SPEED_MAX * 0.5, `peakNormal=${peakNormal}` ); // 比べる相手は、半分を超えるところまで出ている
+	assert.ok( peakGentle <= half + 1e-12, `peakGentle=${peakGentle}` );
+	assert.ok( peakNormal > half, `peakNormal=${peakNormal}` ); // 比べる相手は、半分を超えるところまで出ている
 	assert.ok( longGentle.progress < longNormal.progress );
-	assert.ok( longGentle.velocity >= SPEED_MIN );
+	assert.ok( longGentle.factor >= SPEED.minFactor - 1e-12 );
 
 } );
 
@@ -649,9 +730,9 @@ test( 'setMotion：実行中に係数を差し替え、null で元に戻る。�
 	const ride = newRide();
 	ride.setMotion( MOTION.reducedRide );
 	assert.equal( ride.motion.speedMaxFactor, 0.5 );
-	ride.velocity = SPEED_MAX;
+	ride.speed = baseYearsPerSecond( SPIRAL.innerRadius ) * SPEED.maxFactor;
 	ride.update( FRAME_MS );
-	assert.ok( ride.velocity <= SPEED_MAX * 0.5 + 1e-12 );
+	assert.ok( ride.factor <= SPEED.maxFactor * 0.5 + 1e-12 );
 
 	ride.setMotion( { speedMaxFactor: 0.25 } );
 	assert.equal( ride.motion.speedMaxFactor, 0.25 );
@@ -670,7 +751,7 @@ test( '速度の上限は下限を下回らない（係数が極端に小さく�
 
 	const ride = newRideWithMotion( { speedMaxFactor: 0.0001 } );
 	run( ride, FRAME_MS, 5000 );
-	assert.ok( ride.velocity >= SPEED_MIN );
+	assert.ok( ride.factor >= SPEED.minFactor - 1e-12 );
 	assert.ok( ride.progress > 0 );
 
 } );
