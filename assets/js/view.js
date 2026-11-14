@@ -9,7 +9,11 @@
 // 各モジュールの onViewChange( view ) は、main.js が 'viewchange' を受けて呼ぶ。
 //
 // カメラはシーン直下に置き、ワールド座標で動かす。
-//   一人称：車体（train）の姿勢から、上へ SCENE.ride.height、後ろへ back、下向きに pitchDeg。
+//   一人称：位置は、レール上の進行位置（ride.progress）からレールに沿って SCENE.ride.back だけ後ろの点の真上
+//           （レール面 + TRAIN_RAIL_OFFSET + SCENE.ride.height）。向きは車体（train）の向きから、下向きに pitchDeg。
+//           車体の傾きはレールの実際の勾配より控えめ（RAIL_SLOPE_RATIO）なので、車体の向きで「後ろ」を回すと、
+//           急な上り下りでカメラがレールから浮いたり沈んだりする。そのため位置はレールから直接取る。
+//           curve・ride を渡さないときは、従来どおり車体の姿勢から（上へ height、後ろへ back）。
 //   俯瞰：  南（+z）から仰角 SCENE.overview.elevationDeg。位置は fitOverview が、輪の点（setOverviewSubject）を
 //           HUD を避けた範囲（SCENE.overview.frame）に収めるように決める。点が無いときは
 //           target から距離 radius / sin( min( 縦画角, 横画角 ) / 2 )。
@@ -17,7 +21,7 @@
 //             時刻は state.nowMs。prefers-reduced-motion: reduce では瞬時。
 
 import { Vector3, Quaternion, Matrix4, Euler, MathUtils } from './three.core.js';
-import { SCENE, MOTION } from './config.js';
+import { SCENE, MOTION, TRAIN_RAIL_OFFSET } from './config.js';
 
 const DEG = Math.PI / 180;
 
@@ -98,12 +102,75 @@ export function overviewDistance( aspect ) {
 
 }
 
-/** HUD の配置のモード（hud.css と同じ判定）：'short'（高さ 520 以下かつ横長）／ 'narrow'（幅 720 以下）／ 'wide'。 */
+/**
+ * 一人称のカメラを置くレール上の点の progress：progress からレールに沿って back（3D の距離）だけ後ろ。
+ * 後ろの点が 0 より前になるときは 0 で止める。
+ * @param curve getPointAt と seg.totalLength を持つ曲線（TrackCurve）
+ */
+export function rideCameraProgress( curve, progress, back = SCENE.ride.back ) {
+
+	if ( progress <= 0 ) return 0;
+	const length = curve.seg?.totalLength || 1;
+	const p = curve.getPointAt( progress );
+	const px = p.x, py = p.y, pz = p.z;
+	const chord = ( s ) => {
+
+		const q = curve.getPointAt( s );
+		return Math.hypot( q.x - px, q.y - py, q.z - pz );
+
+	};
+
+	// 水平に back だけ戻った点（3D では back 以上離れている）と進行位置の間で、3D の距離が back になる点を二分法で探す
+	let lo = Math.max( 0, progress - back / length ); // 遠い側
+	let hi = progress; // 近い側
+	if ( chord( lo ) <= back ) return lo; // 始点の近く：0 で止める
+	for ( let i = 0; i < 24; i ++ ) {
+
+		const mid = ( lo + hi ) / 2;
+		if ( chord( mid ) > back ) lo = mid; else hi = mid;
+
+	}
+
+	return ( lo + hi ) / 2;
+
+}
+
+/**
+ * 一人称のカメラの位置：rideCameraProgress の点の真上（レール面 + TRAIN_RAIL_OFFSET + height）。
+ * @param out 結果を入れる {x,y,z}（Vector3 など）。そのまま返す
+ */
+export function rideCameraPosition( curve, progress, out, { back = SCENE.ride.back, height = SCENE.ride.height } = {} ) {
+
+	const p = curve.getPointAt( rideCameraProgress( curve, progress, back ) );
+	out.x = p.x;
+	out.y = p.y + TRAIN_RAIL_OFFSET + height;
+	out.z = p.z;
+	return out;
+
+}
+
+/**
+ * HUD の配置のモード（hud.css と同じ判定）：'short'（高さ 520 以下かつ横長）／ 'narrow'（幅 720 以下）／
+ * 'medium'（721〜1023px。M）／ 'wide'（1024px 以上。L）。
+ */
 export function overviewMode( width, height ) {
 
 	if ( height <= 520 && width >= height ) return 'short';
 	if ( width <= 720 ) return 'narrow';
+	if ( width < 1024 ) return 'medium';
 	return 'wide';
+
+}
+
+/**
+ * 俯瞰の構図の枠：モードとデータの種類から、余白（px）と大きさの上限を返す。
+ * 実データ（kind === 'real'）では出来事のキャプションが出るので、それを避けた SCENE.overview.frame.captionInsets を使う。
+ */
+export function overviewFrame( mode, kind ) {
+
+	const frame = SCENE.overview.frame;
+	const insets = ( kind === 'real' && frame.captionInsets?.[ mode ] ) || frame.insets[ mode ];
+	return { insets, maxWidth: frame.maxWidth[ mode ], maxHeight: frame.maxHeight[ mode ] };
 
 }
 
@@ -202,7 +269,7 @@ function prefersReducedMotion() {
 
 }
 
-export function createView( { scene, camera, train, events = null } ) {
+export function createView( { scene, camera, train, events = null, curve = null, ride = null, kind = null } ) {
 
 	let current = 'ride';
 
@@ -237,6 +304,14 @@ export function createView( { scene, camera, train, events = null } ) {
 	let fitKey = '';
 	let fit = null;
 
+	// データの種類（'sample' | 'real'）。main.js が dataset.meta.kind を渡す。無いときは <html data-kind>
+	function dataKind() {
+
+		if ( kind ) return kind;
+		return typeof document !== 'undefined' ? document.documentElement.dataset.kind ?? null : null;
+
+	}
+
 	function viewportSize( aspect ) {
 
 		if ( typeof window !== 'undefined' && window.innerWidth > 0 && window.innerHeight > 0 ) {
@@ -253,19 +328,19 @@ export function createView( { scene, camera, train, events = null } ) {
 
 		if ( ! subject ) return null;
 		const { width, height } = viewportSize( aspect );
-		const key = `${width}x${height}:${aspect.toFixed( 6 )}`;
+		const key = `${width}x${height}:${aspect.toFixed( 6 )}:${dataKind()}`;
 		if ( key !== fitKey ) {
 
 			const mode = overviewMode( width, height );
-			const frame = SCENE.overview.frame;
+			const frame = overviewFrame( mode, dataKind() );
 			fit = fitOverview( subject, {
 				width,
 				height,
 				fovDeg: overviewFov( aspect ),
 				elevationDeg: SCENE.overview.elevationDeg,
-				insets: frame.insets[ mode ],
-				maxWidth: frame.maxWidth[ mode ],
-				maxHeight: frame.maxHeight[ mode ]
+				insets: frame.insets,
+				maxWidth: frame.maxWidth,
+				maxHeight: frame.maxHeight
 			} );
 			fit.aspect = aspect;
 			fit.mode = mode;
@@ -282,8 +357,9 @@ export function createView( { scene, camera, train, events = null } ) {
 
 		const aspect = camera.aspect;
 
-		// 一人称：車体の姿勢（train は main.js がこのフレームの ride の値にしてある）
-		ridePosition.set( 0, SCENE.ride.height, SCENE.ride.back ).applyQuaternion( train.quaternion ).add( train.position );
+		// 一人称：位置はレールの少し後ろの点の真上、向きは車体の向き（train は main.js がこのフレームの ride の値にしてある）
+		if ( curve && ride ) rideCameraPosition( curve, ride.progress, ridePosition );
+		else ridePosition.set( 0, SCENE.ride.height, SCENE.ride.back ).applyQuaternion( train.quaternion ).add( train.position );
 		pitch.setFromEuler( pitchEuler.set( ( aspect < 1 ? SCENE.ride.pitchDegPortrait : SCENE.ride.pitchDeg ) * DEG, 0, 0 ) );
 		rideQuaternion.copy( train.quaternion ).multiply( pitch );
 

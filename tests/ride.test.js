@@ -6,7 +6,7 @@ import { createEvents } from '../assets/js/events.js';
 import { TrackCurve } from '../assets/js/track.js';
 import { buildDataset } from '../assets/js/data.js';
 import {
-	FRAME_MS, MAX_DELTA_MS, SPEED_MIN, SPEED_MAX, START_PROGRESS
+	FRAME_MS, MAX_DELTA_MS, SPEED_MIN, SPEED_MAX, SPEED_CRUISE, START_PROGRESS
 } from '../assets/js/config.js';
 import { loadFixtures } from './helpers.js';
 
@@ -261,6 +261,8 @@ function forwardOf( ride ) {
 /** 直線のテスト用曲線。tangent / gradient は後から差し替えられる。 */
 function fakeCurve( { tangent = new Vector3( 1, 0, 0 ), gradient = 0 } = {} ) {
 
+	// seg（周長）を持たない曲線：車体の傾きは「勾配 × 比率」（周長 1 として扱う）
+
 	const curve = {
 		tangent,
 		gradient,
@@ -322,18 +324,24 @@ test( '傾斜：前方ベクトルの y 成分の符号は勾配の符号に対�
 	assert.ok( forwardOf( down ).y < - 0.1, `down y=${forwardOf( down ).y}` );
 	assert.ok( Math.abs( forwardOf( flat ).y ) < 1e-9 );
 
-	// 実データの曲線でも、勾配が十分大きい点で符号が一致する
+	// 実データの曲線では、前後 RAIL_SLOPE_WINDOW の弦の勾配で傾く。傾きは実際の勾配（勾配 / 周長）の RAIL_SLOPE_RATIO 倍
 	const curve = new TrackCurve( stations, dataset.smoothed );
 	const ride = createRide( curve );
+	const length = curve.seg.totalLength;
+	const half = RAIL_SLOPE_WINDOW / length;
 	let checked = 0;
 	for ( let i = 0; i < 400; i ++ ) {
 
 		const progress = i / 400;
-		const gradient = curve.getHeightGradientAt( progress );
-		if ( Math.abs( gradient ) < 200 ) continue;
+		const t1 = Math.max( 0, progress - half );
+		const t2 = Math.min( 1 - 1e-6, progress + half );
+		const gradient = ( curve.getPointAt( t2 ).y - curve.getPointAt( t1 ).y ) / ( t2 - t1 );
 		ride.progress = progress;
 		ride.updatePose( 1 );
 		const y = forwardOf( ride ).y;
+		const expected = Math.sin( Math.atan( gradient / length * RAIL_SLOPE_RATIO ) );
+		assert.ok( Math.abs( y - expected ) < 1e-6, `progress=${progress} y=${y} expected=${expected}` );
+		if ( Math.abs( gradient ) < 200 ) continue;
 		assert.ok( Math.sign( y ) === Math.sign( gradient ) && Math.abs( y ) > 1e-3, `progress=${progress} gradient=${gradient} y=${y}` );
 		checked ++;
 
@@ -343,39 +351,48 @@ test( '傾斜：前方ベクトルの y 成分の符号は勾配の符号に対�
 
 } );
 
-test( '重力：下り（勾配が負）で速度が増え、上り（勾配が正）で減る', () => {
+test( '重力：平らなところの速度（SPEED_CRUISE）から、下り（勾配が負）で増え、上り（勾配が正）で減る', () => {
 
 	const down = fakeRide( { gradient: - 100 } ).ride;
-	down.velocity = ( SPEED_MIN + SPEED_MAX ) / 2;
-	const downBefore = down.velocity;
+	down.velocity = SPEED_CRUISE;
 	down.update( FRAME_MS );
-	assert.ok( down.velocity > downBefore + 1e-8, `down ${downBefore} -> ${down.velocity}` );
+	assert.ok( down.velocity > SPEED_CRUISE + 1e-9, `down -> ${down.velocity}` );
 
 	const up = fakeRide( { gradient: 100 } ).ride;
-	up.velocity = ( SPEED_MIN + SPEED_MAX ) / 2;
-	const upBefore = up.velocity;
+	up.velocity = SPEED_CRUISE;
 	up.update( FRAME_MS );
-	assert.ok( up.velocity < upBefore - 1e-8, `up ${upBefore} -> ${up.velocity}` );
+	assert.ok( up.velocity < SPEED_CRUISE - 1e-9, `up -> ${up.velocity}` );
 
-	// 平坦なら変わらない
+	// 平坦なら SPEED_CRUISE のまま
 	const flat = fakeRide( { gradient: 0 } ).ride;
-	flat.velocity = ( SPEED_MIN + SPEED_MAX ) / 2;
-	const flatBefore = flat.velocity;
+	flat.velocity = SPEED_CRUISE;
 	flat.update( FRAME_MS );
-	assert.equal( flat.velocity, flatBefore );
+	assert.ok( Math.abs( flat.velocity - SPEED_CRUISE ) < 1e-15 );
+
+	// 同じ速度から 1 フレーム：下り > 平坦 > 上り
+	assert.ok( down.velocity > flat.velocity && flat.velocity > up.velocity );
 
 } );
 
-test( '重力：下りが続けば上限まで加速し、上りが続けば下限まで減速する', () => {
+test( '重力：下りが続けば上限へ、上りが続けば下限へ、なめらかに近づく', () => {
 
 	const down = fakeRide( { gradient: - 500 } ).ride;
-	run( down, FRAME_MS, 5000 );
-	assert.equal( down.velocity, SPEED_MAX );
+	let prev = down.velocity;
+	for ( let i = 0; i < 60 * 8; i ++ ) {
+
+		down.update( FRAME_MS );
+		// 1 フレームの変化は、速度の範囲の 1 割未満
+		assert.ok( down.velocity >= prev && down.velocity - prev < 0.1 * ( SPEED_MAX - SPEED_MIN ) );
+		prev = down.velocity;
+
+	}
+
+	assert.ok( down.velocity > SPEED_MAX * 0.99 && down.velocity <= SPEED_MAX, `${down.velocity}` );
 
 	const up = fakeRide( { gradient: 500 } ).ride;
 	up.velocity = SPEED_MAX;
-	run( up, FRAME_MS, 5000 );
-	assert.equal( up.velocity, SPEED_MIN );
+	run( up, FRAME_MS, 8000 );
+	assert.ok( up.velocity < SPEED_MIN * 1.01 && up.velocity >= SPEED_MIN, `${up.velocity}` );
 
 } );
 
@@ -394,7 +411,7 @@ test( '実データの曲線：下りの区間で速度が増え、上りの区�
 		const ride = createRide( curve );
 		ride.start();
 		ride.progress = progress;
-		ride.velocity = ( SPEED_MIN + SPEED_MAX ) / 2;
+		ride.velocity = SPEED_CRUISE; // 平らなところの速度から
 		const before = ride.velocity;
 		ride.update( FRAME_MS );
 		// update は先に progress を進めるので、進めた先の勾配で調整される。符号が変わらない点だけを見る
@@ -470,7 +487,15 @@ test( '向きの補間：1 フレーム（FRAME_MS）で目標との角度が 8%
 
 // ---- 走行の係数（reduced-motion の一人称）----
 
-import { MOTION, RAIL_SLOPE_VISUAL_SCALE, ORIENTATION_BLEND_PER_FRAME } from '../assets/js/config.js';
+import { MOTION, RAIL_SLOPE_RATIO, RAIL_SLOPE_WINDOW, ORIENTATION_BLEND_PER_FRAME, SPEED_RESPONSE_MS } from '../assets/js/config.js';
+
+const DEFAULT_MOTION = {
+	railSlopeRatio: RAIL_SLOPE_RATIO,
+	orientationBlendPerFrame: ORIENTATION_BLEND_PER_FRAME,
+	speedMaxFactor: 1,
+	gravityFactor: 1,
+	speedResponseMs: SPEED_RESPONSE_MS
+};
 
 function newRideWithMotion( options ) {
 
@@ -488,13 +513,14 @@ function pitchOf( ride ) {
 
 }
 
-test( 'MOTION.reducedRide：傾き 0.0009 → 0.0003、向きの補間 0.08 → 0.04、速度の上限は半分', () => {
+test( 'MOTION.reducedRide：傾きは控えめ、向きの補間 0.08 → 0.04、速度の上限は半分、速度の変化は緩やか', () => {
 
 	const r = MOTION.reducedRide;
-	assert.equal( r.railSlopeVisualScale, 0.0003 );
+	assert.ok( r.railSlopeRatio > 0 && r.railSlopeRatio < RAIL_SLOPE_RATIO );
 	assert.equal( r.orientationBlendPerFrame, 0.04 );
 	assert.equal( r.speedMaxFactor, 0.5 );
-	assert.equal( RAIL_SLOPE_VISUAL_SCALE, 0.0009 );
+	assert.ok( r.gravityFactor > 0 && r.gravityFactor < 1 );
+	assert.ok( r.speedResponseMs > SPEED_RESPONSE_MS );
 	assert.equal( ORIENTATION_BLEND_PER_FRAME, 0.08 );
 
 } );
@@ -507,7 +533,7 @@ test( '係数を渡さないときは従来と同じ結果になる（options �
 	withEvents.started = true;
 	run( withEvents, FRAME_MS, 30 * 1000 );
 
-	assert.deepEqual( base.motion, { railSlopeVisualScale: RAIL_SLOPE_VISUAL_SCALE, orientationBlendPerFrame: ORIENTATION_BLEND_PER_FRAME, speedMaxFactor: 1 } );
+	assert.deepEqual( base.motion, DEFAULT_MOTION );
 	for ( const other of [ empty, withEvents ] ) {
 
 		assert.equal( other.progress, base.progress );
@@ -581,7 +607,9 @@ test( 'reduced：同じ位置での車体の傾きが小さい', () => {
 		if ( a > 0.01 ) {
 
 			compared ++;
-			assert.ok( b < a * 0.6, `t=${t}: 傾き ${b} が ${a} の 6 割以上` );
+			// 傾きの正接の比が、比率の比（reduced / 通常）
+			const expected = MOTION.reducedRide.railSlopeRatio / RAIL_SLOPE_RATIO;
+			assert.ok( Math.abs( Math.tan( b ) / Math.tan( a ) - expected ) < 1e-6, `t=${t}: ${Math.tan( b ) / Math.tan( a )} != ${expected}` );
 
 		}
 
@@ -627,13 +655,13 @@ test( 'setMotion：実行中に係数を差し替え、null で元に戻る。�
 
 	ride.setMotion( { speedMaxFactor: 0.25 } );
 	assert.equal( ride.motion.speedMaxFactor, 0.25 );
-	assert.equal( ride.motion.railSlopeVisualScale, RAIL_SLOPE_VISUAL_SCALE );
+	assert.equal( ride.motion.railSlopeRatio, RAIL_SLOPE_RATIO );
 
 	ride.setMotion( null );
-	assert.deepEqual( ride.motion, { railSlopeVisualScale: RAIL_SLOPE_VISUAL_SCALE, orientationBlendPerFrame: ORIENTATION_BLEND_PER_FRAME, speedMaxFactor: 1 } );
+	assert.deepEqual( ride.motion, DEFAULT_MOTION );
 
 	// 数でない値は無視する
-	ride.setMotion( { speedMaxFactor: 'x', railSlopeVisualScale: NaN } );
+	ride.setMotion( { speedMaxFactor: 'x', railSlopeRatio: NaN } );
 	assert.equal( ride.motion.speedMaxFactor, 1 );
 
 } );
