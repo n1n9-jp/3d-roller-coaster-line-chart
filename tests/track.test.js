@@ -48,7 +48,7 @@ test( '弧長の正規化：segTStart は 0 から 1 へ単調増加する', () 
 
 } );
 
-test( 'getXZAt：t = 0 は最初の駅、各区間の開始位置は対応する駅、t = 1 で始点に戻る', () => {
+test( 'getXZAt：t = 0 は最初の駅、各区間の開始位置は対応する駅', () => {
 
 	const seg = buildStationSegments( stations );
 	const first = geoToXZ( stations[ 0 ].lon, stations[ 0 ].lat );
@@ -98,5 +98,89 @@ test( 'TrackCurve：接線は水平な単位ベクトル、t は周期 1', () =>
 	const a = curve.getPointAt( 0.25 ).clone();
 	const b = curve.getPointAt( 1.25 ).clone();
 	assert.ok( a.distanceTo( b ) < 1e-9 );
+
+} );
+
+test( 'getXZAt：t = 1 と t = 1 - 1e-9 は最初の駅の位置（最後の区間が終点で閉じる）', () => {
+
+	const seg = buildStationSegments( stations );
+	const first = geoToXZ( stations[ 0 ].lon, stations[ 0 ].lat );
+
+	for ( const t of [ 1, 1 - 1e-9 ] ) {
+
+		const p = getXZAt( t, seg );
+		assert.ok( Math.abs( p.x - first.x ) < 1e-6, `x t=${t}` );
+		assert.ok( Math.abs( p.z - first.z ) < 1e-6, `z t=${t}` );
+
+	}
+
+} );
+
+test( 'getXZAt：すべての区間の中点（segTStart の中間の t）が、区間の両端の駅の中点に一致する（最後の区間を含む）', () => {
+
+	const seg = buildStationSegments( stations );
+	const { points, segTStart } = seg;
+	const n = points.length - 1; // 区間の数
+
+	for ( let i = 0; i < n; i ++ ) {
+
+		const t = ( segTStart[ i ] + segTStart[ i + 1 ] ) / 2;
+		const p = getXZAt( t, seg );
+		const mx = ( points[ i ].x + points[ i + 1 ].x ) / 2;
+		const mz = ( points[ i ].z + points[ i + 1 ].z ) / 2;
+		assert.ok( Math.abs( p.x - mx ) < 1e-6, `x 区間 ${i}` );
+		assert.ok( Math.abs( p.z - mz ) < 1e-6, `z 区間 ${i}` );
+
+	}
+
+	// 最後の区間は「最後の駅 → 最初の駅」
+	const last = geoToXZ( stations.at( - 1 ).lon, stations.at( - 1 ).lat );
+	const first = geoToXZ( stations[ 0 ].lon, stations[ 0 ].lat );
+	const tLast = ( segTStart[ n - 1 ] + segTStart[ n ] ) / 2;
+	const p = getXZAt( tLast, seg );
+	assert.ok( Math.abs( p.x - ( last.x + first.x ) / 2 ) < 1e-6 );
+	assert.ok( Math.abs( p.z - ( last.z + first.z ) / 2 ) < 1e-6 );
+
+} );
+
+test( 'TrackCurve：接線は進行方向（区間の中点で、駅 i → 駅 i+1 の向き）を向く', () => {
+
+	const curve = new TrackCurve( stations, nikkei );
+	const { points, segTStart } = curve.seg;
+	const n = points.length - 1;
+
+	for ( let i = 0; i < n; i ++ ) {
+
+		const t0 = segTStart[ i ];
+		const t1 = segTStart[ i + 1 ];
+		// 中央差分の幅（DELTA = 1e-4）が区間をまたがないことを前提にする
+		assert.ok( ( t1 - t0 ) / 2 > 1e-4, `区間 ${i} が短すぎる` );
+
+		const dx = points[ i + 1 ].x - points[ i ].x;
+		const dz = points[ i + 1 ].z - points[ i ].z;
+		const len = Math.hypot( dx, dz );
+		const tangent = curve.getTangentAt( ( t0 + t1 ) / 2 );
+		assert.ok( Math.abs( tangent.x - dx / len ) < 1e-6, `x 区間 ${i}` );
+		assert.ok( Math.abs( tangent.z - dz / len ) < 1e-6, `z 区間 ${i}` );
+
+	}
+
+} );
+
+test( 'TrackCurve：接線は getPointAt の水平移動の向きと一致する（t の周期境界を含む）', () => {
+
+	const curve = new TrackCurve( stations, nikkei );
+
+	for ( const t of [ 0.01, 0.2, 0.37, 0.5, 0.73, 0.95 ] ) {
+
+		const a = curve.getPointAt( t - 1e-5 ).clone();
+		const b = curve.getPointAt( t + 1e-5 ).clone();
+		const dir = { x: b.x - a.x, z: b.z - a.z };
+		const len = Math.hypot( dir.x, dir.z );
+		const tangent = curve.getTangentAt( t );
+		const dot = ( tangent.x * dir.x + tangent.z * dir.z ) / len;
+		assert.ok( dot > 0.999, `t=${t} dot=${dot}` );
+
+	}
 
 } );

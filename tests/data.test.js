@@ -63,3 +63,31 @@ test( '実データ：表示用は生データ、レール用は移動平均で�
 	assert.ok( dataset.smoothedRange.max < dataset.rawRange.max || dataset.smoothedRange.min > dataset.rawRange.min );
 
 } );
+
+test( 'buildDataset を既定の引数で呼ぶと、移動平均は窓 4（前 2・後 2）になる', () => {
+
+	const closes = [ 10, 20, 30, 40, 50, 60, 70 ];
+	const dataset = buildDataset( series( closes ) );
+	// i=0: [0,2) 15, i=1: [0,3) 20, i=2: [0,4) 25, i=3: [1,5) 35, i=4: [2,6) 45, i=5: [3,7) 55, i=6: [4,7) 60
+	const expected = applyMovingAverage( series( closes ), 4 ).map( d => d.close );
+	assert.deepEqual( dataset.smoothed.map( d => d.close ), expected );
+	assert.deepEqual( dataset.smoothed.map( d => d.close ), [ 15, 20, 25, 35, 45, 55, 60 ] );
+
+} );
+
+test( '実データ：buildDataset の既定の平滑化は、窓 4 の移動平均と一致する', () => {
+
+	const { nikkei } = loadFixtures();
+	const dataset = buildDataset( nikkei );
+	const expected = applyMovingAverage( nikkei, 4 );
+	assert.equal( dataset.smoothed.length, expected.length );
+	for ( let i = 0; i < expected.length; i ++ ) {
+
+		assert.ok( Math.abs( dataset.smoothed[ i ].close - expected[ i ].close ) < 1e-9, `index ${i}` );
+
+	}
+
+	// 先頭は [0,2) の平均
+	assert.ok( Math.abs( dataset.smoothed[ 0 ].close - ( nikkei[ 0 ].close + nikkei[ 1 ].close ) / 2 ) < 1e-9 );
+
+} );
