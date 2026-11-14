@@ -14,12 +14,14 @@ import {
 import { fitOverview, overviewMode } from '../assets/js/view.js';
 import { loadFixtures } from './helpers.js';
 
-const { nikkei, stations } = loadFixtures();
+const { nikkei } = loadFixtures();
 const dataset = buildDataset( nikkei );
 const D = 60;
 const EPS = 1e-4;
 
-const makeCurve = ( linkFraction = 0 ) => new TrackCurve( stations, dataset.smoothed, { linkFraction } );
+const track = new TrackCurve( dataset.smoothed );
+// カーテンには、弧長で引ける曲線（track.arcCurve）を渡す（curtain.js の createCurtain と同じ）
+const makeCurve = () => track.arcCurve;
 
 const lin = ( hex ) => {
 
@@ -160,33 +162,47 @@ test( '塗り：上端が濃く床が薄い。走行済みの範囲が進む・�
 
 } );
 
-test( '連絡区間：薄い別の色で、走行済みになっても変わらない', () => {
+test( '弧長で等間隔：カーテンの区間の水平の長さはそろっている（内側の周でも外側の周でも）', () => {
 
-	const curve = makeCurve( 0.1 );
-	const g = createCurtainGeometry( curve, D );
-	const painter = createCurtainPainter( g, { isLink: ( t ) => curve.isLink( t ), colors: curtainPaletteFrom() } );
-	painter.paintAll( 1 );
-	const link = lin( PALETTE.railDeadheadYellow ), ridden = lin( PALETTE.railRiddenYellow );
-	let links = 0;
-	for ( let s = 0; s < D; s ++ ) {
+	const n = 600;
+	const g = createCurtainGeometry( makeCurve(), n );
+	const pos = g.getAttribute( 'position' );
+	const step = track.totalLength / n;
+	for ( let s = 0; s < n; s ++ ) {
 
-		const isLink = curve.isLink( ( s + 0.5 ) / D );
-		const top = rgbaAt( g, 4 * s );
-		if ( isLink ) {
-
-			links ++;
-			assertRgb( top, link, `link s=${s}` );
-			assert.ok( top[ 3 ] < RAIL.curtain.topAlpha );
-
-		} else {
-
-			assertRgb( top, ridden, `ridden s=${s}` );
-
-		}
+		const len = Math.hypot( pos.getX( 4 * s + 2 ) - pos.getX( 4 * s ), pos.getZ( 4 * s + 2 ) - pos.getZ( 4 * s ) );
+		assert.ok( Math.abs( len / step - 1 ) < 0.01, `s=${s}: ${len} / ${step}` );
 
 	}
 
-	assert.equal( links, 6 );
+	// 終わりの列は外の端（中心へ戻らない）
+	const end = track.getPointAt( 1 );
+	assert.ok( Math.abs( pos.getX( 4 * ( n - 1 ) + 2 ) - end.x ) < EPS && Math.abs( pos.getZ( 4 * ( n - 1 ) + 2 ) - end.z ) < EPS );
+
+} );
+
+test( '走行済みの区間：進行位置（時間に比例）を弧長の割合に直してから決める', () => {
+
+	const g = createCurtainGeometry( makeCurve(), D );
+	const painter = createCurtainPainter( g, { colors: curtainPaletteFrom() } );
+	const ridden = lin( PALETTE.railRiddenYellow ), ahead = lin( PALETTE.contour );
+	// 進行位置 0.3 は、内側の周が短いので、弧長の割合ではもっと手前
+	const progress = 0.3;
+	const fraction = track.arcFractionAt( progress );
+	assert.ok( fraction < progress );
+	painter.paintAll( fraction );
+	const count = Math.floor( fraction * D );
+	assert.equal( painter.riddenCount, count );
+	for ( let s = 0; s < D; s ++ ) assertRgb( rgbaAt( g, 4 * s ), s < count ? ridden : ahead, `s=${s}` );
+	// 走行済みの最後の区間の終わりは、車体の位置より手前（車体の位置を越えて塗らない）
+	const p = track.getPointAt( progress ).clone();
+	const pos = g.getAttribute( 'position' );
+	const lastEnd = 4 * ( count - 1 ) + 2;
+	const back = track.totalLength * ( fraction - count / D );
+	assert.ok( Math.abs( Math.hypot( pos.getX( lastEnd ) - p.x, pos.getZ( lastEnd ) - p.z ) - back ) < 0.05 );
+	// 走り終えたら全部
+	painter.update( track.arcFractionAt( 1 ) );
+	assert.equal( painter.riddenCount, D );
 
 } );
 
@@ -202,9 +218,12 @@ test( '上端の帯の塗り：走行済みは琥珀、これからは明るい�
 
 } );
 
-test( '俯瞰の構図：輪が HUD を避けた範囲の中央に、上限の大きさで収まる', () => {
+test( '俯瞰の構図：螺旋が HUD を避けた範囲の中央に、上限の大きさで収まる', () => {
 
-	const points = overviewSubjectPoints( makeCurve( 0.03 ) );
+	const points = overviewSubjectPoints( makeCurve() );
+	// 終点（外の端）も含める
+	const end = track.getPointAt( 1 );
+	assert.ok( points.some( ( p ) => Math.hypot( p.x - end.x, p.z - end.z ) < 1e-9 ) );
 	const insets = { top: 184, right: 24, bottom: 40, left: 24 };
 	const fit = fitOverview( points, { width: 1440, height: 900, fovDeg: 50, elevationDeg: 48, insets, maxWidth: 0.9, maxHeight: 0.72 } );
 	const b = fit.bounds;

@@ -1,4 +1,4 @@
-// レールの色分け（これから・走行済み・連絡区間）。機能モジュール（createRailColors( ctx )）。担当：レールの色分け。
+// レールの色分け（これから・走行済み）。機能モジュール（createRailColors( ctx )）。担当：レールの色分け。
 // レールは ctx.scene.getObjectByName( 'rail' )（rail.js が作る RollerCoasterGeometry）。
 //
 // ■ RollerCoasterGeometry の color 属性の並び（同梱 assets/jsm/misc/RollerCoaster.js を読んで確かめたもの）
@@ -15,8 +15,9 @@
 //   区間の中では「枕木 + 中央の管」（構造部）が先、「レール 2 本」が後ろに連続するので、1 区間は 2 つの連続範囲で塗れる。
 //
 // ■ 状態
-//   連絡区間：区間の中点 t で curve.isLink( t ) が真。走行済みになっても色を変えない。
-//   走行済み：( s + 1 ) / D <= progress（区間を丸ごと通り過ぎた）。
+//   レールは弧長（水平）で等間隔に標本化してある（rail.js が curve.arcCurve を渡す）。区間 s は弧長の割合 ( s/D, (s+1)/D ]。
+//   進行位置 progress（時間に比例）は、curve.arcFractionAt で弧長の割合 f に直してから区間を決める。
+//   走行済み：( s + 1 ) / D <= f（区間を丸ごと通り過ぎた）。
 //   これから：それ以外。
 //
 // ■ 更新
@@ -31,7 +32,7 @@ import { Color, DynamicDrawUsage } from './three.core.js';
 import { PALETTE } from './config.js';
 
 export const PART = Object.freeze( { SLEEPER: 0, TUBE: 1, RAIL_RIGHT: 2, RAIL_LEFT: 3 } );
-export const RAIL_STATE = Object.freeze( { AHEAD: 0, RIDDEN: 1, LINK: 2 } );
+export const RAIL_STATE = Object.freeze( { AHEAD: 0, RIDDEN: 1 } );
 
 export const SLEEPER_VERTS = 6 * 2;
 export const TUBE_VERTS = 5 * 6;
@@ -54,18 +55,17 @@ export function railVertexCount( divisions ) {
 
 }
 
-/** progress（0..1）のときに走行済みになっている区間の数（先頭からの連続）。 */
-export function riddenSegmentCount( progress, divisions ) {
+/** 弧長の割合 f（0..1）のときに走行済みになっている区間の数（先頭からの連続）。 */
+export function riddenSegmentCount( fraction, divisions ) {
 
-	if ( ! ( progress > 0 ) ) return 0;
-	return Math.min( divisions, Math.floor( progress * divisions + 1e-9 ) );
+	if ( ! ( fraction > 0 ) ) return 0;
+	return Math.min( divisions, Math.floor( fraction * divisions + 1e-9 ) );
 
 }
 
 /** 区間 s の状態（RAIL_STATE）。 */
-export function segmentState( s, riddenCount, linkMask ) {
+export function segmentState( s, riddenCount ) {
 
-	if ( linkMask[ s ] ) return RAIL_STATE.LINK;
 	return s < riddenCount ? RAIL_STATE.RIDDEN : RAIL_STATE.AHEAD;
 
 }
@@ -124,16 +124,6 @@ export function buildRailColorMap( geometry, divisions ) {
 
 }
 
-/** 連絡区間の印（区間ごとに 1 = 連絡区間）。判定は区間の中点 t で isLink( t )。 */
-export function buildLinkMask( divisions, isLink ) {
-
-	const mask = new Uint8Array( divisions );
-	if ( typeof isLink !== 'function' ) return mask;
-	for ( let s = 0; s < divisions; s ++ ) mask[ s ] = isLink( ( s + 0.5 ) / divisions ) ? 1 : 0;
-	return mask;
-
-}
-
 /** 仕様 1-2 の配色（PALETTE）を、塗りに使う linear の RGB にする。[ 状態 ][ 0 = 構造部, 1 = レール ] */
 export function railPaletteFrom( palette = PALETTE ) {
 
@@ -147,25 +137,24 @@ export function railPaletteFrom( palette = PALETTE ) {
 	const colors = [];
 	colors[ RAIL_STATE.AHEAD ] = [ rgb( palette.railAheadYellow ), rgb( palette.railAheadWhite ) ];
 	colors[ RAIL_STATE.RIDDEN ] = [ rgb( palette.railRiddenYellow ), rgb( palette.railRiddenWhite ) ];
-	colors[ RAIL_STATE.LINK ] = [ rgb( palette.railDeadheadYellow ), rgb( palette.railDeadheadWhite ) ];
 	return colors;
 
 }
 
 /**
  * レールの塗り分けを受け持つ（three.js のレンダラに依存しない部分）。
- *   paintAll( progress )  全体を塗る（走行済みも含めて一度で）。最初と「最初から」で使う
- *   update( progress )    前回からの差分の区間だけを塗る。戻り値は { segments, vertices }
+ *   paintAll( fraction )  全体を塗る（走行済みも含めて一度で）。最初と「最初から」で使う
+ *   update( fraction )    前回からの差分の区間だけを塗る。戻り値は { segments, vertices }
  *   riddenCount           いま走行済みの区間数
+ * fraction は弧長の割合（0..1。curve.arcFractionAt( progress )）。
  *
- * @param geometry  RollerCoasterGeometry
+ * @param geometry  RollerCoasterGeometry（弧長で等間隔に標本化したもの）
  * @param divisions 生成時の分割数
- * @param options   { isLink?: ( t ) => boolean, palette?: PALETTE と同じ形 }
+ * @param options   { palette?: PALETTE と同じ形 }
  */
-export function createRailPainter( geometry, divisions, { isLink, palette } = {} ) {
+export function createRailPainter( geometry, divisions, { palette } = {} ) {
 
 	const map = buildRailColorMap( geometry, divisions );
-	const linkMask = buildLinkMask( divisions, isLink );
 	const colors = railPaletteFrom( palette );
 	const attribute = geometry.getAttribute( 'color' );
 	const array = attribute.array;
@@ -193,7 +182,7 @@ export function createRailPainter( geometry, divisions, { isLink, palette } = {}
 
 		for ( let s = s0; s < s1; s ++ ) {
 
-			const [ structure, rail ] = colors[ segmentState( s, count, linkMask ) ];
+			const [ structure, rail ] = colors[ segmentState( s, count ) ];
 			fill( segmentStart[ s ], structureEnd[ s ], structure );
 			fill( structureEnd[ s ], segmentStart[ s + 1 ], rail );
 
@@ -203,9 +192,9 @@ export function createRailPainter( geometry, divisions, { isLink, palette } = {}
 
 	}
 
-	function paintAll( progress = 0 ) {
+	function paintAll( fraction = 0 ) {
 
-		riddenCount = riddenSegmentCount( progress, divisions );
+		riddenCount = riddenSegmentCount( fraction, divisions );
 		paintRange( 0, divisions, riddenCount );
 		attribute.clearUpdateRanges(); // 範囲なし = 全体を転送
 		attribute.needsUpdate = true;
@@ -214,9 +203,9 @@ export function createRailPainter( geometry, divisions, { isLink, palette } = {}
 
 	}
 
-	function update( progress ) {
+	function update( fraction ) {
 
-		const next = riddenSegmentCount( progress, divisions );
+		const next = riddenSegmentCount( fraction, divisions );
 		const prev = riddenCount;
 		let result = { segments: 0, vertices: 0 };
 
@@ -240,7 +229,6 @@ export function createRailPainter( geometry, divisions, { isLink, palette } = {}
 
 	return {
 		map,
-		linkMask,
 		colors,
 		attribute,
 		paintAll,
@@ -265,8 +253,10 @@ export function createRailColors( ctx ) {
 	// 毎フレーム一部を書き換えるので、最初の描画（バッファの生成）より前に設定する
 	geometry.getAttribute( 'color' ).setUsage( DynamicDrawUsage );
 
-	const painter = createRailPainter( geometry, divisions, { isLink: ( t ) => curve.isLink( t ) } );
-	painter.paintAll( ride.progress );
+	const painter = createRailPainter( geometry, divisions );
+	// 進行位置（時間に比例）→ 弧長の割合（レールの区間は弧長で等間隔）
+	const fractionOf = ( progress ) => curve.arcFractionAt( progress );
+	painter.paintAll( fractionOf( ride.progress ) );
 
 	// 計測用（デバッグ）：直近に書き換えたフレームの区間数・頂点数と所要時間、その最大
 	const stats = { segments: 0, vertices: 0, ms: 0, maxVertices: 0, maxMs: 0 };
@@ -276,7 +266,7 @@ export function createRailColors( ctx ) {
 		update( state ) {
 
 			const t0 = performance.now();
-			const { segments, vertices } = painter.update( state.progress );
+			const { segments, vertices } = painter.update( fractionOf( state.progress ) );
 			if ( vertices > 0 ) {
 
 				stats.segments = segments;
@@ -291,7 +281,7 @@ export function createRailColors( ctx ) {
 		onReset() {
 
 			// 「最初から」：全体を塗り直す（ride.restart のあとなので progress は 0）
-			painter.paintAll( ride.progress );
+			painter.paintAll( fractionOf( ride.progress ) );
 
 		},
 		dispose() {

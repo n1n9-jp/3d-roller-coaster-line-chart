@@ -1,14 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-	yAxis, labelStep, labelIndices, formatYenTick, yearTicks, nearestStationIndex, formatYearMonth, formatYen
+	yAxis, labelStep, labelIndices, formatYenTick, yearTicks, formatYearMonth, formatYen
 } from '../assets/js/hud/scales.js';
-import { riddenEnd } from '../assets/js/hud/map.js';
+import { riddenEnd, yearAt } from '../assets/js/hud/map.js';
 import { buildDataset } from '../assets/js/data.js';
-import { buildStationSegments, getXZAt } from '../assets/js/track.js';
+import { TrackCurve } from '../assets/js/track.js';
 import { loadFixtures } from './helpers.js';
 
-const { nikkei, stations } = loadFixtures();
+const { nikkei } = loadFixtures();
 
 test( 'Y 軸：上限は最高値を 1 万円単位で切り上げた値（41,701 → 5 万、71,250 → 8 万）', () => {
 
@@ -133,36 +133,6 @@ test( '年の目盛り：実データの範囲（1990-01-01〜2026-11-09）は 2
 
 } );
 
-test( '現在位置に最も近い駅：各駅の位置では、その駅', () => {
-
-	const { points, segTStart } = buildStationSegments( stations );
-	const stationPoints = points.slice( 0, stations.length );
-	stations.forEach( ( station, i ) => {
-
-		const p = stationPoints[ i ];
-		assert.equal( nearestStationIndex( stationPoints, p.x, p.z ), i, station.station_name );
-
-	} );
-
-	// 走行の位置（progress）でも：出発は大崎、新宿の区間の始まりは新宿
-	const seg = { points, segTStart };
-	const at = ( t ) => getXZAt( t, seg );
-	assert.equal( stations[ nearestStationIndex( stationPoints, at( 0 ).x, at( 0 ).z ) ].station_name, '大崎' );
-	const shinjuku = stations.findIndex( s => s.station_name === '新宿' );
-	const p = at( segTStart[ shinjuku ] + 0.0001 );
-	assert.equal( nearestStationIndex( stationPoints, p.x, p.z ), shinjuku );
-
-} );
-
-test( '現在位置に最も近い駅：2 駅の間は近い方。空なら -1', () => {
-
-	const pts = [ { x: 0, z: 0 }, { x: 10, z: 0 } ];
-	assert.equal( nearestStationIndex( pts, 4, 3 ), 0 );
-	assert.equal( nearestStationIndex( pts, 6, - 3 ), 1 );
-	assert.equal( nearestStationIndex( [], 0, 0 ), - 1 );
-
-} );
-
 test( '表記：年月と値', () => {
 
 	assert.equal( formatYearMonth( '2025-12-29' ), '2025年12月' );
@@ -172,15 +142,22 @@ test( '表記：年月と値', () => {
 
 } );
 
-test( '路線図：走行済みの弧の終わり。走行中は現在位置、一周して止まったときはデータ区間の終わり（連絡区間は含めない）', () => {
+test( '螺旋の図：走行済みの線の終わり。走行中は現在位置、走り終えたときは終点', () => {
 
-	const dataEnd = 0.97;
-	assert.equal( riddenEnd( 0.4, false, dataEnd ), 0.4 );
-	assert.equal( riddenEnd( 0.9695, false, dataEnd ), 0.9695 );
-	assert.equal( riddenEnd( 0.97, true, dataEnd ), dataEnd );
-	assert.equal( riddenEnd( 1, true, dataEnd ), dataEnd ); // 進行位置が連絡区間にあっても、データ区間の終わりまで
-	assert.equal( riddenEnd( - 0.1, false, dataEnd ), 0 );
-	assert.equal( riddenEnd( 1.2, false, dataEnd ), 1 );
-	assert.equal( riddenEnd( 0.5, true ), 1 ); // 連絡区間がない（dataEnd 省略）なら全周
+	assert.equal( riddenEnd( 0.4, false ), 0.4 );
+	assert.equal( riddenEnd( 0.9695, true ), 1 );
+	assert.equal( riddenEnd( - 0.1, false ), 0 );
+	assert.equal( riddenEnd( 1.2, false ), 1 );
+
+} );
+
+test( '螺旋の図：「いま：2008年」の年は、進行位置の日付の年', () => {
+
+	const curve = new TrackCurve( nikkei );
+	assert.equal( yearAt( curve, 0 ), 1990 );
+	assert.equal( yearAt( curve, 1 ), Number( nikkei.at( - 1 ).date.slice( 0, 4 ) ) );
+	assert.equal( yearAt( curve, curve.dateToProgress( '2008-06-30' ) ), 2008 );
+	assert.equal( yearAt( curve, curve.dateToProgress( '2009-01-01' ) ), 2009 );
+	assert.equal( yearAt( curve, 1.5 ), yearAt( curve, 1 ) );
 
 } );

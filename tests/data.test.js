@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyMovingAverage, buildDataset, closeRange, indexAt, interpolateClose } from '../assets/js/data.js';
+import { applyMovingAverage, buildDataset, closeRange, indexAt, interpolateClose, seriesTimes, timeToIndex, indexToTime, pointAtIndex } from '../assets/js/data.js';
 import { loadFixtures } from './helpers.js';
 
 const series = ( closes ) => closes.map( ( close, i ) => ( { date: `2000-01-${String( i + 1 ).padStart( 2, '0' )}`, close } ) );
@@ -29,18 +29,55 @@ test( '移動平均：定数列は変わらない', () => {
 
 } );
 
-// 第 3 引数の linkFraction は 0（連絡区間なし）で確かめる。
+// t（0..1）は時間に比例する（t = 0 が最初の日付、t = 1 が最後の日付）。等間隔の日付では添字に比例する
 test( 'closeRange / indexAt / interpolateClose', () => {
 
 	const s = series( [ 5, 1, 9, 3 ] );
 	assert.deepEqual( closeRange( s ), { min: 1, max: 9 } );
-	assert.equal( indexAt( s, 0, 0 ), 0 );
-	assert.equal( indexAt( s, 1, 0 ), 3 );
-	assert.equal( indexAt( s, 0.5, 0 ), 1 );
-	assert.equal( interpolateClose( s, 0, 0 ), 5 );
-	assert.equal( interpolateClose( s, 1, 0 ), 3 );
-	assert.equal( interpolateClose( s, 1 / 6, 0 ), 3 ); // 5 と 1 の中点
-	assert.equal( interpolateClose( s, 1 / 3, 0 ), 1 );
+	assert.equal( indexAt( s, 0 ), 0 );
+	assert.equal( indexAt( s, 1 ), 3 );
+	assert.equal( indexAt( s, 0.5 ), 1 );
+	assert.equal( interpolateClose( s, 0 ), 5 );
+	assert.equal( interpolateClose( s, 1 ), 3 );
+	assert.equal( interpolateClose( s, 1 / 6 ), 3 ); // 5 と 1 の中点
+	assert.equal( interpolateClose( s, 1 / 3 ), 1 );
+	// 範囲外は両端に張り付く
+	assert.equal( interpolateClose( s, - 0.5 ), 5 );
+	assert.equal( interpolateClose( s, 1.5 ), 3 );
+
+} );
+
+test( 'interpolateClose / indexAt：日付の間隔がそろっていなくても、時間（日付）で補間する', () => {
+
+	// 1 日、2 日、5 日（3 日と 4 日が抜けている）。t = 0.5 は 3 日 → 2 日と 5 日の間の 1/3
+	const s = [ { date: '2000-01-01', close: 0 }, { date: '2000-01-02', close: 10 }, { date: '2000-01-05', close: 40 } ];
+	assert.equal( indexAt( s, 0.5 ), 1 );
+	assert.ok( Math.abs( interpolateClose( s, 0.5 ) - 20 ) < 1e-9 );
+	assert.ok( Math.abs( interpolateClose( s, 0.25 ) - 10 ) < 1e-9 );
+
+} );
+
+test( 'timeToIndex と indexToTime は往復で元に戻り、範囲外は両端に張り付く', () => {
+
+	const s = [ { date: '2000-01-03', close: 1 }, { date: '2000-01-10', close: 2 }, { date: '2000-01-24', close: 3 } ];
+	const times = seriesTimes( s );
+	assert.equal( seriesTimes( s ), times ); // 系列ごとに 1 回だけ作る
+	for ( const u of [ 0, 0.3, 1, 1.5, 2 ] ) assert.ok( Math.abs( timeToIndex( times, indexToTime( times, u ) ) - u ) < 1e-12, `u=${u}` );
+	assert.equal( timeToIndex( times, times[ 0 ] - 1e9 ), 0 );
+	assert.equal( timeToIndex( times, times[ 2 ] + 1e9 ), 2 );
+	assert.equal( indexToTime( times, - 1 ), times[ 0 ] );
+	assert.equal( indexToTime( times, 9 ), times[ 2 ] );
+	// 2000-01-17 は 10 日と 24 日の中点 → 1.5
+	assert.ok( Math.abs( timeToIndex( times, Date.parse( '2000-01-17T00:00:00Z' ) ) - 1.5 ) < 1e-12 );
+
+} );
+
+test( 'pointAtIndex：切り捨てて範囲に丸める', () => {
+
+	const s = series( [ 5, 1, 9 ] );
+	assert.equal( pointAtIndex( s, 1.9 ), s[ 1 ] );
+	assert.equal( pointAtIndex( s, - 1 ), s[ 0 ] );
+	assert.equal( pointAtIndex( s, 7 ), s[ 2 ] );
 
 } );
 

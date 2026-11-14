@@ -2,8 +2,14 @@
 //
 // 走行を操作するのは次の API だけ：start() / pause() / resume() / togglePause() / restart() / finish()。
 // 状態が変わると events（省略可）へ 'start' 'pause' 'resume' 'restart' 'finish' を発行する。
-// START 前・一時停止中・終了後は進まない。progress が curve.dataEnd に達したら止まって 'finish' を 1 回発行する。
+// START 前・一時停止中・終了後は進まない。progress が 1（最後の週）に達したら止まって 'finish' を 1 回発行する。
 //
+// ■ 速度
+//   速さは「年/秒」（ride.speed）で持ち、データの期間 T 年で progress / ms（ride.velocity = speed / ( T × 1000 )）に換算する。
+//   目標の速さ = 基準の速さ base( r ) × 勾配による倍率。base( r ) = SPEED.yearsPerSecond × ( r / 基準の半径 )^(−radiusExponent)。
+//   倍率 = clamp( exp( − gravityPerYear × dy/dτ ), minFactor, maxFactor )。dy/dτ は 1 年あたりの高さの変化（dy/dt ÷ T）。
+//   これで、期間の違うデータでも、1 年あたりの秒数と勾配の効き方がそろう（config.js の SPEED）。
+
 // 走行の「穏やかさ」に関わる係数（傾き・向きの補間・速度の上限・勾配の効き・速度の追従の速さ）は、createRide の options で渡せる。
 // 省略すると config.js の従来の値で動く。実行中は ride.setMotion( overrides ) で差し替える
 // （prefers-reduced-motion の一人称では ui/buttons.js が MOTION.reducedRide を渡す）。
@@ -15,11 +21,7 @@ import { Vector3, Quaternion, Object3D } from './three.core.js';
 import {
 	MAX_DELTA_MS,
 	FRAME_MS,
-	SPEED_MIN,
-	SPEED_MAX,
-	SPEED_INITIAL,
-	SPEED_CRUISE,
-	GRAVITY,
+	SPEED,
 	SPEED_RESPONSE_MS,
 	ORIENTATION_BLEND_PER_FRAME,
 	START_PROGRESS,
@@ -30,16 +32,38 @@ import {
 
 const MOTION_KEYS = [ 'railSlopeRatio', 'orientationBlendPerFrame', 'speedMaxFactor', 'gravityFactor', 'speedResponseMs' ];
 
+/** 速さの倍率の範囲 [ 下限, 上限 ]。上限は speedMaxFactor を掛け、下限より下げない。 */
+export function speedFactorRange( motion = defaultMotion() ) {
+
+	return [ SPEED.minFactor, Math.max( SPEED.minFactor, SPEED.maxFactor * motion.speedMaxFactor ) ];
+
+}
+
 /**
- * 勾配から決まる目標の速度（/ms）。平らなところで SPEED_CRUISE、下りで速く、上りで遅い。[ SPEED_MIN, speedMax ] に収める。
- * @param heightGradient 高さ勾配 dy/dt
+ * 勾配による速さの倍率。平らなところで 1、下りで大きく、上りで小さい。speedFactorRange に収める。
+ * @param gradientPerYear 1 年あたりの高さの変化 dy/dτ
  * @param motion { speedMaxFactor, gravityFactor }
  */
-export function targetVelocity( heightGradient, motion = defaultMotion() ) {
+export function speedFactor( gradientPerYear, motion = defaultMotion() ) {
 
-	const speedMax = Math.max( SPEED_MIN, SPEED_MAX * motion.speedMaxFactor );
-	const target = SPEED_CRUISE * Math.exp( - GRAVITY * motion.gravityFactor * heightGradient );
-	return Math.max( SPEED_MIN, Math.min( speedMax, target ) );
+	const [ lo, hi ] = speedFactorRange( motion );
+	const m = Math.exp( - SPEED.gravityPerYear * motion.gravityFactor * gradientPerYear );
+	return Math.max( lo, Math.min( hi, m ) );
+
+}
+
+/** 半径による基準の速さ（年/秒）：yearsPerSecond × ( r / referenceRadius )^(−radiusExponent)。半径がない（テスト用の曲線）ときは yearsPerSecond。 */
+export function baseYearsPerSecond( radius, speed = SPEED ) {
+
+	if ( ! ( radius > 0 ) || ! speed.radiusExponent ) return speed.yearsPerSecond;
+	return speed.yearsPerSecond * Math.pow( radius / speed.referenceRadius, - speed.radiusExponent );
+
+}
+
+/** 曲線の期間（年）。年数を持たない曲線（テスト用）では SPEED.fallbackYears。 */
+export function curveYears( curve ) {
+
+	return curve?.years > 0 ? curve.years : SPEED.fallbackYears;
 
 }
 
@@ -51,9 +75,9 @@ export function defaultMotion() {
 		railSlopeRatio: RAIL_SLOPE_RATIO,
 		/** 向きの補間：60fps で 1 フレームあたり目標へ近づく割合。 */
 		orientationBlendPerFrame: ORIENTATION_BLEND_PER_FRAME,
-		/** SPEED_MAX に掛ける係数（速度の上限）。 */
+		/** 速さの上限の倍率（SPEED.maxFactor）に掛ける係数。 */
 		speedMaxFactor: 1,
-		/** GRAVITY に掛ける係数（勾配による目標の速度の変わり方）。 */
+		/** SPEED.gravityPerYear に掛ける係数（勾配による目標の速度の変わり方）。 */
 		gravityFactor: 1,
 		/** 速度が目標へ近づく一次遅れの時定数（ms）。 */
 		speedResponseMs: SPEED_RESPONSE_MS
@@ -77,7 +101,8 @@ function pickMotion( source ) {
 }
 
 /**
- * @param curve getPointAt / getTangentAt / getHeightGradientAt と dataEnd を持つ曲線（TrackCurve）
+ * @param curve getPointAt / getTangentAt / getHeightGradientAt を持つ曲線（TrackCurve）。
+ *        lengthPerProgressAt（t あたりの水平距離）・radiusAt・years があれば、傾き・速度の換算に使う
  * @param events on / emit を持つ発行器（events.js）。省略すると何も発行しない。
  *        発行器ではなく options のオブジェクトを渡してもよい（events キーで発行器を渡せる）。
  * @param options 走行の係数 { railSlopeRatio, orientationBlendPerFrame, speedMaxFactor, gravityFactor, speedResponseMs }。
@@ -100,16 +125,19 @@ export function createRide( curve, events = null, options = {} ) {
 	const lookAtTarget = new Vector3();
 	const targetObject = new Object3D();
 	const targetQuaternion = new Quaternion();
-	// 高さ勾配 dy/dt を、水平の長さあたりの勾配 dy/ds に直す係数（1 / 周長）。周長を持たない曲線（テスト用）では 1
-	const perLength = 1 / ( curve.seg?.totalLength || 1 );
+	// 高さ勾配 dy/dt を、水平の長さあたりの勾配 dy/ds に直す：その位置での t あたりの水平距離 ds/dt で割る。
+	// それを持たない曲線（テスト用）では 1 として扱う
+	const lengthPerProgress = typeof curve.lengthPerProgressAt === 'function'
+		? ( t ) => curve.lengthPerProgressAt( t )
+		: null;
 	// 車体の傾きに使う勾配は、前後 RAIL_SLOPE_WINDOW（水平の長さ）の弦の勾配（週ごとの細かい揺れで、視線が上下に振られないように）。
-	// 周長を持たない曲線（テスト用）では、その点の勾配
-	const slopeHalf = curve.seg?.totalLength ? RAIL_SLOPE_WINDOW * perLength : 0;
-	function visualGradient( t, heightGradient ) {
+	// t あたりの距離を持たない曲線（テスト用）では、その点の勾配
+	function visualGradient( t, heightGradient, perLength ) {
 
-		if ( ! ( slopeHalf > 0 ) ) return heightGradient;
-		const t1 = Math.max( 0, t - slopeHalf );
-		const t2 = Math.min( 1 - 1e-6, t + slopeHalf );
+		if ( ! lengthPerProgress ) return heightGradient;
+		const half = RAIL_SLOPE_WINDOW * perLength;
+		const t1 = Math.max( 0, t - half );
+		const t2 = Math.min( 1, t + half );
 		if ( t2 <= t1 ) return heightGradient;
 		const y1 = curve.getPointAt( t1 ).y;
 		const y2 = curve.getPointAt( t2 ).y;
@@ -117,11 +145,42 @@ export function createRide( curve, events = null, options = {} ) {
 
 	}
 
+	const years = curveYears( curve );
+	/** 年/秒 → progress / ms の係数。 */
+	const perYearPerSecond = 1 / ( years * 1000 );
+	const radiusAt = typeof curve.radiusAt === 'function' ? ( t ) => curve.radiusAt( t ) : () => 0;
+	const baseAt = ( t ) => baseYearsPerSecond( radiusAt( Math.min( Math.max( t, 0 ), 1 ) ) );
+
 	const ride = {
-		/** 0..1。山手線 1 周 = データ系列の端から端まで。 */
+		/** 0..1。データの最初の日付から最後の日付まで（時間に比例）。 */
 		progress: START_PROGRESS,
-		/** 1 ミリ秒あたりの progress の増分。 */
-		velocity: SPEED_INITIAL,
+		/** 速さ（年/秒）。冒頭の説明。 */
+		speed: 0,
+		/** 速さを progress / ms で（speed ÷ ( T × 1000 )）。代入すると speed を換算して変える。 */
+		get velocity() {
+
+			return ride.speed * perYearPerSecond;
+
+		},
+		set velocity( value ) {
+
+			ride.speed = value / perYearPerSecond;
+
+		},
+		/** いまの速さの、その位置の基準の速さに対する倍率（平らなところで 1。SPEED.minFactor .. maxFactor）。 */
+		get factor() {
+
+			return ride.speed / baseAt( ride.progress );
+
+		},
+		/** いまの位置での速さの範囲（progress / ms）：{ min, cruise, max }。平らなところで cruise。 */
+		speedRange( t = ride.progress ) {
+
+			const base = baseAt( t ) * perYearPerSecond;
+			const [ lo, hi ] = speedFactorRange( motion );
+			return { min: base * lo, cruise: base, max: base * hi };
+
+		},
 		/** true の間は進まない。 */
 		paused: false,
 		/** START を押すまで進まない。 */
@@ -150,8 +209,7 @@ export function createRide( curve, events = null, options = {} ) {
 		/** 現在の progress に合わせて position と目標の向きを計算する。blend は向きを目標へ近づける割合（1 以上で即座に合わせる）。 */
 		updatePose( blend ) {
 
-			// progress が 1 に達した（一周し終えた）ときも、始点ではなく終点側の姿勢にしておく
-			const t = Math.min( ride.progress, 1 - 1e-6 );
+			const t = Math.min( Math.max( ride.progress, 0 ), 1 );
 
 			ride.position.copy( curve.getPointAt( t ) );
 			ride.position.y += TRAIN_RAIL_OFFSET;
@@ -160,7 +218,8 @@ export function createRide( curve, events = null, options = {} ) {
 			const heightGradient = curve.getHeightGradientAt( t );
 
 			// レール方向（傾斜を含む）に合わせる。tangent は水平の単位ベクトルなので、y 成分が水平の長さあたりの傾き
-			railDirection.set( tangent.x, visualGradient( t, heightGradient ) * perLength * motion.railSlopeRatio, tangent.z ).normalize();
+			const perLength = lengthPerProgress ? 1 / lengthPerProgress( t ) : 1;
+			railDirection.set( tangent.x, visualGradient( t, heightGradient, perLength ) * perLength * motion.railSlopeRatio, tangent.z ).normalize();
 
 			targetObject.position.copy( ride.position );
 			targetObject.lookAt( lookAtTarget.copy( ride.position ).sub( railDirection ) );
@@ -177,7 +236,8 @@ export function createRide( curve, events = null, options = {} ) {
 		reset() {
 
 			ride.progress = START_PROGRESS;
-			ride.velocity = SPEED_INITIAL;
+			// 初速は下限（基準の速さ × minFactor）
+			ride.speed = baseAt( START_PROGRESS ) * SPEED.minFactor;
 			ride.updatePose( 1 );
 
 		},
@@ -214,7 +274,7 @@ export function createRide( curve, events = null, options = {} ) {
 
 		},
 
-		/** 1990 年 1 月へ戻して再開する（一時停止も終了も解除）。'restart' を発行する。started は変えない。 */
+		/** 最初の週へ戻して再開する（一時停止も終了も解除）。'restart' を発行する。started は変えない。 */
 		restart() {
 
 			ride.reset();
@@ -239,9 +299,7 @@ export function createRide( curve, events = null, options = {} ) {
 			if ( ! ride.started || ride.paused || ride.finished ) return;
 
 			const delta = Math.min( Math.max( deltaMs, 0 ), MAX_DELTA_MS );
-			const end = curve.dataEnd ?? 1;
-
-			ride.progress = Math.min( ride.progress + ride.velocity * delta, end );
+			ride.progress = Math.min( ride.progress + ride.velocity * delta, 1 );
 
 			// 60fps の 1 フレームで ORIENTATION_BLEND_PER_FRAME だけ近づく補間を、時間で換算する
 			const blend = 1 - Math.pow( 1 - motion.orientationBlendPerFrame, delta / FRAME_MS );
@@ -249,14 +307,16 @@ export function createRide( curve, events = null, options = {} ) {
 
 			// 高さの勾配から目標の速度を決め、一次遅れで近づく（重力効果）。下りで速く、上りで遅くなる。
 			// 1 フレームのあいだ目標は一定とみなし、指数で厳密に積分する（フレームレートによらない）
-			const target = targetVelocity( heightGradient, motion );
-			ride.velocity = target + ( ride.velocity - target ) * Math.exp( - delta / Math.max( 1, motion.speedResponseMs ) );
-			// 上限は下限より下げない（setMotion で上限が下がったときは、すぐに収める）
-			const speedMax = Math.max( SPEED_MIN, SPEED_MAX * motion.speedMaxFactor );
-			ride.velocity = Math.max( SPEED_MIN, Math.min( speedMax, ride.velocity ) );
+			// 勾配は 1 年あたりに直す（dy/dt ÷ T）
+			const base = baseAt( ride.progress );
+			const target = base * speedFactor( heightGradient / years, motion );
+			ride.speed = target + ( ride.speed - target ) * Math.exp( - delta / Math.max( 1, motion.speedResponseMs ) );
+			// 範囲に収める（setMotion で上限が下がったときは、すぐに収める。上限は下限より下げない）
+			const [ lo, hi ] = speedFactorRange( motion );
+			ride.speed = Math.max( base * lo, Math.min( base * hi, ride.speed ) );
 
-			// データ区間の終わりに着いたら止まる
-			if ( ride.progress >= end ) ride.finish();
+			// 最後の週に着いたら止まる
+			if ( ride.progress >= 1 ) ride.finish();
 
 		}
 	};

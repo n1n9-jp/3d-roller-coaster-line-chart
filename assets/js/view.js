@@ -14,7 +14,7 @@
 //           車体の傾きはレールの実際の勾配より控えめ（RAIL_SLOPE_RATIO）なので、車体の向きで「後ろ」を回すと、
 //           急な上り下りでカメラがレールから浮いたり沈んだりする。そのため位置はレールから直接取る。
 //           curve・ride を渡さないときは、従来どおり車体の姿勢から（上へ height、後ろへ back）。
-//   俯瞰：  南（+z）から仰角 SCENE.overview.elevationDeg。位置は fitOverview が、輪の点（setOverviewSubject）を
+//   俯瞰：  南（+z）から仰角 SCENE.overview.elevationDeg。位置は fitOverview が、螺旋の点（setOverviewSubject）を
 //           HUD を避けた範囲（SCENE.overview.frame）に収めるように決める。点が無いときは
 //           target から距離 radius / sin( min( 縦画角, 横画角 ) / 2 )。
 //   切り替え：MOTION.viewTransitionMs（ease-in-out）で位置・向き・画角・fog を補間する。
@@ -90,7 +90,7 @@ let lastFit = null;
 
 /**
  * 俯瞰のカメラと target の距離。
- * 輪の点から構図を決めたあと（view.setOverviewSubject のあと）は、その距離（カメラから輪の中心の奥行き）。
+ * 螺旋の点から構図を決めたあと（view.setOverviewSubject のあと）は、その距離（カメラから螺旋の中心の奥行き）。
  * それまでは、縦横の狭い方の画角に、半径 radius の球が収まる距離。
  */
 export function overviewDistance( aspect ) {
@@ -105,12 +105,14 @@ export function overviewDistance( aspect ) {
 /**
  * 一人称のカメラを置くレール上の点の progress：progress からレールに沿って back（3D の距離）だけ後ろ。
  * 後ろの点が 0 より前になるときは 0 で止める。
- * @param curve getPointAt と seg.totalLength を持つ曲線（TrackCurve）
+ * @param curve getPointAt と lengthPerProgressAt（その位置での t あたりの水平距離）を持つ曲線（TrackCurve）。
+ *        lengthPerProgressAt を持たない曲線では、t あたりの距離を 1 とみなす
  */
 export function rideCameraProgress( curve, progress, back = SCENE.ride.back ) {
 
 	if ( progress <= 0 ) return 0;
-	const length = curve.seg?.totalLength || 1;
+	progress = Math.min( progress, 1 );
+	const length = typeof curve.lengthPerProgressAt === 'function' ? curve.lengthPerProgressAt( progress ) : 1;
 	const p = curve.getPointAt( progress );
 	const px = p.x, py = p.y, pz = p.z;
 	const chord = ( s ) => {
@@ -120,8 +122,9 @@ export function rideCameraProgress( curve, progress, back = SCENE.ride.back ) {
 
 	};
 
-	// 水平に back だけ戻った点（3D では back 以上離れている）と進行位置の間で、3D の距離が back になる点を二分法で探す
-	let lo = Math.max( 0, progress - back / length ); // 遠い側
+	// 水平に back より少し多く戻った点（3D では back 以上離れている）と進行位置の間で、3D の距離が back になる点を二分法で探す。
+	// t あたりの距離は進行位置での値（螺旋では位置によって変わるが、back の範囲ではほぼ一定）。弦は弧より短いので 1 割多く戻る
+	let lo = Math.max( 0, progress - 1.1 * back / length ); // 遠い側
 	let hi = progress; // 近い側
 	if ( chord( lo ) <= back ) return lo; // 始点の近く：0 で止める
 	for ( let i = 0; i < 24; i ++ ) {
@@ -184,7 +187,7 @@ export function overviewFrame( mode, kind ) {
 export function fitOverview( points, { width, height, fovDeg, elevationDeg, insets, maxWidth = 1, maxHeight = 1, iterations = 40 } ) {
 
 	const e = elevationDeg * DEG;
-	// 前（カメラ → 輪）、右、上
+	// 前（カメラ → 螺旋）、右、上
 	const f = { x: 0, y: - Math.sin( e ), z: - Math.cos( e ) };
 	const r = { x: 1, y: 0, z: 0 };
 	const u = { x: 0, y: Math.cos( e ), z: - Math.sin( e ) };
@@ -363,7 +366,7 @@ export function createView( { scene, camera, train, events = null, curve = null,
 		pitch.setFromEuler( pitchEuler.set( ( aspect < 1 ? SCENE.ride.pitchDegPortrait : SCENE.ride.pitchDeg ) * DEG, 0, 0 ) );
 		rideQuaternion.copy( train.quaternion ).multiply( pitch );
 
-		// 俯瞰：輪の点があれば、HUD を避けた範囲に収める構図（画面の大きさが変わったときだけ解き直す）
+		// 俯瞰：螺旋の点があれば、HUD を避けた範囲に収める構図（画面の大きさが変わったときだけ解き直す）
 		let distance;
 		const fit = currentFit( aspect );
 		if ( fit ) {
@@ -446,13 +449,13 @@ export function createView( { scene, camera, train, events = null, curve = null,
 			return blend;
 
 		},
-		/** 俯瞰のカメラから輪の中心までの距離（いまの画面の大きさでの値）。 */
+		/** 俯瞰のカメラから螺旋の中心までの距離（いまの画面の大きさでの値）。 */
 		get overviewDistance() {
 
 			return overviewDistance( camera.aspect );
 
 		},
-		/** 俯瞰の構図（fitOverview の結果。輪の点が無いときは null）。 */
+		/** 俯瞰の構図（fitOverview の結果。螺旋の点が無いときは null）。 */
 		get overviewFit() {
 
 			return currentFit( camera.aspect );

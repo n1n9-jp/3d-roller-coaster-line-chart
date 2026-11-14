@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { readJson, loadFixtures } from './helpers.js';
 import { buildDataset } from '../assets/js/data.js';
-import { indexToProgress } from '../assets/js/loop.js';
+import { TrackCurve } from '../assets/js/track.js';
 import { createEvents } from '../assets/js/events.js';
-import { ANNOT, LOOP } from '../assets/js/config.js';
+import { ANNOT, maxProgressPerFrame } from '../assets/js/config.js';
 import {
 	TITLE_MAX,
 	NOTE_MAX,
@@ -126,7 +126,13 @@ function sampleDataset() {
 
 }
 
-const toProgress = ( dataset ) => ( u ) => indexToProgress( u, dataset.raw.length, LOOP.linkFraction );
+// 系列上の位置 → progress（螺旋の曲線の indexToProgress。main.js と同じく移動平均後の系列で作る。日付は同じ）
+const toProgress = ( dataset ) => {
+
+	const curve = new TrackCurve( dataset.smoothed );
+	return ( u ) => curve.indexToProgress( u );
+
+};
 
 test( 'resolveEvents：index と progress を付け、範囲外を除き、progress の昇順で返す', () => {
 
@@ -147,7 +153,7 @@ test( 'resolveEvents：index と progress を付け、範囲外を除き、progr
 	assert.equal( resolved[ 0 ].index, 0 );
 	assert.equal( resolved[ 0 ].progress, 0 );
 	assert.equal( resolved[ 2 ].index, dataset.raw.length - 1 );
-	assert.ok( Math.abs( resolved[ 2 ].progress - ( 1 - LOOP.linkFraction ) ) < 1e-12 );
+	assert.ok( Math.abs( resolved[ 2 ].progress - 1 ) < 1e-12 );
 	assert.ok( resolved[ 1 ].progress > 0 && resolved[ 1 ].progress < resolved[ 2 ].progress );
 	for ( const e of resolved ) assert.ok( [ 'date', 'index', 'progress', 'title', 'note', 'close' ].every( ( k ) => k in e ) );
 
@@ -163,7 +169,7 @@ test( 'resolveEvents：実データの範囲では、すべての出来事に位
 
 		const week = dataset.raw[ Math.floor( e.index ) ].date;
 		assert.ok( week <= e.date, `${e.date}：index ${e.index} は ${week} の週` );
-		assert.ok( e.progress >= 0 && e.progress <= 1 - LOOP.linkFraction );
+		assert.ok( e.progress >= 0 && e.progress <= 1 );
 
 	}
 
@@ -446,7 +452,7 @@ test( 'scheduler：どの出来事も、通過から maxWaitMs 以内に出て�
 	const dataset = sampleDataset();
 	const list = resolveEvents( dataset, toProgress( dataset ), events ).map( ( e ) => ( { name: e.date, progress: e.progress } ) );
 
-	for ( const speed of [ 3.6e-6, 6e-6, 1e-5, 1.8e-5 ] ) { // SPEED_MIN 〜 SPEED_MAX（progress / ms）
+	for ( const speed of [ 3.6e-6, 6e-6, 1e-5, 1.8e-5 ] ) { // 37 年分のデータでの速さの下限（外側、約 4e-6）〜上限（内側、約 1.7e-5）を含む（progress / ms）
 
 		const scheduler = createCaptionScheduler( { events: list, ...options } );
 		const passedAt = new Map();
@@ -455,7 +461,7 @@ test( 'scheduler：どの出来事も、通過から maxWaitMs 以内に出て�
 		let time = 0;
 		let progress = 0;
 		scheduler.update( { timeMs: 0, progress: 0 } );
-		while ( progress < 0.97 ) {
+		while ( progress < 1 ) {
 
 			time += 16;
 			const before = progress;
@@ -485,7 +491,7 @@ test( 'scheduler：どの出来事も、通過から maxWaitMs 以内に出て�
 
 		// 出なかった出来事は、捨てた（dropped）か、まだ待っている（pending）
 		assert.equal( list.length - shownAt.size, scheduler.dropped + scheduler.pending, `speed ${speed}` );
-		// ゆっくり（SPEED_MIN）のときは、すべて出る
+		// ゆっくりのときは、すべて出る
 		if ( speed === 3.6e-6 ) assert.equal( shownAt.size, list.length );
 
 	}
@@ -497,6 +503,8 @@ test( 'ANNOT.caption：仕様の値（表示 6000ms、reduced は 8000ms、入�
 	assert.equal( ANNOT.caption.showMs, 6000 );
 	assert.equal( ANNOT.caption.showMsReduced, 8000 );
 	assert.equal( ANNOT.caption.minShowMs, 3000 );
-	assert.ok( ANNOT.caption.maxStepProgress > 0.0018, '1 フレームで進みうる量より大きい' );
+	// 1 フレームで進みうる量（想定する最も短い 30 年分のデータ）の 2 倍。長いデータほど 1 フレームの進みは小さい
+	assert.ok( Math.abs( ANNOT.caption.maxStepProgress - 2 * maxProgressPerFrame( 30 ) ) < 1e-15 );
+	assert.ok( ANNOT.caption.maxStepProgress > maxProgressPerFrame( 36 ) && ANNOT.caption.maxStepProgress > maxProgressPerFrame( 56 ), '1 フレームで進みうる量より大きい' );
 
 } );

@@ -9,7 +9,7 @@ import { Color, DynamicDrawUsage } from '../assets/js/three.core.js';
 import {
 	PART, RAIL_STATE,
 	segmentStartIndex, railVertexCount, riddenSegmentCount,
-	buildRailColorMap, buildLinkMask, createRailPainter, createRailColors
+	buildRailColorMap, createRailPainter, createRailColors
 } from '../assets/js/rail-colors.js';
 import { loadFixtures } from './helpers.js';
 
@@ -24,21 +24,18 @@ register( 'data:text/javascript,' + encodeURIComponent( `
 ` ) );
 const { RollerCoasterGeometry } = await import( '../assets/jsm/misc/RollerCoaster.js' );
 
-const { nikkei, stations } = loadFixtures();
+const { nikkei } = loadFixtures();
 const dataset = buildDataset( nikkei );
 
 const D = 40; // 小さな分割数（偶数）
 const D_ODD = 41;
 
-function makeCurve( linkFraction = 0 ) {
+const track = new TrackCurve( dataset.smoothed );
 
-	return new TrackCurve( stations, dataset.smoothed, { linkFraction } );
+// レールは、弧長で引ける曲線（track.arcCurve）で作る（rail.js と同じ）。curve は区間の位置を確かめるための arcCurve
+function makeGeometry( divisions ) {
 
-}
-
-function makeGeometry( divisions, linkFraction = 0 ) {
-
-	const curve = makeCurve( linkFraction );
+	const curve = track.arcCurve;
 	return { curve, geometry: new RollerCoasterGeometry( curve, divisions ) };
 
 }
@@ -52,8 +49,7 @@ const lin = ( hex ) => {
 
 const COLOR = {
 	[ RAIL_STATE.AHEAD ]: [ lin( PALETTE.railAheadYellow ), lin( PALETTE.railAheadWhite ) ],
-	[ RAIL_STATE.RIDDEN ]: [ lin( PALETTE.railRiddenYellow ), lin( PALETTE.railRiddenWhite ) ],
-	[ RAIL_STATE.LINK ]: [ lin( PALETTE.railDeadheadYellow ), lin( PALETTE.railDeadheadWhite ) ]
+	[ RAIL_STATE.RIDDEN ]: [ lin( PALETTE.railRiddenYellow ), lin( PALETTE.railRiddenWhite ) ]
 };
 
 function colorAt( geometry, vi ) {
@@ -83,7 +79,7 @@ function assertColors( geometry, map, stateOf, label = '' ) {
 
 }
 
-test( '頂点数：102·D + 12·floor(D/2)（偶数・奇数の分割数、本番の 1500）', () => {
+test( '頂点数：102·D + 12·floor(D/2)（偶数・奇数の分割数、56 年分の約 6100）', () => {
 
 	for ( const divisions of [ D, D_ODD ] ) {
 
@@ -94,6 +90,7 @@ test( '頂点数：102·D + 12·floor(D/2)（偶数・奇数の分割数、本�
 	}
 
 	assert.equal( railVertexCount( 1500 ), 162000 );
+	assert.equal( railVertexCount( 6124 ), 661392 );
 
 } );
 
@@ -113,11 +110,13 @@ test( '区間の開始位置の式：start(s) = 102·s + 12·floor(s/2)。偶数
 
 test( '頂点 → 区間と部位：同梱ファイルの元の色（枕木・中央の管 = 黄、レール = 白）と、位置の連続性に一致する', () => {
 
-	const { geometry } = makeGeometry( D );
-	const map = buildRailColorMap( geometry, D );
+	// 区間の長さが本番に近い分割数（全長 約 890 / 3000 ≒ 0.3）。区間の中でレールがほぼまっすぐになる
+	const DD = 3000;
+	const { geometry } = makeGeometry( DD );
+	const map = buildRailColorMap( geometry, DD );
 	const pos = geometry.getAttribute( 'position' );
 
-	const counts = Array.from( { length: D }, () => [ 0, 0, 0, 0 ] );
+	const counts = Array.from( { length: DD }, () => [ 0, 0, 0, 0 ] );
 	for ( let vi = 0; vi < map.vertexCount; vi ++ ) {
 
 		const s = map.segmentOf( vi );
@@ -132,7 +131,7 @@ test( '頂点 → 区間と部位：同梱ファイルの元の色（枕木・�
 
 	}
 
-	for ( let s = 0; s < D; s ++ ) {
+	for ( let s = 0; s < DD; s ++ ) {
 
 		assert.deepEqual( counts[ s ], [ s % 2 === 1 ? 12 : 0, 30, 36, 36 ], `区間 ${s} の部位ごとの頂点数` );
 		// 構造部（枕木 + 中央の管）が先、レールが後ろ
@@ -140,14 +139,14 @@ test( '頂点 → 区間と部位：同梱ファイルの元の色（枕木・�
 
 	}
 
-	// 区間 s の頂点は、曲線上の t = s/D 〜 (s+1)/D の点の近く（レールの断面は 0.3 以内）にある
-	const { curve } = makeGeometry( D );
+	// 区間 s の頂点は、曲線上の弧長の割合 s/D 〜 (s+1)/D の点の近く（レールの断面は 0.3 以内）にある
+	const curve = track.arcCurve;
 	const p = { x: 0, y: 0, z: 0 };
-	for ( let vi = 0; vi < map.vertexCount; vi += 7 ) {
+	for ( let vi = 0; vi < map.vertexCount; vi += 37 ) {
 
 		const s = map.segmentOf( vi );
 		p.x = pos.getX( vi ); p.y = pos.getY( vi ); p.z = pos.getZ( vi );
-		const a = curve.getPointAt( s / D ).clone(), b = curve.getPointAt( ( s + 1 ) / D ).clone(); // 戻り値は使い回しなので複製
+		const a = curve.getPointAt( s / DD ).clone(), b = curve.getPointAt( ( s + 1 ) / DD ).clone(); // 戻り値は使い回しなので複製
 		const near = Math.min(
 			Math.hypot( p.x - a.x, p.y - a.y, p.z - a.z ),
 			Math.hypot( p.x - b.x, p.y - b.y, p.z - b.z )
@@ -183,13 +182,13 @@ test( '頂点数が合わないジオメトリでは例外を投げる', () => {
 
 } );
 
-test( '走行済みの区間数：(s+1)/D <= progress の区間', () => {
+test( '走行済みの区間数：(s+1)/D <= 弧長の割合 の区間', () => {
 
 	assert.equal( riddenSegmentCount( 0, D ), 0 );
 	assert.equal( riddenSegmentCount( 0.5 / D, D ), 0 );
 	assert.equal( riddenSegmentCount( 1 / D, D ), 1 );
 	assert.equal( riddenSegmentCount( 0.5, D ), D / 2 );
-	assert.equal( riddenSegmentCount( 1, D ), D ); // 一周して progress = 1 で止まったとき、全部が走行済み
+	assert.equal( riddenSegmentCount( 1, D ), D ); // 最後まで走って止まったとき、全部が走行済み
 	assert.equal( riddenSegmentCount( 1.2, D ), D );
 	assert.equal( riddenSegmentCount( - 0.1, D ), 0 );
 	assert.equal( riddenSegmentCount( 0.3, 10 ), 3 ); // 0.3 * 10 の丸め誤差（2.9999…）で 2 にならない
@@ -291,57 +290,33 @@ test( 'update：進む・戻る・最初から。書き換えるのは差分の�
 
 } );
 
-test( '連絡区間：curve.isLink の区間は暗い灰青で、走行済みにならない（linkFraction 0.03 / 0）', () => {
-
-	const divisions = 200; // 0.03 × 200 = 6 区間
-	const { curve, geometry } = makeGeometry( divisions, 0.03 );
-	const painter = createRailPainter( geometry, divisions, { isLink: ( t ) => curve.isLink( t ) } );
-	const linkStart = divisions - 6;
-	assert.deepEqual( Array.from( painter.linkMask ).map( ( v, s ) => v ? s : -1 ).filter( ( s ) => s >= 0 ), [ 194, 195, 196, 197, 198, 199 ] );
-
-	const expected = ( ridden ) => ( s ) => s >= linkStart ? RAIL_STATE.LINK : ( s < ridden ? RAIL_STATE.RIDDEN : RAIL_STATE.AHEAD );
-
-	painter.paintAll( 0 );
-	assertColors( geometry, painter.map, expected( 0 ), '初回' );
-
-	// データ区間の終わり（ride はここで止まる）
-	painter.update( curve.dataEnd );
-	assertColors( geometry, painter.map, expected( linkStart ), 'dataEnd' );
-
-	// 連絡区間へ入っても（デバッグで progress を 1 にしても）連絡区間の色のまま
-	painter.update( 1 );
-	assertColors( geometry, painter.map, expected( divisions ), 'progress 1' );
-
-	// 戻る
-	painter.update( 0.5 );
-	assertColors( geometry, painter.map, expected( 100 ), '戻る' );
-
-	// 連絡区間なし（linkFraction 0）では印が付かない
-	const plain = makeCurve( 0 );
-	assert.equal( buildLinkMask( divisions, ( t ) => plain.isLink( t ) ).reduce( ( a, b ) => a + b, 0 ), 0 );
-
-} );
-
 test( 'createRailColors：最初の描画より前に DynamicDrawUsage を設定し、ride の位置まで塗る。update と onReset', () => {
 
 	const divisions = D;
-	const curve = makeCurve( 0 );
-	const geometry = new RollerCoasterGeometry( curve, divisions );
+	const curve = track;
+	const geometry = new RollerCoasterGeometry( curve.arcCurve, divisions );
 	const rail = { name: 'rail', geometry, userData: { divisions } };
 	const ride = { progress: 0.5 };
 	const scene = { getObjectByName: ( name ) => name === 'rail' ? rail : undefined };
 	const module = createRailColors( { scene, curve, ride } );
 	const attr = geometry.getAttribute( 'color' );
 	const map = buildRailColorMap( geometry, divisions );
+	// 進行位置（時間に比例）は、弧長の割合に直してから区間を決める。内側の周が短いので、弧長の割合は進行位置より小さい
+	const count = ( progress ) => Math.floor( curve.arcFractionAt( progress ) * D );
+	assert.ok( count( 0.5 ) < D / 2 );
 
 	assert.equal( attr.usage, DynamicDrawUsage );
-	assertColors( geometry, map, ( s ) => s < D / 2 ? RAIL_STATE.RIDDEN : RAIL_STATE.AHEAD, '生成時' );
+	assertColors( geometry, map, ( s ) => s < count( 0.5 ) ? RAIL_STATE.RIDDEN : RAIL_STATE.AHEAD, '生成時' );
 
 	module.update( { progress: 0.5 } );
 	attr.clearUpdateRanges();
 	module.update( { progress: 0.75 } );
-	assertColors( geometry, map, ( s ) => s < 30 ? RAIL_STATE.RIDDEN : RAIL_STATE.AHEAD, 'update' );
-	assert.equal( rail.userData.colorStats.vertices, segmentStartIndex( 30 ) - segmentStartIndex( 20 ) );
+	assertColors( geometry, map, ( s ) => s < count( 0.75 ) ? RAIL_STATE.RIDDEN : RAIL_STATE.AHEAD, 'update' );
+	assert.equal( rail.userData.colorStats.vertices, segmentStartIndex( count( 0.75 ) ) - segmentStartIndex( count( 0.5 ) ) );
+
+	// 最後まで走ると全部
+	module.update( { progress: 1 } );
+	assertColors( geometry, map, () => RAIL_STATE.RIDDEN, '最後' );
 
 	ride.progress = 0;
 	module.onReset();

@@ -5,17 +5,17 @@
 //   面積グラフを立体にしたような見た目にして、俯瞰で「株価の折れ線を立体で見ている」ことを伝える。
 //   俯瞰ではレールが細い線にしか見えないので、レールの上端に床と平行な幅のある帯（topBand）を重ねる。
 //
-// ■ ジオメトリ（分割数 D。レールと同じ RAIL_DIVISIONS を基準にする）
-//   区間 s（0..D-1）は t ∈ [ s/D, (s+1)/D ]。区間ごとに 4 頂点を持ち（隣の区間と頂点を共有しない）、2 三角形を張る。
+// ■ ジオメトリ（分割数 D。レールと同じ分割数 rail.userData.divisions）
+//   曲線は弧長（水平）で引ける curve.arcCurve を渡す。区間 s（0..D-1）は弧長の割合 f ∈ [ s/D, (s+1)/D ]。区間ごとに 4 頂点を持ち（隣の区間と頂点を共有しない）、2 三角形を張る。
 //     カーテン：頂点 4s + 0 = 上端( t0 )、+1 = 下端( t0 )、+2 = 上端( t1 )、+3 = 下端( t1 )
-//               上端 = curve.getPointAt( t )、下端 = 同じ x, z で y = 0（床）
+//               上端 = arcCurve.getPointAt( f )、下端 = 同じ x, z で y = 0（床）
 //     帯：      頂点 4s + 0 = 左( t0 )、+1 = 右( t0 )、+2 = 左( t1 )、+3 = 右( t1 )
 //               上端の点から、水平の法線方向へ ±width/2。高さは上端 + lift
 //   頂点カラーは RGBA（itemSize 4）。カーテンは上端が濃く、床へ向かって薄くなる（alpha のグラデーション）。
 //
 // ■ 色の更新（rail-colors.js の createRailPainter と同じ考え方）
-//   走行済み = ( s + 1 ) / D <= progress の区間。毎フレーム、前回から変わった区間の頂点だけを書き換え、
-//   addUpdateRange で転送範囲を登録する。連絡区間（区間の中点で curve.isLink）は走行済みにしない。
+//   走行済み = ( s + 1 ) / D <= f の区間（f は進行位置を弧長の割合に直したもの：curve.arcFractionAt( progress )）。
+//   毎フレーム、前回から変わった区間の頂点だけを書き換え、addUpdateRange で転送範囲を登録する。
 //
 // ■ 描画
 //   カーテンは AdditiveBlending・depthWrite: false・DoubleSide。加算なので、面どうしが重なっても描画順で色が変わらない。
@@ -24,7 +24,7 @@
 //   帯は俯瞰のときだけ。視点切り替えの補間（view.blend）に合わせてフェードする。
 //
 // ■ 俯瞰の構図
-//   ここで曲線を標本化した点（レールの上端と床）を view.setOverviewSubject に渡し、view.js が HUD を避けた範囲に輪を収める。
+//   ここで曲線を標本化した点（レールの上端と床）を view.setOverviewSubject に渡し、view.js が HUD を避けた範囲に螺旋を収める。
 //
 // ジオメトリと塗り分けは three.js のレンダラに依存しない（three.core.js だけ）ので、Node のテストからも読める。
 
@@ -32,8 +32,8 @@ import {
 	BufferGeometry, BufferAttribute, Color, DynamicDrawUsage, Mesh, MeshBasicMaterial,
 	DoubleSide, AdditiveBlending, NormalBlending
 } from './three.core.js';
-import { PALETTE, RAIL, RAIL_DIVISIONS } from './config.js';
-import { RAIL_STATE, riddenSegmentCount, buildLinkMask } from './rail-colors.js';
+import { PALETTE, RAIL, TRACK_SAMPLING, divisionsFor } from './config.js';
+import { RAIL_STATE, riddenSegmentCount } from './rail-colors.js';
 
 export const VERTS_PER_SEGMENT = 4;
 export const TRIANGLES_PER_SEGMENT = 2;
@@ -61,7 +61,7 @@ function buildIndex( divisions ) {
 
 }
 
-/** 列 i（0..D）の t における曲線の点を { x, y, z } で返す（getPointAt は共有のベクトルを返すので値をコピーする）。 */
+/** 列 i（0..D）の i / D における曲線の点を { x, y, z } で返す（getPointAt は共有のベクトルを返すので値をコピーする）。 */
 function sampleColumns( curve, divisions ) {
 
 	const xs = new Float64Array( divisions + 1 );
@@ -80,9 +80,10 @@ function sampleColumns( curve, divisions ) {
 
 /**
  * カーテンのジオメトリ（position と RGBA の color、index）。色は paint で塗る（作った直後は 0）。
+ * curve は等間隔に標本化する曲線（弧長で引ける curve.arcCurve）。
  * userData：{ divisions, role }。role[ v ] は 0 = 上端、1 = 下端。
  */
-export function createCurtainGeometry( curve, divisions = RAIL_DIVISIONS ) {
+export function createCurtainGeometry( curve, divisions ) {
 
 	const { xs, ys, zs } = sampleColumns( curve, divisions );
 	const count = VERTS_PER_SEGMENT * divisions;
@@ -118,14 +119,14 @@ export function createCurtainGeometry( curve, divisions = RAIL_DIVISIONS ) {
  * レール上端の帯のジオメトリ（床と平行、幅 width、高さは上端 + lift）。
  * 法線は水平の接線（curve.getTangentAt）を 90° 回したもの。区間の両端で隣の区間と同じ点を使うので、帯は切れ目なくつながる。
  */
-export function createTopBandGeometry( curve, divisions = RAIL_DIVISIONS, { width = 2, lift = 0.15 } = {} ) {
+export function createTopBandGeometry( curve, divisions, { width = 2, lift = 0.15 } = {} ) {
 
 	const { xs, ys, zs } = sampleColumns( curve, divisions );
 	const nx = new Float64Array( divisions + 1 );
 	const nz = new Float64Array( divisions + 1 );
 	for ( let i = 0; i <= divisions; i ++ ) {
 
-		const tg = curve.getTangentAt( ( i / divisions ) % 1 );
+		const tg = curve.getTangentAt( i / divisions );
 		const len = Math.hypot( tg.x, tg.z ) || 1;
 		nx[ i ] = - tg.z / len; nz[ i ] = tg.x / len;
 
@@ -171,14 +172,10 @@ const linear = ( hex ) => {
 /** カーテンの塗り（[ 状態 ] = { rgb, alpha: [ 上端, 下端 ] }）。 */
 export function curtainPaletteFrom( palette = PALETTE, options = RAIL.curtain ) {
 
-	const { topAlpha, bottomAlpha, linkAlphaFactor } = options;
+	const { topAlpha, bottomAlpha } = options;
 	const colors = [];
 	colors[ RAIL_STATE.AHEAD ] = { rgb: linear( palette.contour ), alpha: [ topAlpha, bottomAlpha ] };
 	colors[ RAIL_STATE.RIDDEN ] = { rgb: linear( palette.railRiddenYellow ), alpha: [ topAlpha, bottomAlpha ] };
-	colors[ RAIL_STATE.LINK ] = {
-		rgb: linear( palette.railDeadheadYellow ),
-		alpha: [ topAlpha * linkAlphaFactor, bottomAlpha * linkAlphaFactor ]
-	};
 	return colors;
 
 }
@@ -189,32 +186,30 @@ export function topBandPaletteFrom( palette = PALETTE ) {
 	const colors = [];
 	colors[ RAIL_STATE.AHEAD ] = { rgb: linear( palette.railAheadWhite ), alpha: [ 1, 1 ] };
 	colors[ RAIL_STATE.RIDDEN ] = { rgb: linear( palette.railRiddenWhite ), alpha: [ 1, 1 ] };
-	colors[ RAIL_STATE.LINK ] = { rgb: linear( palette.railDeadheadWhite ), alpha: [ 1, 1 ] };
 	return colors;
 
 }
 
-/** 区間 s の状態（連絡区間が先。走行済みでも連絡区間の色のまま）。 */
-function stateOf( s, riddenCount, linkMask ) {
+/** 区間 s の状態。 */
+function stateOf( s, riddenCount ) {
 
-	if ( linkMask[ s ] ) return RAIL_STATE.LINK;
 	return s < riddenCount ? RAIL_STATE.RIDDEN : RAIL_STATE.AHEAD;
 
 }
 
 /**
  * カーテン（または帯）の頂点カラーの塗り分け。
- *   paintAll( progress )  全体を塗る（最初と「最初から」）
- *   update( progress )    前回から変わった区間だけ塗る。戻り値は { segments, vertices }
+ *   paintAll( fraction )  全体を塗る（最初と「最初から」）
+ *   update( fraction )    前回から変わった区間だけ塗る。戻り値は { segments, vertices }
  *   riddenCount           いま走行済みの区間数
+ * fraction は弧長の割合（0..1。curve.arcFractionAt( progress )）。
  *
  * @param geometry createCurtainGeometry / createTopBandGeometry の戻り値
- * @param options  { isLink?: ( t ) => boolean, colors: curtainPaletteFrom() などの戻り値 }
+ * @param options  { colors: curtainPaletteFrom() などの戻り値 }
  */
-export function createCurtainPainter( geometry, { isLink, colors } ) {
+export function createCurtainPainter( geometry, { colors } ) {
 
 	const { divisions, role } = geometry.userData;
-	const linkMask = buildLinkMask( divisions, isLink );
 	const attribute = geometry.getAttribute( 'color' );
 	const array = attribute.array;
 
@@ -225,7 +220,7 @@ export function createCurtainPainter( geometry, { isLink, colors } ) {
 
 		for ( let s = s0; s < s1; s ++ ) {
 
-			const { rgb, alpha } = colors[ stateOf( s, count, linkMask ) ];
+			const { rgb, alpha } = colors[ stateOf( s, count ) ];
 			for ( let v = VERTS_PER_SEGMENT * s, e = v + VERTS_PER_SEGMENT; v < e; v ++ ) {
 
 				const o = v * 4;
@@ -242,9 +237,9 @@ export function createCurtainPainter( geometry, { isLink, colors } ) {
 
 	}
 
-	function paintAll( progress = 0 ) {
+	function paintAll( fraction = 0 ) {
 
-		riddenCount = riddenSegmentCount( progress, divisions );
+		riddenCount = riddenSegmentCount( fraction, divisions );
 		paintRange( 0, divisions, riddenCount );
 		attribute.clearUpdateRanges(); // 範囲なし = 全体を転送
 		attribute.needsUpdate = true;
@@ -253,9 +248,9 @@ export function createCurtainPainter( geometry, { isLink, colors } ) {
 
 	}
 
-	function update( progress ) {
+	function update( fraction ) {
 
-		const next = riddenSegmentCount( progress, divisions );
+		const next = riddenSegmentCount( fraction, divisions );
 		const prev = riddenCount;
 		let result = { segments: 0, vertices: 0 };
 
@@ -276,7 +271,6 @@ export function createCurtainPainter( geometry, { isLink, colors } ) {
 	}
 
 	return {
-		linkMask,
 		attribute,
 		paintAll,
 		update,
@@ -289,11 +283,11 @@ export function createCurtainPainter( geometry, { isLink, colors } ) {
 
 }
 
-/** 俯瞰の構図に使う点：曲線を count 等分した上端（レールの高さ）と床の点。 */
-export function overviewSubjectPoints( curve, count = 240 ) {
+/** 俯瞰の構図に使う点：曲線（弧長で引ける curve.arcCurve）を count 等分した上端（レールの高さ）と床の点。終点も含める。 */
+export function overviewSubjectPoints( curve, count = 480 ) {
 
 	const points = [];
-	for ( let i = 0; i < count; i ++ ) {
+	for ( let i = 0; i <= count; i ++ ) {
 
 		const p = curve.getPointAt( i / count );
 		points.push( { x: p.x, y: p.y, z: p.z }, { x: p.x, y: 0, z: p.z } );
@@ -316,11 +310,13 @@ export function createCurtain( ctx ) {
 	const { scene, curve, ride, view } = ctx;
 	const C = RAIL.curtain;
 	const B = RAIL.topBand;
-	const divisions = RAIL_DIVISIONS;
-	const isLink = ( t ) => curve.isLink( t );
+	const arc = curve.arcCurve;
+	// レールと同じ分割数（rail.js が先に作る。無いときは全長から）
+	const divisions = scene.getObjectByName( 'rail' )?.userData.divisions ?? divisionsFor( curve.totalLength, TRACK_SAMPLING.railSegment );
+	const fractionOf = ( progress ) => curve.arcFractionAt( progress );
 
 	// カーテン
-	const curtainGeometry = createCurtainGeometry( curve, divisions );
+	const curtainGeometry = createCurtainGeometry( arc, divisions );
 	curtainGeometry.getAttribute( 'color' ).setUsage( DynamicDrawUsage );
 	const curtainMaterial = new MeshBasicMaterial( {
 		vertexColors: true,
@@ -333,11 +329,11 @@ export function createCurtain( ctx ) {
 	const curtain = new Mesh( curtainGeometry, curtainMaterial );
 	curtain.name = 'curtain';
 	curtain.renderOrder = C.renderOrder;
-	curtain.frustumCulled = false; // 一人称で輪の内側にいても、境界球の判定で消えないように
+	curtain.frustumCulled = false; // 一人称で螺旋の内側にいても、境界球の判定で消えないように
 	scene.add( curtain );
 
 	// 俯瞰のときだけの上端の帯
-	const bandGeometry = createTopBandGeometry( curve, divisions, { width: B.width, lift: B.lift } );
+	const bandGeometry = createTopBandGeometry( arc, divisions, { width: B.width, lift: B.lift } );
 	bandGeometry.getAttribute( 'color' ).setUsage( DynamicDrawUsage );
 	const bandMaterial = new MeshBasicMaterial( {
 		vertexColors: true,
@@ -353,13 +349,13 @@ export function createCurtain( ctx ) {
 	band.visible = false;
 	scene.add( band );
 
-	const curtainPainter = createCurtainPainter( curtainGeometry, { isLink, colors: curtainPaletteFrom() } );
-	const bandPainter = createCurtainPainter( bandGeometry, { isLink, colors: topBandPaletteFrom() } );
-	curtainPainter.paintAll( ride.progress );
-	bandPainter.paintAll( ride.progress );
+	const curtainPainter = createCurtainPainter( curtainGeometry, { colors: curtainPaletteFrom() } );
+	const bandPainter = createCurtainPainter( bandGeometry, { colors: topBandPaletteFrom() } );
+	curtainPainter.paintAll( fractionOf( ride.progress ) );
+	bandPainter.paintAll( fractionOf( ride.progress ) );
 
-	// 俯瞰の構図：輪の点を view に渡す（view.js が HUD を避けた範囲に収める）
-	view.setOverviewSubject?.( overviewSubjectPoints( curve ) );
+	// 俯瞰の構図：螺旋の点を view に渡す（view.js が HUD を避けた範囲に収める）
+	view.setOverviewSubject?.( overviewSubjectPoints( arc ) );
 
 	// 計測用（デバッグ）：直近に書き換えたフレームの頂点数と所要時間、その最大。三角形の数
 	const stats = {
@@ -389,8 +385,9 @@ export function createCurtain( ctx ) {
 		update( state ) {
 
 			const t0 = performance.now();
-			const a = curtainPainter.update( state.progress );
-			const b = bandPainter.update( state.progress );
+			const f = fractionOf( state.progress );
+			const a = curtainPainter.update( f );
+			const b = bandPainter.update( f );
 			const vertices = a.vertices + b.vertices;
 			if ( vertices > 0 ) {
 
@@ -411,8 +408,8 @@ export function createCurtain( ctx ) {
 		},
 		onReset() {
 
-			curtainPainter.paintAll( ride.progress );
-			bandPainter.paintAll( ride.progress );
+			curtainPainter.paintAll( fractionOf( ride.progress ) );
+			bandPainter.paintAll( fractionOf( ride.progress ) );
 
 		},
 		dispose() {

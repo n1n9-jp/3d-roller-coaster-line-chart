@@ -1,5 +1,5 @@
-// ミニグラフと路線図の、描画に依存しない計算（Node のテストからもそのまま読める）。
-// 軸の上限と目盛り、ラベルの間引き、年の目盛りの位置、現在位置に最も近い駅。
+// ミニグラフの、描画に依存しない計算（Node のテストからもそのまま読める）。
+// 軸の上限と目盛り、ラベルの間引き、年の目盛りの位置。
 
 import { dateToIndex } from '../data.js';
 
@@ -87,29 +87,6 @@ export function yearTicks( dataset, everyYears = 10 ) {
 	}
 
 	return ticks;
-
-}
-
-/** 現在位置（x, z）に最も近い駅の番号。points は { x, z } の配列。空なら -1。 */
-export function nearestStationIndex( points, x, z ) {
-
-	let best = - 1;
-	let bestDistance = Infinity;
-	for ( let i = 0; i < points.length; i ++ ) {
-
-		const dx = points[ i ].x - x;
-		const dz = points[ i ].z - z;
-		const d = dx * dx + dz * dz;
-		if ( d < bestDistance ) {
-
-			bestDistance = d;
-			best = i;
-
-		}
-
-	}
-
-	return best;
 
 }
 
