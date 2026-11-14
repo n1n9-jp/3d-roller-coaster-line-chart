@@ -1,4 +1,4 @@
-// イベントの 3D の目印（アーチ・ひし形・縦線・年ラベル）。機能モジュール（createMarkers( ctx )）。担当：イベント注釈。
+// イベントの 3D の目印（アーチ・ひし形・縦線・年ラベル）。機能モジュール（createMarkers( ctx )）。
 //
 // 選んだデータの出来事（data/events/<id>.json）だけを置く。ファイルがなければ何も置かない。
 // 出来事の位置は events-data.js が計算する（progress = curve.dateToProgress( date ））。ここは 3D の部品を置くだけ。
@@ -16,7 +16,7 @@
 // 大きさ
 //   一人称：ワールド座標の固定値（config.js の ANNOT.marker）。アーチの半径はカメラが通る高さ
 //     （レール中心線の 0〜2.6 上、勾配が急なほど高い）を内側に収められる値にしてある。
-//   俯瞰：カメラの距離や画角は他の担当が調整中なので、固定の倍率は使わない。毎フレーム、ctx.camera の位置・画角と
+//   俯瞰：カメラの距離や画角は構図（view.js）が決めるので、固定の倍率は使わない。毎フレーム、ctx.camera の位置・画角と
 //     描画サイズから「画面上の 1 ワールド単位が何 px か」を出し、年ラベルの文字が 14px、ひし形が 10px になるよう決める。
 
 import * as THREE from 'three';
@@ -244,8 +244,8 @@ export function createMarkers( ctx ) {
 		renderer.getSize( rendererSize );
 		if ( ! ( rendererSize.x > 0 && rendererSize.y > 0 ) ) return [];
 		camera.updateMatrixWorld();
-		// HUD の部品（帯・凡例・ミニグラフ・路線図・ボタン・キャプション）の下に入る年ラベルは出さない（読めなくなるため）。
-		// HUD の矩形は labels.js の共有の読み取り（400ms ごと。値ラベル・駅名と同じ判定）
+		// HUD の部品（帯・凡例・ミニグラフ・螺旋の図・ボタン・キャプション）の下に入る年ラベルは出さない（読めなくなるため）。
+		// HUD の矩形は labels.js の共有の読み取り（400ms ごと。値ラベル・年代のラベルと同じ判定）
 		// 優先順位は「値ラベルの軸 ＞ 年代のラベル ＞ 年ラベル」。軸と年代のラベル（scale.js が先に置いた矩形）も避ける
 		const hud = board.hud.read( nowMs, `${rendererSize.x}x${rendererSize.y}` );
 		const accepted = { hud: [ ...hud, ...board.get( 'axis', 'axis-leader', 'decade' ) ], labels: [] };

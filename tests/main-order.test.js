@@ -1,4 +1,4 @@
-// main.js の購読の順序（契約 6 章：'viewchange' では main.js の onViewChange の配信が、各モジュールのハンドラより先）。
+// main.js の購読の順序（'viewchange' では main.js の onViewChange の配信が、各モジュールのハンドラより先）。
 // main.js はブラウザでしか動かないので、ソースの並びで確かめる。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

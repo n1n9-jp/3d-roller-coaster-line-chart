@@ -12,7 +12,7 @@ export class LocalDataMissingError extends Error {
 
 	constructor( url ) {
 
-		super( `${url} が見つかりません。npm run fetch-data を実行して、日経平均のデータを取得してください。` );
+		super( `${url} が見つかりません。npm run fetch-nikkei を実行して、日経平均株価のデータを取得してください。` );
 		this.name = 'LocalDataMissingError';
 		this.url = url;
 

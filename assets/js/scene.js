@@ -1,4 +1,4 @@
-// renderer・scene・背景・fog・ライト・camera・リサイズ。担当：シーン（値は config.js の SCENE と PALETTE、仕様 4）。
+// renderer・scene・背景・fog・ライト・camera・リサイズ。値は config.js の SCENE と PALETTE。
 //
 // 画角とカメラの位置は view.js が毎フレーム決める（一人称と俯瞰、その間の補間）。
 // ここではリサイズで camera.aspect とレンダラの大きさ・解像度だけを合わせる。

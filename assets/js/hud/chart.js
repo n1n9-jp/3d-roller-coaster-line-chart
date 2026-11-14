@@ -9,7 +9,7 @@ import { createHudLayer, crisp, withAlpha } from './layer.js';
 import { yAxis, labelStride, labelValues, yearTicks } from './scales.js';
 import { parseDate, formatYearMonth } from '../format.js';
 
-// 描画域の余白（CSS px）。仕様 3「ミニグラフ canvas の中身」と、モバイルの表（左 30、下 16）
+// 描画域の余白（CSS px）。狭い canvas（COMPACT_WIDTH 未満）は MARGIN_COMPACT
 const MARGIN = { left: 40, right: 8, top: 8, bottom: 18 };
 const MARGIN_COMPACT = { left: 30, right: 6, top: 6, bottom: 16 };
 const COMPACT_WIDTH = 230; // これより狭い canvas（モバイル、短い横長）は小さい文字と余白にする
@@ -27,7 +27,7 @@ export function createChart( ctx ) {
 	const endLabel = formatYearMonth( series[ last ].date );
 	const baseLabel = `${parseDate( series[ 0 ].date ).year}年から${endLabel}までの${dataset.def.name}の折れ線グラフ。`;
 
-	// 見出しと単位（HTML 側は日経平均の初期値。S では見出しの「…の」を隠して「推移」だけを出す）
+	// 見出しと単位（HTML 側はドル円の初期値。S では見出しの「…の」を隠して「推移」だけを出す）
 	const titleFullEl = document.querySelector( '#hud-chart .chart-title__full' );
 	const titleTailEl = document.querySelector( '#hud-chart .chart-title__tail' );
 	const unitEl = document.querySelector( '#hud-chart .chart-unit' );
@@ -254,7 +254,7 @@ export function createChart( ctx ) {
 			layer.syncDpr();
 			if ( ! state.started || ! layer.width ) return;
 
-			// 連絡区間（dataIndex が null）では、最後に描いた位置のまま。一周して止まったときは終点（全体が走行済み）
+			// 走行が終わった（最後の週で止まった）ときは終点（全体が走行済み）。dataIndex が null のときは、最後に描いた位置のまま
 			if ( state.finished ) shownIndex = last;
 			else if ( state.dataIndex !== null ) shownIndex = state.dataIndex;
 			shownFinished = state.finished;

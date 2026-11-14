@@ -1,15 +1,18 @@
 // 小さなイベント発行器。on( name, handler ) と emit( name, payload ) だけ。
 // イベント名と payload：
 //   'start' 'pause' 'resume' 'restart'    なし（ride.js）
-//   'finish'                              { progress }（ride.js。データ区間の終わりで止まったとき）
+//   'finish'                              { progress }（ride.js。最後の週に着いて止まったとき）
 //   'viewchange'                          { view: 'ride' | 'overview' }（view.js）
-//   'yearchange'                          { year, point, dataIndex }（main.js。年が変わったとき）
-//   'eventsready'                         { events }（events-data.js。出来事の読み込みが終わったとき 1 回。位置つきの一覧）
+//   'yearchange'                          { year, point, dataIndex }（main.js。開始後に、いまの週の年が変わったとき）
+//   'eventsready'                         { events, sources }（events-data.js。出来事の読み込みが終わったとき 1 回。0 件や読み込みの失敗でも空の配列で発行する）
+//                                           events：[ { date, index, progress, title, note, value, valueText } ]（位置つきの一覧。
+//                                                   index は系列上の位置、progress は進行位置、value・valueText は週の値と書式にした文字列。値を出さないものは null）
+//                                           sources：出所の URL のホスト名の一覧
 //   'infopanel:open'                      { trigger? }（情報パネルを開く。trigger があれば、閉じたときそこへフォーカスを戻す）
 //   'infopanel:toggle'                    { trigger? }（開いていれば閉じ、閉じていれば開く）
 //   'infopanel:close'                     なし
 //   'infopanel:change'                    { open }（infopanel.js。開閉したあとに発行）
-// 'start' から 'yearchange' までの payload は specs/contract.md も参照。
+// ctx と state、モジュールのフックの契約は main.js と README の「開発」を参照。
 
 export function createEvents() {
 

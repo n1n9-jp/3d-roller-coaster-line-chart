@@ -1,4 +1,4 @@
-// レール・支柱・床の足跡・現在位置マーカー。機能モジュール（createRail( ctx )）。担当：レールの色分け。
+// レール・支柱・床の足跡・現在位置マーカー。機能モジュール（createRail( ctx )）。
 // 他のモジュールは scene.getObjectByName( 'rail' | 'lifters' | 'shadow' | 'position-marker' ) で取り出す。
 // レールの頂点カラー（これから・走行済み）は rail-colors.js が塗る。
 //

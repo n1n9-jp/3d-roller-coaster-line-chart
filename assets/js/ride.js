@@ -11,7 +11,7 @@
 //   これで、期間の違うデータでも、1 年あたりの秒数と勾配の効き方がそろう（config.js の SPEED）。
 
 // 走行の「穏やかさ」に関わる係数（傾き・向きの補間・速度の上限・勾配の効き・速度の追従の速さ）は、createRide の options で渡せる。
-// 省略すると config.js の従来の値で動く。実行中は ride.setMotion( overrides ) で差し替える
+// 省略すると config.js の既定の値で動く。実行中は ride.setMotion( overrides ) で差し替える
 // （prefers-reduced-motion の一人称では ui/buttons.js が MOTION.reducedRide を渡す）。
 //
 // three.js のレンダラには依存しない（ベクトルとクォータニオンの計算のみ）ので、
@@ -67,7 +67,7 @@ export function curveYears( curve ) {
 
 }
 
-/** 従来の値（config.js）。 */
+/** 既定の値（config.js）。 */
 export function defaultMotion() {
 
 	return {
@@ -106,7 +106,7 @@ function pickMotion( source ) {
  * @param events on / emit を持つ発行器（events.js）。省略すると何も発行しない。
  *        発行器ではなく options のオブジェクトを渡してもよい（events キーで発行器を渡せる）。
  * @param options 走行の係数 { railSlopeRatio, orientationBlendPerFrame, speedMaxFactor, gravityFactor, speedResponseMs }。
- *        MOTION.reducedRide をそのまま渡せる。省略した係数は従来の値。
+ *        MOTION.reducedRide をそのまま渡せる。省略した係数は既定の値。
  */
 export function createRide( curve, events = null, options = {} ) {
 
@@ -201,7 +201,7 @@ export function createRide( curve, events = null, options = {} ) {
 		paused: false,
 		/** START を押すまで進まない。 */
 		started: false,
-		/** 一周して止まっている。restart() で false に戻る。 */
+		/** 最後の週まで走って止まっている。restart() で false に戻る。 */
 		finished: false,
 		/** 車体の位置（レール上 + オフセット）。 */
 		position: new Vector3(),
@@ -215,7 +215,7 @@ export function createRide( curve, events = null, options = {} ) {
 
 		},
 
-		/** 走行の係数を差し替える。overrides にない係数は createRide の options（なければ従来の値）に戻る。null で全部戻す。 */
+		/** 走行の係数を差し替える。overrides にない係数は createRide の options（なければ既定の値）に戻る。null で全部戻す。 */
 		setMotion( overrides = null ) {
 
 			motion = { ...baseMotion, ...pickMotion( overrides ) };
