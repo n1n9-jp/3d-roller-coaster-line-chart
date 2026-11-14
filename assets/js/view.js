@@ -1,4 +1,4 @@
-// 一人称視点と俯瞰視点の切り替えと、カメラの置き方（担当：シーン。値は config.js の SCENE と MOTION）。
+// 一人称視点と俯瞰視点の切り替えと、カメラの置き方（値は config.js の SCENE と MOTION）。
 //
 //   view.current            'ride'（一人称）または 'overview'（俯瞰）
 //   view.setOverviewSubject( points ) / view.setOverviewExtras( key, points )   俯瞰の画面に収める点
@@ -13,7 +13,7 @@
 //   一人称：位置は ride.cameraPosition（ride.js が決める。進行位置からレールに沿って SCENE.ride.back だけ後ろの点の上。
 //           急な上りでは坂の手前へ離す）。向きは車体（train）の向きから、下向きに pitchDeg。
 //           前方のレールが画面に入るように、縦の画角と下向きの角度を ride.setFraming で走行に渡す（縦横比が変わったとき）。
-//           ride を渡さないときは、従来どおり車体の姿勢から（上へ height、後ろへ back）。
+//           ride を渡さないときは、車体の姿勢から（上へ height、後ろへ back）。
 //   俯瞰：  南（+z）から仰角 SCENE.overview.elevationDeg（モードごとの値は elevationByMode）。位置は fitOverview が、
 //           螺旋の点（setOverviewSubject）と追加の点（setOverviewExtras。目盛りの壁など）を、画面の端の余白の内側で、
 //           HUD のパネルの矩形（実行時に DOM から読む。SCENE.overview.frame）と重ならない最大の大きさに収めるように決める。
@@ -573,7 +573,7 @@ export function createView( { scene, camera, train, events = null, curve = null,
 	}
 
 	// ---- HUD の矩形（CSS px）----
-	// DOM があれば、SCENE.overview.frame.hudSelectors の要素の位置を読む（他の担当がパネルの大きさを変えても追従する）。
+	// DOM があれば、SCENE.overview.frame.hudSelectors の要素の位置を読む（パネルの大きさが変わっても追従する）。
 	// 読むのは、画面の大きさが変わったとき・パネルの大きさが変わったとき（ResizeObserver）・俯瞰へ切り替えたとき
 	// （M と短い横長では、俯瞰のあいだキャプションの場所が変わる。annotations.css）。毎フレームは読まない。
 	// キャプションは中身の有無で高さが変わるので、スロットの端（下寄せなら下端、上寄せなら上端）から captionReservePx を確保する。

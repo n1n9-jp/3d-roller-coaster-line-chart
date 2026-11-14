@@ -115,7 +115,7 @@ export const Y_MAX = 35;
 //   progress / ms       = 年/秒 ÷ ( T × 1000 )
 // 平らなところで base、下り（勾配が負）で速く、上りで遅くなる。勾配は年あたりなので、期間の違うデータでも同じ効き方になる。
 // 半径による補正：螺旋は外側の周ほど 1 年あたりの距離が長く、補正なし（radiusExponent = 0。データの時間あたり一定）では
-// 外側の見た目の速さが内側の 4〜5 倍になる。0.25 で内側を速め・外側を抑える（試作の計測。scratchpad/specs/spiral-params.md）。
+// 外側の見た目の速さが内側の 4〜5 倍になる。0.25 で内側を速め・外側を抑える（試作で計測した値）。
 // 所要時間の見込み：56 年分 約 271 秒、40 年分 約 186 秒、37 年分 約 173 秒。
 export const SPEED = {
 	yearsPerSecond: 0.26,
@@ -175,11 +175,11 @@ export function divisionsFor( length, segment ) {
 }
 
 // =====================================================================
-// ステージ2：デザインの共有定数。各節は機能担当が中身を足す場所。
+// デザインの共有定数。節ごとに、使うモジュールの値を置く。
 // CSS 側の同じ値は assets/css/tokens.css（値を変えるときは両方そろえる）。
 // =====================================================================
 
-// ---- 3D の色（仕様 1-2。three.js にそのまま渡せる数値）----
+// ---- 3D の色（three.js にそのまま渡せる数値）----
 export const PALETTE = {
 	skyTop: 0x050b1c, // 空の上端
 	skyHorizon: 0x142650, // 空の地平線・fog
@@ -228,9 +228,9 @@ export const HUD_COLORS = {
 	decadeLabelBg: 'rgba(28, 44, 85, 0.92)' // 3D の年代のラベルの地（文字は text1）
 };
 
-// ---- 以下は空の節。各担当が自分の節にだけ値を足す ----
+// ---- 以下は、使うモジュールごとの節 ----
 
-// SCENE：3D シーンの定数（仕様 4）。担当：シーン。
+// SCENE：3D シーンの定数。
 export const SCENE = {
 	clearColor: PALETTE.skyTop,
 	// 背景：縦グラデーション（0 = 画面の上端、1 = 下端）。地平線の色を fog と同じにして継ぎ目を消す
@@ -303,7 +303,7 @@ export const SCENE = {
 	//   低いほど手前の周の壁が奥の周に重なり（40° では内側の高い壁が次の周の北側を隠す）、高いほど壁（= 値）が縦に潰れる。
 	//   横長の画面は高さで大きさが決まるので、48°（壁の高さ 35 が約 150px、周の間が南で 40px 前後）。
 	//   縦長の S は横幅で大きさが決まり、縦に余りがあるので、55°（大きさは変わらず、南北の周の間が広がって詰まりにくい）。
-	// 螺旋の点がまだ無いときは、従来の式（target から距離 radius / sin( min( vfov, hfov ) / 2 )）。
+	// 螺旋の点がまだ無いときは、既定の式（target から距離 radius / sin( min( vfov, hfov ) / 2 )）。
 	overview: {
 		target: { x: 0, y: 15, z: 0 },
 		elevationDeg: 48,
@@ -379,7 +379,7 @@ export const SCENE = {
 	}
 };
 
-// RAIL：レールの定数（材質、色分けの設定、支柱・足跡の設定など）。担当：レールの色分け・シーン。
+// RAIL：レールの定数（材質、色分けの設定、支柱・足跡の設定など）。
 // 色はすべて PALETTE（railAhead* / railRidden* / pillar / shadow / marker / markerRing / railEmissive）。
 export const RAIL = {
 	// レールの材質（MeshPhongMaterial、vertexColors。emissive は PALETTE.railEmissive）
@@ -390,7 +390,7 @@ export const RAIL = {
 	shadow: { opacity: 0.9, y: 0.05 },
 	// 現在位置マーカー（俯瞰のときだけ表示）
 	marker: {
-		// 俯瞰のカメラは山手線の輪から約 220（以前は 260）のときに決めた大きさ（0.85 倍）
+		// 俯瞰のカメラがコースから約 220 の距離にあるときに決めた大きさ（0.85 倍）
 		radius: 2.1, widthSegments: 24, heightSegments: 16, // 球
 		ringInner: 2.7, ringOuter: 3.15, ringSegments: 48, // カメラに向く白い輪
 		ringOpacity: 0.9, ringOpacityMin: 0.4, pulseMs: 1600, // 脈動 0.9 → 0.4 → 0.9（reduced-motion では 0.9 のまま）
@@ -418,7 +418,7 @@ export const RAIL = {
 	}
 };
 
-// CONTOUR：3D の目盛り（等高線・値ラベル・目盛りの壁・年代のスポークとラベル）の定数。担当：高さ目盛り。
+// CONTOUR：3D の目盛り（等高線・値ラベル・目盛りの壁・年代のスポークとラベル）の定数。
 // 刻みはデータの書式（ctx.dataset.format.ticks）が決める。色は PALETTE（contour、decadeSpoke）と
 // HUD_COLORS（contourLabel、contourLabelBg、decadeLabelBg）。
 export const CONTOUR = {
@@ -514,7 +514,7 @@ export const CONTOUR = {
 	fadeMs: 110
 };
 
-// ANNOT：イベント注釈の定数（目印の大きさ、キャプションの表示時間、イベント一覧の置き場所など）。担当：イベント注釈。
+// ANNOT：イベント注釈の定数（目印の大きさ、キャプションの表示時間、イベント一覧の置き場所など）。
 export const ANNOT = {
 	// 出来事の一覧はデータごと（DATASETS[ id ].eventsUrl）。選んだデータの分だけ読む
 	// キャプション（時間はすべて ride の時間 state.timeMs。一時停止中は進まない）
@@ -555,7 +555,7 @@ export const ANNOT = {
 	}
 };
 
-// MOTION：動きの定数（仕様 5）。担当：シーン・操作。
+// MOTION：動きの定数。
 export const MOTION = {
 	// 視点の切り替え：カメラを 500ms、ease-in-out（--ease-in-out と同じ cubic-bezier）で補間する。reduced では瞬時
 	viewTransitionMs: 500,
@@ -570,7 +570,7 @@ export const MOTION = {
 	}
 };
 
-// SOUND：データに連動するアンビエントサウンド（Web Audio でその場で合成。assets/js/audio/、sound.js）。担当：サウンド。
+// SOUND：データに連動するアンビエントサウンド（Web Audio でその場で合成。assets/js/audio/、sound.js）。
 // 音の調整はこの節の値だけで済むようにしている。時間は秒、周波数は Hz、音量は 0..1 の線形の倍率。
 // 音の高さは「音階の段（step）」で指定する：step k = rootHz × 2^( floor( k / 5 ) ) × 2^( scale[ k mod 5 ] / 12 )（5 音の音階を 1 オクターブ 5 段で数える）。
 export const SOUND = {
