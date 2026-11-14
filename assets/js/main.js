@@ -16,6 +16,7 @@ import { createStartScreen } from './ui/start.js';
 import { createEnvironment } from './environment.js';
 import { createRail } from './rail.js';
 import { createRailColors } from './rail-colors.js';
+import { createCurtain } from './curtain.js';
 import { createScale } from './scale.js';
 import { createMarkers } from './markers.js';
 import { createReadout } from './hud/readout.js';
@@ -34,6 +35,7 @@ const MODULES = [
 	createEnvironment, // 3D：地形・木・空
 	createRail, // 3D：レール・支柱・影・現在位置マーカー（scene の 'rail' など）
 	createRailColors, // 3D：レールの色分け
+	createCurtain, // 3D：レールの下のカーテンと、俯瞰のときのレール上端の帯（俯瞰の構図の点も view に渡す）
 	createScale, // 3D：等高線と値ラベル
 	createMarkers, // 3D：イベントの目印
 	createReadout, // HUD：現在値の帯

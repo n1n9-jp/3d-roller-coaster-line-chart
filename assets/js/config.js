@@ -176,13 +176,30 @@ export const SCENE = {
 		// 縦長の画面では、HUD（上の帯と下のパネル・ボタン）に挟まれた見える範囲が画面の中央より上にあるので、もう少し下を向いて前方を持ち上げる
 		pitchDegPortrait: - 14
 	},
-	// 俯瞰：target から南（+z）へ仰角 elevationDeg、距離 radius / sin( min( vfov, hfov ) / 2 )
+	// 俯瞰：南（+z）から仰角 elevationDeg で見下ろす。
+	// 構図は view.js が、輪の点（curtain.js が view.setOverviewSubject で渡す、レールの上端と床の点）を画面に投影して決める：
+	//   画面から HUD を避けた余白 frame.insets[ モード ]（px）を引いた範囲に、輪の外接矩形を収める（中央に置く）。
+	//   ただし輪の幅・高さは画面の maxWidth・maxHeight（割合）まで。
+	//   モードは hud.css と同じ：short（高さ 520 以下かつ横長）／ narrow（幅 720 以下）／ wide（それ以外。L と M）。
+	// 輪の点がまだ無いときは、従来の式（target から距離 radius / sin( min( vfov, hfov ) / 2 )）。
 	overview: {
 		target: { x: 0, y: 15, z: 0 },
-		elevationDeg: 55,
+		elevationDeg: 48,
 		radius: 110,
-		fovLandscape: 50, // 横長の画面の縦画角（1440x900 で距離 260）
-		fovPortrait: 65 // 縦長の画面の縦画角
+		fovLandscape: 50, // 横長の画面の縦画角
+		fovPortrait: 65, // 縦長の画面の縦画角
+		frame: {
+			insets: {
+				// L/M：上は凡例（サンプルのバッジ込みで 176）の下、下は端から少しだけ（ミニグラフと路線図は左右の隅で、輪の下端は細い）
+				wide: { top: 184, right: 24, bottom: 40, left: 24 },
+				// S：上は帯 + バッジ + 凡例（138）、下はミニグラフ・路線図（下から 196）の上
+				narrow: { top: 148, right: 12, bottom: 206, left: 12 },
+				// 短い横長：上は帯（80）の下。左右のパネルは隅にあり、輪の上端の幅は中央の空きに収まる
+				short: { top: 88, right: 24, bottom: 12, left: 24 }
+			},
+			maxWidth: { wide: 0.9, narrow: 0.8, short: 0.9 },
+			maxHeight: { wide: 0.72, narrow: 0.9, short: 0.9 }
+		}
 	}
 };
 
@@ -197,10 +214,32 @@ export const RAIL = {
 	shadow: { opacity: 0.9, y: 0.05 },
 	// 現在位置マーカー（俯瞰のときだけ表示）
 	marker: {
-		radius: 2.5, widthSegments: 24, heightSegments: 16, // 球
-		ringInner: 3.2, ringOuter: 3.7, ringSegments: 48, // カメラに向く白い輪
+		// 俯瞰のカメラは輪から約 220（以前は 260）。画面上の大きさを以前と同じにするため 0.85 倍にした
+		radius: 2.1, widthSegments: 24, heightSegments: 16, // 球
+		ringInner: 2.7, ringOuter: 3.15, ringSegments: 48, // カメラに向く白い輪
 		ringOpacity: 0.9, ringOpacityMin: 0.4, pulseMs: 1600, // 脈動 0.9 → 0.4 → 0.9（reduced-motion では 0.9 のまま）
 		lineOpacity: 0.35 // 床までの白い縦線
+	},
+	// カーテン（curtain.js）：レールの真下、床からレールの高さまでの縦の面。AdditiveBlending、depthWrite: false。
+	// 頂点の alpha は上端 topAlpha → 床 bottomAlpha。材質の opacity は一人称 rideOpacity、俯瞰 overviewOpacity（補間に合わせて変える）。
+	// 色：これから PALETTE.contour、走行済み PALETTE.railRiddenYellow、連絡区間 PALETTE.railDeadheadYellow（alpha × linkAlphaFactor）。
+	// renderOrder：グリッド・足跡（0）より後に描く
+	curtain: {
+		topAlpha: 0.9,
+		bottomAlpha: 0.06,
+		linkAlphaFactor: 0.35,
+		rideOpacity: 0.15,
+		overviewOpacity: 1,
+		renderOrder: 2
+	},
+	// 俯瞰のときだけの、レール上端の帯（床と平行。幅 width、レールの上 lift）。
+	// 色：これから PALETTE.railAheadWhite、走行済み PALETTE.railRiddenWhite、連絡区間 PALETTE.railDeadheadWhite。
+	// 視点切り替えの補間（view.blend 0..1）が fadeFrom を超えたところから現れる
+	topBand: {
+		width: 1.3,
+		lift: 0.15,
+		fadeFrom: 0.5,
+		renderOrder: 3
 	}
 };
 
