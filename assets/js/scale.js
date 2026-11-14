@@ -3,23 +3,31 @@
 // レールの高さが株価なので、等高線があると「いま何万円あたりを走っているか」が 3D の中で読める。
 //   等高線：駅の多角形（curve.seg.points）を外側へ CONTOUR.offset ずらした輪。高さは curve.valueToY( 値 )。
 //           線は 2 本の LineSegments（通常と、5 万円の倍数の強い線）にまとめて、draw call を抑える。
-//   値ラベル：Sprite。テクスチャは値ごとに 1 枚（その値の全ラベルで使い回す）。
+//   値ラベル（一人称）：Sprite。値ごとに 1 つ。テクスチャは値ごとに 1 枚（俯瞰の軸と使い回す）。
+//           いまの高さを挟む上下の等高線に 1 つずつ、前方の読みやすい場所（近すぎず遠すぎない）に出す。文字は minTextPx 以上。
+//   値ラベルの軸（俯瞰）：輪の 1 点（アンカー）で、各等高線から短い引き出し線を出し、その先に下から上へ値を縦に並べる。
+//           アンカーは、ラベルの列が画面に収まり、HUD・年ラベルに重ならず、レールにかぶらない点を、輪の頂点から選ぶ（上の方を好む）。
+//           列は輪の外側へ出すのを優先し、外に場所がない（縦長の狭い画面など）ときは、輪の内側の空いたところへ出す。
+//           等高線どうしが画面上で詰まっているときは、引き出し線の先でラベルの間隔を広げる（labels.js の spreadAxis）。
 //   駅名：Sprite。俯瞰のときだけ、床の高さで輪の外側に出す。
+//
+// 俯瞰の重なりは labels.js の掲示板で解く。優先順位は「年ラベル（markers.js）＞ 値ラベルの軸 ＞ 駅名」。
+// 年ラベルの矩形は掲示板の 'event' 層から読み（markers.js が登録した関数が、このフレームのカメラで計算する）、
+// 軸はそれと HUD を避け、駅名はさらに軸も避ける。
+// 自分の矩形は 'axis' と 'station' の層に登録する（検証用）。
 //
 // ラベルの大きさは固定の倍率を持たず、実行時のカメラ（位置・画角）と表示サイズから、
 // 「画面上の文字の高さが textPx になるワールドの大きさ」を毎フレーム求める。
 //   一人称：基準距離（CONTOUR.rideDistance）で文字が ride の px になる大きさ。遠近はそのまま（近いほど大きい）。
-//   俯瞰  ：ラベルごとの奥行きで、どれも文字が overview の px になる大きさ。
-//   切り替え中は、view.js と同じ補間（時間と曲線）で、2 つの大きさの間をなめらかに動く。
-// 俯瞰では、ラベル・駅名・HUD のパネルが重ならないよう、優先順に置いて重なるものを間引く（画面が狭いほど減る）。
-// 描画に依存しない計算（等高線の値、輪のずらし、書式、大きさ、間引き）は export して、tests/scale.test.js で確かめる。
+//   俯瞰  ：どれも文字が overview の px になる大きさ。
+// 描画に依存しない計算（等高線の値、輪のずらし、書式、大きさ）は export して、tests/scale.test.js で確かめる。
 
 import {
 	Group, LineSegments, LineBasicMaterial, BufferGeometry, Float32BufferAttribute,
 	Sprite, SpriteMaterial, CanvasTexture, SRGBColorSpace, Vector2, Vector3, MathUtils
 } from './three.core.js';
-import { CONTOUR, PALETTE, HUD_COLORS, FONT_SANS, MOTION } from './config.js';
-import { cubicBezier } from './view.js';
+import { CONTOUR, PALETTE, HUD_COLORS, FONT_SANS } from './config.js';
+import { placeLabels, spreadAxis, collidesAny, insideViewport, getLabelBoard } from './labels.js';
 
 const DEG = Math.PI / 180;
 
@@ -136,39 +144,16 @@ export function screenTextPx( { worldHeight, distance, fovDeg, viewportHeight, p
 
 }
 
-/** 長方形（中心 x, y と幅 w, 高さ h。px）どうしが、margin 以内に近いか。 */
-function overlaps( a, b, margin ) {
+/** 狭い画面の軸のラベル：20000 → 「2万円」。 */
+export function formatContourShort( value ) {
 
-	return Math.abs( a.x - b.x ) < ( a.w + b.w ) / 2 + margin && Math.abs( a.y - b.y ) < ( a.h + b.h ) / 2 + margin;
-
-}
-
-/**
- * 優先順に並んだ候補を置いていき、画面からはみ出すもの、HUD のパネル（obstacles）や置いたものに重なるものを間引く。
- * candidates：{ x, y, w, h（中心と大きさ。px）, group?, limit?, firstOf? }。w が 0 以下なら置かない。group ごとに limit 個まで。
- * firstOf：同じ値の候補のうち、最初に置けた 1 つだけを置く（あとの候補は、その値がすでに置けていれば飛ばす）。
- * 戻り値：候補と同じ順の true / false。
- */
-export function placeLabels( candidates, obstacles, viewport, margin = 0 ) {
-
-	const placed = [];
-	const counts = new Map();
-	const firsts = new Set();
-	return candidates.map( ( c ) => {
-
-		if ( c.firstOf !== undefined && firsts.has( c.firstOf ) ) return false;
-		if ( ! ( c.w > 0 ) || c.x - c.w / 2 < 0 || c.x + c.w / 2 > viewport.width || c.y - c.h / 2 < 0 || c.y + c.h / 2 > viewport.height ) return false;
-		if ( c.group !== undefined && c.limit !== undefined && ( counts.get( c.group ) ?? 0 ) >= c.limit ) return false;
-		for ( const o of obstacles ) if ( overlaps( c, o, margin ) ) return false;
-		for ( const p of placed ) if ( overlaps( c, p, margin ) ) return false;
-		placed.push( c );
-		if ( c.firstOf !== undefined ) firsts.add( c.firstOf );
-		if ( c.group !== undefined ) counts.set( c.group, ( counts.get( c.group ) ?? 0 ) + 1 );
-		return true;
-
-	} );
+	const man = Math.round( value ) / 10000;
+	return `${Number.isInteger( man ) ? man : man.toFixed( 1 )}万円`;
 
 }
+
+// 間引き（placeLabels）は labels.js にある。既存のテストと呼び出しのために、ここからも出す
+export { placeLabels };
 
 // ---- テクスチャ（canvas） ----
 
@@ -211,18 +196,12 @@ function createPillTexture( text, { textColor, borderColor, width = null } ) {
 
 }
 
-function prefersReducedMotion() {
-
-	return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-		&& window.matchMedia( '(prefers-reduced-motion: reduce)' ).matches;
-
-}
-
 // ---- モジュール ----
 
 export function createScale( ctx ) {
 
-	const { scene, camera, renderer, curve, dataset, stations, ui } = ctx;
+	const { scene, camera, renderer, curve, dataset, stations } = ctx;
+	const board = getLabelBoard( ctx );
 
 	const group = new Group();
 	group.name = 'scale';
@@ -235,6 +214,7 @@ export function createScale( ctx ) {
 	// 等高線の値は、画面の値（生データ）の最安値・最高値から決める（ミニグラフの Y 軸と同じ）。高さはレールと同じ valueToY
 	const range = dataset.rawRange ?? { min: curve.closeMin, max: curve.closeMax };
 	const values = contourValues( range.min, range.max );
+	const valueYs = values.map( ( v ) => curve.valueToY( v ) );
 
 	// ---- 等高線：通常と強い線の 2 本の LineSegments ----
 	const contours = new Group();
@@ -274,27 +254,47 @@ export function createScale( ctx ) {
 	// ---- ラベルと駅名（Sprite） ----
 	const valueGroup = new Group();
 	valueGroup.name = 'contour-labels';
+	const axisGroup = new Group();
+	axisGroup.name = 'contour-axis';
 	const nameGroup = new Group();
 	nameGroup.name = 'station-names';
-	group.add( valueGroup, nameGroup );
+	group.add( valueGroup, axisGroup, nameGroup );
 
 	const textures = new Map(); // 値 → 値ラベルのテクスチャ（その値の全ラベルで使い回す）
+	const shortTextures = new Map(); // 値 → 狭い画面の軸のラベル（「2万円」）
 	const nameTextures = [];
-	const entries = [];
+	const entries = []; // 一人称の値ラベルと駅名
+	const axisEntries = []; // 俯瞰の軸のラベル（値ごとに 1 つ）
+
+	function makeSprite( texture, parent, overlay ) {
+
+		const material = new SpriteMaterial( { map: texture, transparent: true, depthWrite: false, opacity: 0 } );
+		if ( overlay ) {
+
+			// 軸と一人称の値ラベルは、カーテン・レール・支柱・等高線に隠されないよう、いつも手前に描く（霧もかけない）
+			material.depthTest = false;
+			material.fog = false;
+
+		}
+
+		const sprite = new Sprite( material );
+		sprite.visible = false;
+		if ( overlay ) sprite.renderOrder = 10;
+		parent.add( sprite );
+		return { sprite, material };
+
+	}
 
 	function addEntry( kind, texture, base, normal, extra ) {
 
-		const material = new SpriteMaterial( { map: texture, transparent: true, depthWrite: false, opacity: 0 } );
-		const sprite = new Sprite( material );
-		sprite.visible = false;
-		( kind === 'name' ? nameGroup : valueGroup ).add( sprite );
+		// 一人称の値ラベルは、支柱やレールに文字が切られないよう手前に描く（置き場所は、読める位置を選んである）
+		const { sprite, material } = makeSprite( texture, kind === 'name' ? nameGroup : valueGroup, kind === 'value' );
 		entries.push( {
 			kind, sprite, material, base, normal,
 			aspect: texture.image.width / texture.image.height,
 			show: 0, // 0..1：表示するか（視点と間引きで決まる。なめらかに変える）
 			wanted: false,
 			near: 1,
-			depth: 0,
 			...extra
 		} );
 
@@ -321,39 +321,48 @@ export function createScale( ctx ) {
 
 	const named = new Set( nameStations.map( ( s ) => s.index ) );
 
-	// 値ラベルを置く駅：駅名を置く駅と同じなら、次の駅へずらす
-	const labelStations = CONTOUR.label.stations.map( ( i ) => {
+	// 一人称の値ラベルの置き場所の候補：ラベルの輪（等高線の輪のさらに外）の辺を細かく分けた点と、その点での外向きの向き
+	const rideSamples = [];
+	{
 
-		let k = i;
-		while ( named.has( k ) && k < ring.length - 1 ) k ++;
-		return k;
+		const n = CONTOUR.ride.subdivisions;
+		for ( let i = 0; i < labelRing.length; i ++ ) {
 
-	} );
+			const j = ( i + 1 ) % labelRing.length;
+			const na = outwardNormal( labelRing, i );
+			const nb = outwardNormal( labelRing, j );
+			for ( let k = 0; k < n; k ++ ) {
+
+				const t = k / n;
+				const nx = na.x + ( nb.x - na.x ) * t;
+				const nz = na.z + ( nb.z - na.z ) * t;
+				const len = Math.hypot( nx, nz ) || 1;
+				rideSamples.push( {
+					x: labelRing[ i ].x + ( labelRing[ j ].x - labelRing[ i ].x ) * t,
+					z: labelRing[ i ].z + ( labelRing[ j ].z - labelRing[ i ].z ) * t,
+					normal: { x: nx / len, z: nz / len }
+				} );
+
+			}
+
+		}
+
+	}
 
 	const labelBorder = `#${PALETTE.contour.toString( 16 ).padStart( 6, '0' )}`;
+	const labelStyle = { textColor: HUD_COLORS.contourLabel, borderColor: labelBorder };
 	values.forEach( ( v, level ) => {
 
-		const texture = createPillTexture( formatContourLabel( v ), { textColor: HUD_COLORS.contourLabel, borderColor: labelBorder } );
+		const texture = createPillTexture( formatContourLabel( v ), labelStyle );
 		textures.set( v, texture );
-		const y = curve.valueToY( v ) + CONTOUR.label.lift;
-		// 等高線ごとに駅の優先順をずらす（隣の等高線のラベルが同じ駅に集まらないように）
-		for ( let r = 0; r < labelStations.length; r ++ ) {
+		shortTextures.set( v, createPillTexture( formatContourShort( v ), labelStyle ) );
+		// 一人称：値ごとに 1 つだけ。置く場所（anchor：rideSamples の番号）は毎フレーム選び直す
+		addEntry( 'value', texture, new Vector3( 0, valueYs[ level ] + CONTOUR.label.lift, 0 ), { x: 0, z: 0 }, { level, value: v, anchor: - 1 } );
+		entries[ entries.length - 1 ].sprite.userData.value = v; // 検証用
 
-			const index = labelStations[ ( level + r ) % labelStations.length ];
-			const p = labelRing[ index ];
-			addEntry( 'value', texture, new Vector3( p.x, y, p.z ), outwardNormal( labelRing, index ), { level, value: v, rank: r, station: index, extra: false, ride: true } );
-
-		}
-
-		// 俯瞰で、決まった駅に置けなかった等高線のための予備の駅（一人称では使わない）
-		const spare = CONTOUR.label.spareStations.filter( ( i ) => i < ring.length && ! named.has( i ) );
-		for ( let r = 0; r < spare.length; r ++ ) {
-
-			const index = spare[ ( level + r ) % spare.length ];
-			const p = labelRing[ index ];
-			addEntry( 'value', texture, new Vector3( p.x, y, p.z ), outwardNormal( labelRing, index ), { level, value: v, rank: labelStations.length + r, station: index, extra: true, ride: r < CONTOUR.label.rideSpareCount } );
-
-		}
+		const { sprite, material } = makeSprite( texture, axisGroup, true );
+		sprite.userData.value = v;
+		axisEntries.push( { level, value: v, sprite, material, compact: false, show: 0, rect: null } );
 
 	} );
 
@@ -366,83 +375,385 @@ export function createScale( ctx ) {
 
 	}
 
-	// 俯瞰で置く優先順：駅名 → 各等高線に 1 つずつ（等高線ごとに、置ける駅を優先順に探す。予備の駅も使って、どの等高線にも 1 つ付ける）
-	// → 残りの値ラベル（駅の優先順の 0 番目を全等高線に配ってから、1 番目…）。
-	// 同じラベルが 2 回現れるが、2 回目は 1 回目の位置と重なるので置かれない（結果は OR で合わせる）
-	const byLevel = values.map( ( v, level ) => entries.filter( ( e ) => e.kind === 'value' && e.level === level ).sort( ( a, b ) => a.rank - b.rank ) );
-	const placementOrder = [
-		...entries.filter( ( e ) => e.kind === 'name' ).sort( ( a, b ) => a.rank - b.rank ),
-		...byLevel.flat().map( ( e ) => ( { first: true, entry: e } ) ),
-		...entries.filter( ( e ) => e.kind === 'value' && ! e.extra ).sort( ( a, b ) => a.rank - b.rank || a.level - b.level )
-	].map( ( item ) => item.entry ? item : { first: false, entry: item } );
+	const rideEntries = entries.filter( ( e ) => e.kind === 'value' );
+	const nameEntries = entries.filter( ( e ) => e.kind === 'name' ).sort( ( a, b ) => a.rank - b.rank );
 
-	// ---- 視点の補間（view.js と同じ時間と曲線） ----
-	const ease = cubicBezier( ...MOTION.viewEase );
+	// ---- 軸の引き出し線と背骨：値ごとに 3 本（横の短い線・斜めの線・ラベルへの短い線）＋ アンカーの縦線 1 本 ----
+	const leaderGeometry = new BufferGeometry();
+	// Float32BufferAttribute は配列を写すので、書き込みは属性の配列そのものへ
+	leaderGeometry.setAttribute( 'position', new Float32BufferAttribute( new Float32Array( ( values.length * 3 + 1 ) * 2 * 3 ), 3 ) );
+	const leaderPositions = leaderGeometry.attributes.position.array;
+	const leaderMaterial = new LineBasicMaterial( { color: PALETTE.contour, transparent: true, opacity: 0, depthTest: false, depthWrite: false } );
+	const leaders = new LineSegments( leaderGeometry, leaderMaterial );
+	leaders.name = 'contour-axis-leaders';
+	leaders.renderOrder = 9;
+	leaders.frustumCulled = false;
+	leaders.visible = false;
+	axisGroup.add( leaders );
+	let axisShow = 0;
+
+	// アンカーを選ぶときに、ラベルの列がレール（とカーテン）にかぶっていないかを見るための点（床・中ほど・上端）
+	const railSamples = [];
+	{
+
+		const count = 360;
+		for ( let i = 0; i < count; i ++ ) {
+
+			const p = curve.getPointAt( i / count );
+			for ( const f of [ 1, 0.5, 0 ] ) railSamples.push( new Vector3( p.x, p.y * f, p.z ) );
+
+		}
+
+	}
+
+	// ---- 視点：補間の値は view.blend（0＝一人称、1＝俯瞰。カメラと同じ）を使う ----
 	let currentView = ctx.view?.current ?? 'ride';
-	let blend = currentView === 'overview' ? 1 : 0;
-	let from = blend;
-	let to = blend;
-	let startMs = null;
-	let durationMs = 0;
+	const viewBlend = () => {
+
+		const b = ctx.view?.blend;
+		return Number.isFinite( b ) ? b : ( currentView === 'overview' ? 1 : 0 );
+
+	};
+
+	let blend = viewBlend();
 	let lastNowMs = 0;
 	let obstacles = [];
-	let obstaclesAt = - Infinity;
+	let layout = null; // 俯瞰の軸の配置（computeAxisLayout の結果）
+	let layoutKey = '';
+	let placedNames = [];
+
+	// prefers-reduced-motion：MediaQueryList は 1 回だけ作り、変化を購読する
+	const reducedQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+		? window.matchMedia( '(prefers-reduced-motion: reduce)' )
+		: null;
+	let reducedMotion = reducedQuery?.matches ?? false;
+	const onReducedChange = ( e ) => {
+
+		reducedMotion = e.matches;
+
+	};
+
+	reducedQuery?.addEventListener?.( 'change', onReducedChange );
 
 	function onViewChange( next ) {
 
 		if ( next === currentView ) return;
 		currentView = next;
-		const goal = next === 'overview' ? 1 : 0;
-		if ( prefersReducedMotion() || MOTION.viewTransitionMs <= 0 ) {
-
-			blend = from = to = goal;
-			startMs = null;
-			durationMs = 0;
-
-		} else {
-
-			from = blend;
-			to = goal;
-			durationMs = MOTION.viewTransitionMs * Math.abs( to - from );
-			startMs = lastNowMs;
-
-		}
-
-		obstaclesAt = - Infinity;
+		board.hud.invalidate();
+		layoutKey = '';
 
 	}
 
-	// ---- HUD のパネル（俯瞰で重ねない。位置は数百 ms おきに読み直す）----
-	function readObstacles( nowMs ) {
-
-		if ( nowMs - obstaclesAt < 400 ) return;
-		obstaclesAt = nowMs;
-		const list = [];
-		const push = ( el ) => {
-
-			if ( ! el ) return;
-			const r = el.getBoundingClientRect();
-			if ( r.width > 0 && r.height > 0 ) list.push( { x: ( r.left + r.right ) / 2, y: ( r.top + r.bottom ) / 2, w: r.width, h: r.height } );
-
-		};
-
-		const slots = ui?.slots ?? {};
-		push( slots.readout );
-		push( slots.readout?.querySelector( '.ro-badge' ) );
-		push( slots.legend );
-		push( slots.chart );
-		push( slots.map );
-		// 操作ボタンの入れ物は横いっぱいに広がることがあるので、ボタンごとに見る
-		for ( const child of slots.controls?.children ?? [] ) push( child );
-		obstacles = list;
-
-	}
-
-	// ---- 毎フレーム ----
+	// ---- 画面との変換 ----
 	const size = new Vector2();
 	const viewPosition = new Vector3();
 	const cameraPosition = new Vector3();
 	const worldPosition = new Vector3();
+	const ndc = new Vector3();
+
+	function toScreen( x, y, z, width, height ) {
+
+		ndc.set( x, y, z ).project( camera );
+		return { x: ( ndc.x + 1 ) / 2 * width, y: ( 1 - ndc.y ) / 2 * height, z: ndc.z };
+
+	}
+
+	function toWorld( sx, sy, ndcZ, width, height, target ) {
+
+		return target.set( sx / width * 2 - 1, 1 - sy / height * 2, ndcZ ).unproject( camera );
+
+	}
+
+	/** 引き出し線の折れ線（画面の px）：等高線の点 → 横の短い線 → ラベルの高さへ斜め → ラベルの端の手前。値ごとに 4 点。 */
+	function leaderPolyline( a, y, edge, side ) {
+
+		const stub = CONTOUR.axis.stubPx;
+		const end = edge - side * 3;
+		return [ { x: a.x, y: a.y }, { x: a.x + side * stub, y: a.y }, { x: end - side * stub, y }, { x: end, y } ];
+
+	}
+
+	/** 引き出し線を、数 px おきの小さな矩形の列にする（重なりの判定用）。 */
+	function leaderDots( anchor, spread, edge, side ) {
+
+		const dots = [];
+		for ( let k = 0; k < anchor.length; k ++ ) {
+
+			const line = leaderPolyline( anchor[ k ], spread[ k ], edge, side );
+			for ( let j = 0; j < line.length - 1; j ++ ) {
+
+				const p = line[ j ];
+				const q = line[ j + 1 ];
+				const n = Math.max( 1, Math.ceil( Math.hypot( q.x - p.x, q.y - p.y ) / 4 ) );
+				for ( let t = 0; t <= n; t ++ ) dots.push( { x: p.x + ( q.x - p.x ) * t / n, y: p.y + ( q.y - p.y ) * t / n, w: 2, h: 2 } );
+
+			}
+
+		}
+
+		return dots;
+
+	}
+
+	/**
+	 * 俯瞰の軸の配置を決める。輪の頂点をアンカーの候補として、それぞれ「外側か内側か」「引き出し線の長さ」「列の上下のずらし」を変えて
+	 * ラベルの列を作り、画面からはみ出す・HUD や年ラベルに重なるもの（hard）を退け、
+	 * レールにかぶる量・引き出し線の曲がり（ずらした量）・アンカーの低さ・内側かどうか（soft）の合計が最小のものを選ぶ。
+	 */
+	function computeAxisLayout( width, height, compact, hard ) {
+
+		const A = CONTOUR.axis;
+		const viewport = { width, height };
+		const pillPx = ( compact ? CONTOUR.textPx.overviewCompact : CONTOUR.textPx.overview ) * CONTOUR.label.pillHeight / CONTOUR.label.fontPx;
+		const leaderPx = compact ? A.leaderPxCompact : A.leaderPx;
+		const aspects = values.map( ( v ) => {
+
+			const t = ( compact ? shortTextures : textures ).get( v );
+			return t.image.width / t.image.height;
+
+		} );
+		const rail = railSamples.map( ( p ) => toScreen( p.x, p.y, p.z, width, height ) ).filter( ( s ) => s.z < 1 );
+		let cx = 0;
+		for ( const s of rail ) cx += s.x;
+		cx /= Math.max( 1, rail.length );
+
+		// 列の上下のずらし：0、+step、-step、+2step…（ずらすほど割高）
+		const shifts = [ 0 ];
+		for ( let k = 1; k <= A.shiftSteps; k ++ ) shifts.push( k * A.shiftPx, - k * A.shiftPx );
+		const bounds = { min: A.insetPx + pillPx / 2, max: height - A.insetPx - pillPx / 2 };
+
+		let best = null;
+		for ( let i = 0; i < ring.length; i ++ ) {
+
+			const anchor = valueYs.map( ( y ) => toScreen( ring[ i ].x, y, ring[ i ].z, width, height ) );
+			if ( anchor.some( ( s ) => s.z >= 1 || s.x < 0 || s.x > width || s.y < 0 || s.y > height ) ) continue;
+			// 上から（値の高い順に）並べて間隔を広げる
+			const base = spreadAxis( anchor.map( ( s ) => s.y ).reverse(), pillPx + A.gapPx ).reverse();
+			const outward = anchor[ 0 ].x >= cx ? 1 : - 1;
+			const minX = Math.min( ...anchor.map( ( s ) => s.x ) );
+			const maxX = Math.max( ...anchor.map( ( s ) => s.x ) );
+
+			// 外側（輪の中心から離れる向き）を先に、内側（輪の中の空いたところ）も試す
+			for ( const side of [ outward, - outward ] ) {
+
+				for ( const extra of A.leaderExtraPx ) {
+
+					const edge = side > 0 ? maxX + leaderPx + extra : minX - leaderPx - extra;
+					for ( const shift of shifts ) {
+
+						const spread = base.map( ( y ) => y + shift );
+						if ( spread[ spread.length - 1 ] < bounds.min || spread[ 0 ] > bounds.max ) continue;
+						let cost = Math.abs( shift ) * values.length * A.shiftWeight + extra * A.extraWeight
+							+ anchor[ 0 ].y / height * A.preferUpper + ( side !== outward ? A.inwardPenalty : 0 );
+						for ( let k = 0; k < values.length; k ++ ) cost += Math.abs( base[ k ] - anchor[ k ].y ) * A.shiftWeight;
+						if ( best && cost >= best.cost ) continue;
+
+						const rects = values.map( ( v, k ) => {
+
+							const w = pillPx * aspects[ k ];
+							return { x: edge + side * w / 2, y: spread[ k ], w, h: pillPx };
+
+						} );
+						let collisions = 0;
+						for ( const r of rects ) {
+
+							if ( ! insideViewport( r, viewport, A.insetPx ) || collidesAny( r, hard, A.margin ) ) collisions ++;
+
+						}
+
+						// 引き出し線（折れ線を数 px おきの小さな点に分けたもの）。年ラベルや HUD を横切らない
+						const bands = leaderDots( anchor, spread, edge, side );
+						if ( collisions === 0 ) for ( const dot of bands ) if ( collidesAny( dot, hard, 0 ) ) collisions ++;
+						// どの候補も置けないときに備えて、重なる候補も（重なりの数に応じて大きく割高にして）残す
+						cost += collisions * 1e6;
+						if ( best && cost >= best.cost ) continue;
+
+						// レール（とカーテン）にかぶる点の数
+						for ( const sp of rail ) {
+
+							for ( const r of rects ) {
+
+								if ( Math.abs( sp.x - r.x ) < r.w / 2 + 3 && Math.abs( sp.y - r.y ) < r.h / 2 + 3 ) {
+
+									cost += A.railWeight;
+									break;
+
+								}
+
+							}
+
+							if ( best && cost >= best.cost ) break;
+
+						}
+
+						if ( ! best || cost < best.cost ) best = { cost, index: i, side, edge, anchor, rects, bands, spread, pillPx, compact };
+
+					}
+
+				}
+
+			}
+
+		}
+
+		return best;
+
+	}
+
+	function writeLeaders( lay, width, height ) {
+
+		const p = new Vector3();
+		let o = 0;
+		const put = ( v ) => {
+
+			leaderPositions[ o ++ ] = v.x;
+			leaderPositions[ o ++ ] = v.y;
+			leaderPositions[ o ++ ] = v.z;
+
+		};
+
+		values.forEach( ( v, k ) => {
+
+			const a = lay.anchor[ k ];
+			const line = leaderPolyline( a, lay.spread[ k ], lay.edge, lay.side );
+			for ( let j = 0; j < line.length - 1; j ++ ) {
+
+				put( toWorld( line[ j ].x, line[ j ].y, a.z, width, height, p ) );
+				put( toWorld( line[ j + 1 ].x, line[ j + 1 ].y, a.z, width, height, p ) );
+
+			}
+
+		} );
+
+		// 背骨：アンカーの、いちばん低い等高線からいちばん高い等高線まで
+		const bottom = ring[ lay.index ];
+		put( p.set( bottom.x, valueYs[ 0 ], bottom.z ) );
+		put( p.set( bottom.x, valueYs[ valueYs.length - 1 ], bottom.z ) );
+		leaderGeometry.attributes.position.needsUpdate = true;
+
+	}
+
+	function placeAxisSprites( lay, width, height ) {
+
+		const tanHalf = Math.tan( camera.fov * DEG / 2 );
+		axisEntries.forEach( ( a, k ) => {
+
+			const r = lay.rects[ k ];
+			const map = ( lay.compact ? shortTextures : textures ).get( a.value );
+			if ( a.material.map !== map ) {
+
+				a.material.map = map;
+				a.material.needsUpdate = true;
+
+			}
+
+			toWorld( r.x, r.y, lay.anchor[ k ].z, width, height, worldPosition );
+			a.sprite.position.copy( worldPosition );
+			viewPosition.copy( worldPosition ).applyMatrix4( camera.matrixWorldInverse );
+			const pxPerWorld = height / ( 2 * Math.max( - viewPosition.z, 1e-3 ) * tanHalf );
+			a.sprite.scale.set( r.w / pxPerWorld, r.h / pxPerWorld, 1 );
+			a.rect = r;
+
+		} );
+
+	}
+
+	// ---- 一人称の値ラベルの置き場所 ----
+
+	/** 一人称で、値ラベル e を候補の点 sample に置いたときの画面上の矩形と評価。置けないときは null。 */
+	function evaluateRideSample( e, sample, width, height, placed ) {
+
+		const R = CONTOUR.ride;
+		worldPosition.set( sample.x, e.base.y, sample.z );
+		const d = worldPosition.distanceTo( cameraPosition );
+		if ( d < R.minDistance ) return null;
+		viewPosition.copy( worldPosition ).applyMatrix4( camera.matrixWorldInverse );
+		const depth = - viewPosition.z;
+		if ( depth <= 0.1 ) return null;
+		// 遠すぎるところ（maxDistance より先）には置かない
+		if ( d > R.maxDistance ) return null;
+		// 一人称の大きさ：基準距離で textPx.ride。画面上の文字の高さは奥行きに反比例し、minTextPx〜maxTextPx に収める
+		const textPx = MathUtils.clamp( CONTOUR.textPx.ride * CONTOUR.rideDistance / depth, R.minTextPx, R.maxTextPx );
+		const tanHalf = Math.tan( camera.fov * DEG / 2 );
+		const pxPerWorld = height / ( 2 * depth * tanHalf );
+		const h = textPx * CONTOUR.label.pillHeight / CONTOUR.label.fontPx;
+		const rect = { x: width / 2 + viewPosition.x * pxPerWorld, y: height / 2 - viewPosition.y * pxPerWorld, w: h * e.aspect, h };
+		if ( ! insideViewport( rect, { width, height }, R.insetPx ) ) return null;
+		if ( collidesAny( rect, obstacles, 4 ) || collidesAny( rect, placed, 4 ) ) return null;
+		const score = - Math.abs( depth - R.idealDepth ) - Math.abs( rect.x - width / 2 ) / width * R.centerWeight;
+		return { rect, score };
+
+	}
+
+	/**
+	 * 一人称：いまのレールの高さを挟む上下の等高線（範囲の外なら近い 1 本）に、値ラベルを 1 つずつ置く。
+	 * 置いた場所は、読めなくなる（近すぎる・遠すぎる・画面の外・HUD に重なる）まで動かさない。読めなくなったら
+	 * いったん消し（pending）、消えきってから、前方の読みやすい場所（奥行き idealDepth に近く、画面の中央に近い点）へ置き直す。
+	 */
+	function chooseRideAnchors( state, width, height ) {
+
+		// いまの値は、帯に出ている週次終値（state.point.close）。開始前などで無いときは、車体の高さ
+		const railY = state.point ? curve.valueToY( state.point.close ) : ( ctx.ride?.position?.y ?? null );
+		const wantedLevels = new Set();
+		if ( railY !== null && railY !== undefined && valueYs.length > 0 ) {
+
+			let below = - 1;
+			for ( let i = 0; i < valueYs.length; i ++ ) if ( valueYs[ i ] <= railY ) below = i;
+			if ( below >= 0 ) wantedLevels.add( below );
+			if ( below + 1 < valueYs.length ) wantedLevels.add( below + 1 );
+
+		}
+
+		const placed = [];
+		for ( const e of rideEntries ) {
+
+			if ( ! wantedLevels.has( e.level ) ) {
+
+				e.pending = e.anchor >= 0;
+				if ( e.show === 0 ) e.anchor = - 1;
+				continue;
+
+			}
+
+			if ( e.anchor >= 0 ) {
+
+				const current = evaluateRideSample( e, rideSamples[ e.anchor ], width, height, placed );
+				if ( current && ! e.pending ) {
+
+					placed.push( current.rect );
+					continue;
+
+				}
+
+				// 読めなくなった：消えきるまで待つ
+				e.pending = true;
+				if ( e.show > 0 ) continue;
+
+			}
+
+			let best = null;
+			let bestIndex = - 1;
+			for ( let i = 0; i < rideSamples.length; i ++ ) {
+
+				const c = evaluateRideSample( e, rideSamples[ i ], width, height, placed );
+				if ( c && ( ! best || c.score > best.score ) ) {
+
+					best = c;
+					bestIndex = i;
+
+				}
+
+			}
+
+			e.anchor = bestIndex;
+			e.pending = false;
+			if ( best ) placed.push( best.rect );
+
+		}
+
+	}
+
+	// ---- 毎フレーム ----
 
 	function update( state ) {
 
@@ -451,20 +762,13 @@ export function createScale( ctx ) {
 		lastNowMs = nowMs;
 
 		if ( state.view !== currentView ) onViewChange( state.view );
-
-		if ( blend !== to && durationMs > 0 ) {
-
-			if ( startMs === null ) startMs = nowMs;
-			const s = Math.min( 1, Math.max( 0, ( nowMs - startMs ) / durationMs ) );
-			blend = from + ( to - from ) * ease( s );
-			if ( s >= 1 ) blend = to;
-
-		}
+		blend = viewBlend();
 
 		renderer.getSize( size );
 		const width = size.x;
 		const height = size.y;
 		if ( ! ( width > 0 && height > 0 ) ) return;
+		const viewport = { width, height };
 
 		const compact = width <= CONTOUR.compactMaxWidth;
 		const textPx = MathUtils.lerp( CONTOUR.textPx.ride, compact ? CONTOUR.textPx.overviewCompact : CONTOUR.textPx.overview, blend );
@@ -476,13 +780,36 @@ export function createScale( ctx ) {
 		const fade = CONTOUR.nearFade;
 		const far = CONTOUR.farFade;
 
-		// 大きさと位置。奥行きは、カメラの空間での z（画面に垂直な距離）
+		// HUD のパネル（キャプションを含む）。読み直しは 400ms ごと（labels.js の createHudReader。年ラベルと共有）
+		obstacles = board.hud.read( nowMs, `${width}x${height}` );
+
+		if ( ! overviewing ) chooseRideAnchors( state, width, height );
+		else for ( const e of rideEntries ) e.pending = e.anchor >= 0;
+
+		// 一人称の値ラベルと駅名の、大きさと位置。奥行きは、カメラの空間での z（画面に垂直な距離）
 		for ( const e of entries ) {
 
+			if ( e.kind === 'value' && e.anchor >= 0 ) {
+
+				const sample = rideSamples[ e.anchor ];
+				e.base.x = sample.x;
+				e.base.z = sample.z;
+				e.normal = sample.normal;
+
+			}
+
 			viewPosition.copy( e.base ).applyMatrix4( camera.matrixWorldInverse );
-			e.depth = - viewPosition.z;
-			const distance = MathUtils.lerp( CONTOUR.rideDistance, Math.max( e.depth, 1 ), blend );
-			const h = labelWorldHeight( { distance, fovDeg: camera.fov, viewportHeight: height, textPx } );
+			const depth = - viewPosition.z;
+			const distance = MathUtils.lerp( CONTOUR.rideDistance, Math.max( depth, 1 ), blend );
+			let h = labelWorldHeight( { distance, fovDeg: camera.fov, viewportHeight: height, textPx } );
+			// 一人称の値ラベルは、文字の高さを minTextPx〜maxTextPx に収める（遠くて読めない・近くて大きすぎる、をなくす）
+			if ( e.kind === 'value' ) {
+
+				const at = ( px ) => labelWorldHeight( { distance: Math.max( depth, 1 ), fovDeg: camera.fov, viewportHeight: height, textPx: px } );
+				h = MathUtils.lerp( MathUtils.clamp( h, at( CONTOUR.ride.minTextPx ), at( CONTOUR.ride.maxTextPx ) ), h, blend );
+
+			}
+
 			const w = h * e.aspect;
 			e.sprite.scale.set( w, h, 1 );
 
@@ -492,85 +819,137 @@ export function createScale( ctx ) {
 			const lift = e.kind === 'name' ? h / 2 : 0;
 			e.sprite.position.set( e.base.x + e.normal.x * push, e.base.y + lift, e.base.z + e.normal.z * push );
 
-			// 一人称：カメラの近くのラベルは薄くして消す（俯瞰へ向かうほど弱める）。遠いラベルも消す
+			// 一人称：カメラの近くのラベルは薄くして消す。遠いラベルも消す（俯瞰へ向かうほど弱める）
 			worldPosition.copy( e.sprite.position );
-			const near = MathUtils.smoothstep( worldPosition.distanceTo( cameraPosition ), fade.hideBelow, fade.fullAbove );
-			// 遠いラベルは、文字が小さすぎて読めないので消す（draw call も減る）
-			const distanceFar = 1 - MathUtils.smoothstep( worldPosition.distanceTo( cameraPosition ), far.fadeStart, far.hideAbove );
-			e.near = MathUtils.lerp( near * distanceFar, 1, blend );
+			const d = worldPosition.distanceTo( cameraPosition );
+			const near = e.kind === 'value'
+				? MathUtils.smoothstep( d, CONTOUR.ride.minDistance * 0.6, CONTOUR.ride.minDistance )
+				: MathUtils.smoothstep( d, fade.hideBelow, fade.fullAbove ) * ( 1 - MathUtils.smoothstep( d, far.fadeStart, far.hideAbove ) );
+			e.rideNear = near;
+			e.near = MathUtils.lerp( near, 1, blend );
+
+			// 画面上の矩形と文字の高さ（一人称の選択と、俯瞰の駅名の配置に使う）
+			viewPosition.copy( e.sprite.position ).applyMatrix4( camera.matrixWorldInverse );
+			const z = - viewPosition.z;
+			if ( z > 0.1 ) {
+
+				const pxPerWorld = height / ( 2 * z * tanHalf );
+				e.rect = { x: width / 2 + viewPosition.x * pxPerWorld, y: height / 2 - viewPosition.y * pxPerWorld, w: w * pxPerWorld, h: h * pxPerWorld };
+				e.textPx = e.rect.h * CONTOUR.label.fontPx / CONTOUR.label.pillHeight;
+
+			} else {
+
+				e.rect = null;
+				e.textPx = 0;
+
+			}
 
 		}
 
-		// 表示するラベル：一人称は値ラベルだけ全部。俯瞰は優先順に置いて、重なるものを間引く
-		for ( const e of entries ) e.wanted = e.kind === 'value' && e.ride && ! overviewing;
+		for ( const e of entries ) e.wanted = false;
+		let axisWanted = false;
 
-		if ( overviewing ) {
+		if ( ! overviewing ) {
 
-			readObstacles( nowMs );
-			const limit = compact ? CONTOUR.declutter.maxPerLevelCompact : CONTOUR.declutter.maxPerLevel;
-			let nameCount = 0;
-			const candidates = placementOrder.map( ( { entry: e, first } ) => {
+			// 一人称：いまの高さを挟む上下の等高線のラベルだけを出す（anchor は chooseRideAnchors で決めてある）
+			for ( const e of rideEntries ) e.wanted = e.anchor >= 0 && e.pending !== true;
+			board.set( 'axis', [] );
+			board.set( 'station', [] );
+			layout = null;
+			layoutKey = '';
 
-				viewPosition.copy( e.sprite.position ).applyMatrix4( camera.matrixWorldInverse );
-				const z = - viewPosition.z;
-				if ( z <= 0.1 ) return { w: 0 };
-				if ( e.kind === 'name' && compact && nameCount ++ >= CONTOUR.stationNames.maxCompact ) return { w: 0 };
-				const pxPerWorld = height / ( 2 * z * tanHalf );
-				const c = {
-					x: width / 2 + viewPosition.x * pxPerWorld,
-					y: height / 2 - viewPosition.y * pxPerWorld,
-					w: e.sprite.scale.x * pxPerWorld,
-					h: e.sprite.scale.y * pxPerWorld
-				};
-				if ( e.kind === 'value' ) {
+		} else if ( blend >= 1 ) {
 
-					c.group = e.level;
-					c.limit = limit;
-					if ( first ) c.firstOf = e.level;
+			// 俯瞰：軸（年ラベルと HUD を避ける）→ 駅名（年ラベル・軸・HUD を避ける）。年ラベルは、このフレームのカメラで計算されたもの
+			const years = board.get( 'event' );
+			const hard = [ ...obstacles, ...years ];
+			const m = camera.matrixWorld.elements;
+			const key = [ width, height, compact, ...Array.from( camera.projectionMatrix.elements, ( x ) => x.toFixed( 4 ) ), ...Array.from( m, ( x ) => x.toFixed( 3 ) ),
+				...years.map( ( r ) => `${r.x.toFixed( 0 )},${r.y.toFixed( 0 )}` ), ...obstacles.map( ( r ) => `${r.x.toFixed( 0 )},${r.y.toFixed( 0 )},${r.w.toFixed( 0 )}` ) ].join( '|' );
+			if ( key !== layoutKey ) {
+
+				layoutKey = key;
+				layout = values.length > 0 ? computeAxisLayout( width, height, compact, hard ) : null;
+				if ( layout ) {
+
+					writeLeaders( layout, width, height );
+					placeAxisSprites( layout, width, height );
 
 				}
 
-				return c;
+				// 駅名：優先順に置き、重なるものは隠す
+				const blockers = [ ...hard, ...( layout ? [ ...layout.rects, ...layout.bands ] : [] ) ];
+				const limit = compact ? CONTOUR.stationNames.maxCompact : Infinity;
+				const candidates = nameEntries.map( ( e, i ) => ( i < limit && e.rect ? e.rect : { w: 0 } ) );
+				const result = placeLabels( candidates, blockers, viewport, CONTOUR.declutter.margin );
+				placedNames = nameEntries.filter( ( e, i ) => result[ i ] );
 
-			} );
+			}
 
-			const result = placeLabels( candidates, obstacles, { width, height }, CONTOUR.declutter.margin );
-			for ( const { entry } of placementOrder ) entry.wanted = false;
-			placementOrder.forEach( ( { entry }, i ) => {
+			axisWanted = !! layout;
+			for ( const e of placedNames ) e.wanted = true;
+			board.set( 'axis', axisWanted ? layout.rects : [] );
+			board.set( 'station', placedNames.map( ( e ) => e.rect ) );
 
-				if ( result[ i ] ) entry.wanted = true;
+		} else {
 
-			} );
+			board.set( 'axis', [] );
+			board.set( 'station', [] );
 
 		}
 
 		// 表示のなめらかな切り替え（時定数 fadeMs）。reduced-motion では即座に
-		const k = prefersReducedMotion() ? 1 : 1 - Math.exp( - dt / CONTOUR.fadeMs );
+		const k = reducedMotion ? 1 : 1 - Math.exp( - dt / CONTOUR.fadeMs );
+		const approach = ( value, goal ) => {
+
+			const next = value + ( goal - value ) * k;
+			return Math.abs( next - goal ) < 0.02 ? goal : next;
+
+		};
+
 		for ( const e of entries ) {
 
-			const goal = e.wanted ? 1 : 0;
-			e.show += ( goal - e.show ) * k;
-			if ( Math.abs( e.show - goal ) < 0.02 ) e.show = goal;
+			// 俯瞰の駅名は、置けなくなったら（重なるようになったら）すぐに消す。出すときだけなめらかに
+			e.show = e.kind === 'name' && ! e.wanted ? 0 : approach( e.show, e.wanted ? 1 : 0 );
 			const opacity = e.show * e.near;
 			e.material.opacity = opacity;
 			e.sprite.visible = opacity > 0.02;
 
 		}
 
+		// 軸：配置が変わるときは位置ごと切り替える（出ている間に動かすのは、リサイズのときだけ）
+		axisShow = approach( axisShow, axisWanted ? 1 : 0 );
+		for ( const a of axisEntries ) {
+
+			a.material.opacity = axisShow;
+			a.sprite.visible = axisShow > 0.02 && !! layout;
+
+		}
+
+		leaderMaterial.opacity = axisShow * CONTOUR.axis.leaderOpacity;
+		leaders.visible = axisShow > 0.02 && !! layout;
+
 	}
 
 	return {
 		contours,
 		valueLabels: valueGroup,
+		axis: axisGroup,
 		stationNames: nameGroup,
-		/** 検証用：等高線の値と、ラベル・駅名の現在の状態。 */
+		/** 検証用：等高線の値と、ラベル・軸・駅名の現在の状態。 */
 		debug() {
 
 			return {
 				values,
 				blend,
-				labels: entries.filter( ( e ) => e.kind === 'value' ).map( ( e ) => ( { value: e.value, station: e.station, visible: e.sprite.visible, opacity: e.material.opacity } ) ),
-				names: entries.filter( ( e ) => e.kind === 'name' ).map( ( e ) => ( { name: e.label, station: e.station, visible: e.sprite.visible, opacity: e.material.opacity } ) )
+				labels: rideEntries.map( ( e ) => ( { value: e.value, anchor: e.anchor, visible: e.sprite.visible, opacity: e.material.opacity, textPx: e.textPx, rect: e.rect } ) ),
+				axis: layout ? {
+					anchor: layout.index,
+					side: layout.side,
+					labels: axisEntries.map( ( a ) => ( { value: a.value, visible: a.sprite.visible, rect: a.rect, anchorY: layout.anchor[ a.level ].y } ) )
+				} : null,
+				names: nameEntries.map( ( e ) => ( { name: e.label, station: e.station, visible: e.sprite.visible, opacity: e.material.opacity, rect: e.rect } ) ),
+				board: board.snapshot()
 			};
 
 		},
@@ -580,7 +959,8 @@ export function createScale( ctx ) {
 		dispose() {
 
 			scene.remove( group );
-			for ( const e of entries ) e.material.dispose();
+			reducedQuery?.removeEventListener?.( 'change', onReducedChange );
+			for ( const e of [ ...entries, ...axisEntries ] ) e.material.dispose();
 			for ( const lines of contours.children ) {
 
 				lines.geometry.dispose();
@@ -588,7 +968,9 @@ export function createScale( ctx ) {
 
 			}
 
-			for ( const t of [ ...textures.values(), ...nameTextures ] ) t.dispose();
+			leaderGeometry.dispose();
+			leaderMaterial.dispose();
+			for ( const t of [ ...textures.values(), ...shortTextures.values(), ...nameTextures ] ) t.dispose();
 
 		}
 	};
