@@ -277,7 +277,7 @@ test( 'update：進む・戻る・最初から。書き換えるのは差分の�
 	assertColors( geometry, map, ( s ) => s < 10 ? RAIL_STATE.RIDDEN : RAIL_STATE.AHEAD, '戻る' );
 	attr.clearUpdateRanges();
 
-	// 一周の終わり（progress = 1）：全区間が走行済み
+	// 最後の週（progress = 1）：全区間が走行済み
 	painter.update( 1 );
 	assertColors( geometry, map, () => RAIL_STATE.RIDDEN, '終わり' );
 	attr.clearUpdateRanges();

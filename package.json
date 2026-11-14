@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "日経平均の週次終値をレールの高さに、山手線一周を水平の経路に割り当てた 3D ジェットコースター",
+  "description": "ドル円の為替レートと10年国債の金利（週次）をレールの高さにした、らせん形の 3D ジェットコースター。three.js、ビルドなしの静的サイト",
   "scripts": {
     "start": "python3 -m http.server 8000",
     "fetch-data": "node scripts/fetch-nikkei.mjs",

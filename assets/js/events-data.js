@@ -249,7 +249,7 @@ export function ensureEvents( ctx, { fetchImpl = globalThis.fetch, warn = consol
  * startProgress：走行の開始位置。最初の update の前に、ここから進んだものとして扱う（開始のすぐ後ろにある出来事を、最初のフレームが飛び越えて見逃さないため。省略時は最初の update の位置から）。
  * update( { timeMs, progress, finished } ) は動作を返す：
  *   { type: 'show', event }（すでに表示中なら入れ替え）／ { type: 'hide' } ／ null（変化なし）
- * 一周して止まった（finished）ときは、表示を消して待ちも捨てる。reset() は最初から（onReset）用。
+ * 最後の週で止まった（finished）ときは、表示を消して待ちも捨てる。reset() は最初から（onReset）用。
  */
 export function createCaptionScheduler( { events, showMs = 6000, minShowMs = 3000, maxWaitMs = 3000, maxStepProgress = 0.0036, startProgress = null } ) {
 

@@ -9,7 +9,7 @@ const controls = ( { pause = false, view = false, restart = false, info = false 
 	{ id: 'info-btn', disabled: info }
 ];
 
-test( '終了画面を閉じたあと：俯瞰と Esc は視点のボタン（一時停止は一周して止まったあと無効）', () => {
+test( '終了画面を閉じたあと：俯瞰と Esc は視点のボタン（一時停止は最後の週で止まったあと無効）', () => {
 
 	assert.equal( focusTargetAfterClose( 'overview', controls( { pause: true } ) ), 'view-btn' );
 	assert.equal( focusTargetAfterClose( 'overview', controls() ), 'view-btn' );

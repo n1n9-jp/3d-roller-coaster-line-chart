@@ -100,7 +100,7 @@ test( '文言（日経平均）：3桁区切りの整数、変化は％（今ま
 
 } );
 
-test( '文言：サンプルデータの注記は無い（どのデータでも、出力の項目は同じ）', () => {
+test( '文言：合成データの注記は無い（どのデータでも、出力の項目は同じ）', () => {
 
 	const { usdjpy, jgb10 } = loadFixtures();
 	const a = summaryTexts( summarize( usdjpy ), datasetOf( 'usdjpy', usdjpy ) );

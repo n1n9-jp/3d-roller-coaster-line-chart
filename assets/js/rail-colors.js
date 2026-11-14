@@ -1,4 +1,4 @@
-// レールの色分け（これから・走行済み）。機能モジュール（createRailColors( ctx )）。担当：レールの色分け。
+// レールの色分け（これから・走行済み）。機能モジュール（createRailColors( ctx )）。
 // レールは ctx.scene.getObjectByName( 'rail' )（rail.js が作る RollerCoasterGeometry）。
 //
 // ■ RollerCoasterGeometry の color 属性の並び（同梱 assets/jsm/misc/RollerCoaster.js を読んで確かめたもの）
@@ -20,7 +20,7 @@
 //   始点の手前に接線方向へ 1 区間分の助走の点を足し、分割数を 1 増やして作る（RUN_UP_SEGMENTS）。助走の区間（s = 0。偶数なので枕木はなく、
 //   102 頂点）は setDrawRange で描かない（railDrawStart）。実際の区間 k（0..D-1）は、ジオメトリの区間 s = k + RUN_UP_SEGMENTS になる。
 //   区間と弧長の対応（区間 k は弧長の割合 ( k/D, (k+1)/D ]）と、下の「状態」「更新」は、助走を除いた区間 k の番号で書いてある。
-//   createRailPainter / buildRailColorMap の runUp オプションが、k → s の換算を持つ（省略すると助走なし = 従来どおり）。
+//   createRailPainter / buildRailColorMap の runUp オプションが、k → s の換算を持つ（省略すると助走なし）。
 //
 // ■ 状態
 //   レールは弧長（水平）で等間隔に標本化してある（rail.js が curve.arcCurve を渡す）。区間 s は弧長の割合 ( s/D, (s+1)/D ]。
@@ -181,7 +181,7 @@ export function buildRailColorMap( geometry, divisions, runUp = 0 ) {
 
 }
 
-/** 仕様 1-2 の配色（PALETTE）を、塗りに使う linear の RGB にする。[ 状態 ][ 0 = 構造部, 1 = レール ] */
+/** 配色（config.js の PALETTE）を、塗りに使う linear の RGB にする。[ 状態 ][ 0 = 構造部, 1 = レール ] */
 export function railPaletteFrom( palette = PALETTE ) {
 
 	const rgb = ( hex ) => {

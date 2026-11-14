@@ -1,4 +1,4 @@
-// イベントのキャプション（#hud-caption）。機能モジュール（createAnnotations( ctx )）。担当：イベント注釈。
+// イベントのキャプション（#hud-caption）。機能モジュール（createAnnotations( ctx )）。
 //
 // 選んだデータの出来事（data/events/<id>.json。DATASETS[ id ].eventsUrl）だけを出す。ファイルがなければ何も出さない。
 // どの出来事をいつ出すかは events-data.js の createCaptionScheduler（DOM に触らない）が決め、

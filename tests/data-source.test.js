@@ -330,7 +330,7 @@ test( 'loadData：nikkei のファイルが無い（404）ときは、取得コ�
 	await assert.rejects( withFetch( {}, () => loadData( '?data=nikkei' ) ), ( error ) => {
 
 		assert.ok( error instanceof LocalDataMissingError );
-		assert.match( error.message, /npm run fetch-data/ );
+		assert.match( error.message, /npm run fetch-nikkei/ );
 		return true;
 
 	} );

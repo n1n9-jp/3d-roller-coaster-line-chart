@@ -1,7 +1,6 @@
 // 凡例（#hud-legend）。俯瞰中だけ表示する（表示の切り替えは readout.css の html[data-view="overview"]）。
 // 項目：走行済み／これから／現在地／出来事。「出来事」は、そのデータに出来事の注釈があるときだけ。
 // 出来事は読み込みが終わると 'eventsready'（payload { events }）で届く（events-data.js）。件数が 1 以上になったら項目を足す。
-// 「回送」の項目は作らない（螺旋の走行に連絡区間はない）。
 
 const BASE_ITEMS = [
 	{ shape: 'ridden', label: '走行済み' },

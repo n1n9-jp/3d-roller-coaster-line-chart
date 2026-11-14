@@ -614,7 +614,7 @@ test( 'MOTION.reducedRide：傾きは控えめ、向きの補間 0.08 → 0.04�
 
 } );
 
-test( '係数を渡さないときは従来と同じ結果になる（options なし・空・events だけ、のどれでも）', () => {
+test( '係数を渡さないときは既定と同じ結果になる（options なし・空・events だけ、のどれでも）', () => {
 
 	const base = run( newRide(), FRAME_MS, 30 * 1000 );
 	const empty = run( newRideWithMotion( {} ), FRAME_MS, 30 * 1000 );
@@ -735,7 +735,7 @@ test( 'reduced：向きの補間がゆるやか（同じ時間でも目標への
 
 } );
 
-test( 'setMotion：実行中に係数を差し替え、null で元に戻る。ほかの係数は従来の値のまま', () => {
+test( 'setMotion：実行中に係数を差し替え、null で元に戻る。ほかの係数は既定の値のまま', () => {
 
 	const ride = newRide();
 	ride.setMotion( MOTION.reducedRide );

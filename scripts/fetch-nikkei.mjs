@@ -1,6 +1,6 @@
 // 日経平均株価の実データを FRED から取得し、週次終値の data/local/ に書き出す。
 //
-//   npm run fetch-nikkei   （fetch-data でも同じ）
+//   npm run fetch-nikkei
 //   node scripts/fetch-nikkei.mjs --from-file <保存済みの CSV>
 //
 // 出力（どちらも git の管理外）:

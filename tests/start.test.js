@@ -99,7 +99,7 @@ test( 'キッカー・説明文・チップ・読み込み中の文言：3種類
 	assert.equal( loadingText( DATASETS.jgb10 ), '金利のデータを読み込んでいます' );
 	assert.equal( loadingText( DATASETS.nikkei ), '株価のデータを読み込んでいます' );
 
-	// 山手線・一周・サンプルの言い回しは残っていない
+	// 旧コースと合成データの言い回しは残っていない
 	for ( const def of Object.values( DATASETS ) ) {
 
 		const all = [ descriptionText( def, usdjpy ), ...chipTexts( def ) ].join( '' );
@@ -188,7 +188,7 @@ test( 'データの切り替えの項目：日経平均は、読み込めたと�
 
 } );
 
-test( '情報パネルのしくみ：データの名前・読み・目盛りの刻み。山手線の記述はない', () => {
+test( '情報パネルのしくみ：データの名前・読み・目盛りの刻み。旧コースの記述はない', () => {
 
 	assert.equal( stepLabel( DATASETS.usdjpy ), '50円' );
 	assert.equal( stepLabel( DATASETS.jgb10 ), '1%' );
@@ -294,7 +294,7 @@ test( '出来事の出典の段落：件数が 1 以上のときだけ。sources
 
 } );
 
-test( 'エラーの文言は種類ごとに揃っている。サンプルデータには触れない', () => {
+test( 'エラーの文言は種類ごとに揃っている。合成データ（サンプル）の言い回しは使わない', () => {
 
 	for ( const kind of [ 'data', 'local', 'webgl', 'file', 'boot' ] ) {
 

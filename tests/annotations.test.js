@@ -412,7 +412,7 @@ test( 'scheduler：最初から（reset）で、表示も待ちも位置の記�
 
 } );
 
-test( 'scheduler：一周して止まったら（finished）表示を消し、待ちも捨てる', () => {
+test( 'scheduler：最後の週で止まったら（finished）表示を消し、待ちも捨てる', () => {
 
 	const scheduler = createCaptionScheduler( { events: [ ev( 'A', 0.1 ), ev( 'B', 0.1005 ) ], ...options } );
 	scheduler.update( { timeMs: 0, progress: 0.0999 } );

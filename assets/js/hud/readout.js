@@ -1,10 +1,10 @@
 // 現在値の帯（#hud-readout）。年月・ラベル・値・前週比。
-// 機能モジュール（createReadout( ctx )）。担当：現在値の帯。
+// 機能モジュール（createReadout( ctx )）。
 // 値・単位・前週比の文字列は dataset.format（format.js）で作る。値は生データ（state.point、dataset.raw）。
 
 import { parseDate } from '../format.js';
 
-/** 最後の週で止まったときなど、dataIndex（小数）から系列上の週の位置（整数）を決める。 */
+/** dataIndex（小数）から系列上の週の位置（整数）を決める。 */
 export function weekIndex( dataIndex, length ) {
 
 	return Math.min( Math.max( Math.floor( dataIndex ), 0 ), length - 1 );
