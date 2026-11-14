@@ -74,18 +74,6 @@ export const COLORS = {
 	funfairB: 0x8080ff
 };
 
-// ---- HUD（2D canvas）----
-export const HUD = {
-	size: 200, // CSS px
-	panelBackground: '#ffffff',
-	graphLine: '#0066cc',
-	graphGrid: '#eee',
-	mapLine: '#00aa00',
-	marker: '#ff3333',
-	text: '#333',
-	font: '10px "Noto Sans", sans-serif'
-};
-
 // =====================================================================
 // ステージ2：デザインの共有定数。各節は機能担当が中身を足す場所。
 // CSS 側の同じ値は assets/css/tokens.css（値を変えるときは両方そろえる）。

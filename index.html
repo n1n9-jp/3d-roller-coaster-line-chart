@@ -36,11 +36,19 @@
 			<div id="hud-controls" role="group" aria-label="操作"></div>
 			<!-- [hud-chart] ミニグラフ  CSS: chart.css / JS: hud/chart.js -->
 			<div id="hud-chart" class="hud-panel">
-				<canvas id="graphCanvas" width="296" height="140" role="img" aria-label="日経平均株価の折れ線グラフ"></canvas>
+				<div class="chart-head">
+					<h2 class="chart-title"><span class="chart-title__full">日経平均株価の</span>推移</h2>
+					<span class="chart-unit">円</span>
+				</div>
+				<canvas id="graphCanvas" role="img" aria-label="日経平均株価の折れ線グラフ"></canvas>
 			</div>
 			<!-- [hud-map] 路線図  CSS: map.css / JS: hud/map.js -->
 			<div id="hud-map" class="hud-panel">
-				<canvas id="mapCanvas" width="176" height="200" role="img" aria-label="山手線の路線図"></canvas>
+				<div class="map-head">
+					<h2 class="map-title">山手線 外回り</h2>
+					<p class="map-now">いま：<span id="mapNow">大崎</span>付近</p>
+				</div>
+				<canvas id="mapCanvas" role="img" aria-label="山手線の路線図"></canvas>
 			</div>
 			<!-- [hud-caption] イベントキャプション  CSS: annotations.css / JS: hud/annotations.js -->
 			<div id="hud-caption" role="status" aria-live="polite"></div>
