@@ -434,9 +434,16 @@
 		padding-right: calc(12px + var(--safe-r));
 	}
 
+	/* 文字が画面の大半を占めるので、面を薄くして後ろの走行を見せる。そのぶん文字に影を付けて読みやすさを保つ */
 	#start-screen[data-state="ready"] .start-main {
+		--start-veil: color-mix(in srgb, var(--c-bg-1) 68%, transparent);
 		padding: 20px 12px;
 		box-shadow: 0 0 24px 12px var(--start-veil);
+		text-shadow: 0 0 6px var(--c-bg-0), 0 1px 2px var(--c-bg-0);
+	}
+
+	#start-screen[data-state="ready"] .start-main :is( .btn, a[aria-current] ) {
+		text-shadow: none;
 	}
 
 	.start-title {

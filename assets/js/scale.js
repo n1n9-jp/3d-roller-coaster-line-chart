@@ -1467,7 +1467,8 @@ export function createScale( ctx ) {
 
 		for ( const e of rideEntries ) {
 
-			e.show = approach( e.show, e.wanted ? 1 : 0 );
+			// 乗車前（スタート画面の後ろのデモ走行）は、値ラベルを出さない（スタート画面の文字と重なって読みにくくなる）
+			e.show = approach( e.show, e.wanted && state.started ? 1 : 0 );
 			const opacity = e.show * e.near * ( 1 - blend );
 			e.material.opacity = opacity;
 			e.sprite.visible = opacity > 0.02;
