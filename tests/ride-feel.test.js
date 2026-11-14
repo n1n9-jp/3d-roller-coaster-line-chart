@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRide } from '../assets/js/ride.js';
-import { createView, rideCameraPosition, overviewMode } from '../assets/js/view.js';
+import { createView, rideCameraPosition, rideCameraProgress, overviewMode } from '../assets/js/view.js';
 import { TrackCurve } from '../assets/js/track.js';
 import { buildDataset } from '../assets/js/data.js';
 import { Scene, PerspectiveCamera, Object3D } from '../assets/js/three.core.js';
@@ -57,7 +57,25 @@ function railHeightBelow( curve, p, t ) {
 
 }
 
-test( '一人称のカメラ：全区間（内側の周でも外側の周でも）で、真下のレールとの高さの差が一定（レール面 + 車体 + カメラの高さ）', () => {
+/** カメラの前方（車体の水平の向き）で、水平 radius 以内にあるレールの点の高さの最大。 */
+function railTopAhead( curve, p, t, heading, radius ) {
+
+	let top = - Infinity;
+	const width = 4 * radius / curve.lengthPerProgressAt( t );
+	for ( let s = Math.max( 0, t - width ); s <= Math.min( 1, t + width ); s += width / 400 ) {
+
+		const q = curve.getPointAt( s );
+		const dx = q.x - p.x, dz = q.z - p.z;
+		if ( dx * heading.x + dz * heading.z < 0 ) continue;
+		if ( Math.hypot( dx, dz ) < radius ) top = Math.max( top, q.y );
+
+	}
+
+	return top;
+
+}
+
+test( '一人称のカメラ：全区間で、真下のレールより上にあり（9 割以上の点で一定の 1.4。急な上りで後ろへ倒しても 0.4 以上）、前方の水平 0.5 以内にカメラより（0.1 以上）高いレールがない', () => {
 
 	for ( const [ name, curve ] of curves ) {
 
@@ -70,7 +88,8 @@ test( '一人称のカメラ：全区間（内側の周でも外側の周でも�
 			const view = createView( { scene, camera, train, curve, ride } );
 
 			let min = Infinity;
-			let max = - Infinity;
+			let exact = 0;
+			let count = 0;
 			const firstTurn = 1 / curve.turns;
 			let inner = 0;
 			let outer = 0;
@@ -86,14 +105,19 @@ test( '一人称のカメラ：全区間（内側の周でも外側の周でも�
 				view.update( { nowMs: 0 } );
 
 				const below = railHeightBelow( curve, camera.position, t );
-				assert.ok( below.distance < 0.02, `${name} ${label} t=${t}: 真下にレールがない（${below.distance}）` );
+				assert.ok( below.distance < 0.1, `${name} ${label} t=${t}: 真下にレールがない（${below.distance}）` );
 				const gap = camera.position.y - below.y;
 				min = Math.min( min, gap );
-				max = Math.max( max, gap );
+				if ( Math.abs( gap - CAMERA_LIFT ) < 0.02 ) exact ++;
+				count ++;
+				const top = railTopAhead( curve, camera.position, t, curve.getTangentAt( t ).clone(), 0.5 );
+				// 急な上りの谷底で、持ち上げる上限（SCENE.ride.maxLift）に当たるところだけ、わずかに（0.1 未満）高いことがある
+				assert.ok( top < camera.position.y + 0.1, `${name} ${label} t=${t}: 前方のレールがカメラより ${( top - camera.position.y ).toFixed( 2 )} 高い` );
 
 			}
 
-			assert.ok( Math.abs( min - CAMERA_LIFT ) < 0.02 && Math.abs( max - CAMERA_LIFT ) < 0.02, `${name} ${label}: 高さの差 ${min.toFixed( 3 )}〜${max.toFixed( 3 )}（${CAMERA_LIFT} のはず）` );
+			assert.ok( min >= 0.4, `${name} ${label}: 真下のレールとの高さの差の最小 ${min.toFixed( 3 )}` );
+			assert.ok( exact >= count * 0.9, `${name} ${label}: 高さの差が ${CAMERA_LIFT} の点 ${exact} / ${count}` );
 			assert.ok( inner > 50 && outer > 50, `${name}: 内側 ${inner} 点、外側 ${outer} 点` );
 
 		}
@@ -102,7 +126,7 @@ test( '一人称のカメラ：全区間（内側の周でも外側の周でも�
 
 } );
 
-test( '一人称のカメラ：進行位置よりレールに沿って back だけ後ろ。始点の近くでは 0 で止める', () => {
+test( '一人称のカメラ：足元の点は、進行位置からレールに沿った 3D の長さで back だけ後ろ。始点の近くでは 0 で止める', () => {
 
 	const [ , curve ] = curves[ 0 ];
 	const out = { x: 0, y: 0, z: 0 };
@@ -112,21 +136,28 @@ test( '一人称のカメラ：進行位置よりレールに沿って back だ�
 	assert.ok( Math.hypot( out.x - p0.x, out.z - p0.z ) < 1e-9 );
 	assert.ok( Math.abs( out.y - ( p0.y + CAMERA_LIFT ) ) < 1e-9 );
 
-	// 途中：カメラの真下の点と進行位置の点の 3D の距離が back（曲がり角では、水平に back 戻った点が back より近いことがあり、そこで止める）
-	let exact = 0;
-	let count = 0;
-	for ( let t = 0.01; t <= 1; t += 0.002 ) {
+	for ( const [ name, c ] of curves ) {
 
-		rideCameraPosition( curve, t, out );
-		const train = curve.getPointAt( t ).clone();
-		const d = Math.hypot( train.x - out.x, train.y - ( out.y - CAMERA_LIFT ), train.z - out.z );
-		assert.ok( d <= SCENE.ride.back + 1e-3 && d > SCENE.ride.back * 0.8, `t=${t} d=${d}` );
-		if ( Math.abs( d - SCENE.ride.back ) < 1e-3 ) exact ++;
-		count ++;
+		for ( let t = 0.01; t <= 1; t += 0.002 ) {
+
+			const s = rideCameraProgress( c, t );
+			// 足元の点から進行位置までのレールの長さ（細かい折れ線）
+			let length = 0;
+			const prev = c.getPointAt( s ).clone();
+			const steps = 400;
+			for ( let i = 1; i <= steps; i ++ ) {
+
+				const q = c.getPointAt( s + ( t - s ) * i / steps );
+				length += q.distanceTo( prev );
+				prev.copy( q );
+
+			}
+
+			assert.ok( Math.abs( length - SCENE.ride.back ) < 0.03 * SCENE.ride.back, `${name} t=${t}: ${length}` );
+
+		}
 
 	}
-
-	assert.ok( exact > count * 0.8, `${exact} / ${count}` );
 
 } );
 

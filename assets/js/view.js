@@ -10,11 +10,10 @@
 // 各モジュールの onViewChange( view ) は、main.js が 'viewchange' を受けて呼ぶ。
 //
 // カメラはシーン直下に置き、ワールド座標で動かす。
-//   一人称：位置は、レール上の進行位置（ride.progress）からレールに沿って SCENE.ride.back だけ後ろの点の真上
-//           （レール面 + TRAIN_RAIL_OFFSET + SCENE.ride.height）。向きは車体（train）の向きから、下向きに pitchDeg。
-//           車体の傾きはレールの実際の勾配より控えめ（RAIL_SLOPE_RATIO）なので、車体の向きで「後ろ」を回すと、
-//           急な上り下りでカメラがレールから浮いたり沈んだりする。そのため位置はレールから直接取る。
-//           curve・ride を渡さないときは、従来どおり車体の姿勢から（上へ height、後ろへ back）。
+//   一人称：位置は ride.cameraPosition（ride.js が決める。進行位置からレールに沿って SCENE.ride.back だけ後ろの点の上。
+//           急な上りでは坂の手前へ離す）。向きは車体（train）の向きから、下向きに pitchDeg。
+//           前方のレールが画面に入るように、縦の画角と下向きの角度を ride.setFraming で走行に渡す（縦横比が変わったとき）。
+//           ride を渡さないときは、従来どおり車体の姿勢から（上へ height、後ろへ back）。
 //   俯瞰：  南（+z）から仰角 SCENE.overview.elevationDeg（モードごとの値は elevationByMode）。位置は fitOverview が、
 //           螺旋の点（setOverviewSubject）と追加の点（setOverviewExtras。目盛りの壁など）を、画面の端の余白の内側で、
 //           HUD のパネルの矩形（実行時に DOM から読む。SCENE.overview.frame）と重ならない最大の大きさに収めるように決める。
@@ -23,7 +22,11 @@
 //             時刻は state.nowMs。prefers-reduced-motion: reduce では瞬時。
 
 import { Vector3, Quaternion, Matrix4, Euler, MathUtils } from './three.core.js';
-import { SCENE, MOTION, TRAIN_RAIL_OFFSET } from './config.js';
+import { SCENE, MOTION } from './config.js';
+import { rideCameraPosition } from './ride.js';
+
+// 一人称のカメラの位置は ride.js が決める（以前の呼び出し元のため、ここからも使えるようにする）
+export { rideCameraProgress, rideCameraPosition } from './ride.js';
 
 const DEG = Math.PI / 180;
 
@@ -101,56 +104,6 @@ export function overviewDistance( aspect ) {
 	const vfov = overviewFov( aspect ) * DEG;
 	const hfov = 2 * Math.atan( Math.tan( vfov / 2 ) * aspect );
 	return SCENE.overview.radius / Math.sin( Math.min( vfov, hfov ) / 2 );
-
-}
-
-/**
- * 一人称のカメラを置くレール上の点の progress：progress からレールに沿って back（3D の距離）だけ後ろ。
- * 後ろの点が 0 より前になるときは 0 で止める。
- * @param curve getPointAt と lengthPerProgressAt（その位置での t あたりの水平距離）を持つ曲線（TrackCurve）。
- *        lengthPerProgressAt を持たない曲線では、t あたりの距離を 1 とみなす
- */
-export function rideCameraProgress( curve, progress, back = SCENE.ride.back ) {
-
-	if ( progress <= 0 ) return 0;
-	progress = Math.min( progress, 1 );
-	const length = typeof curve.lengthPerProgressAt === 'function' ? curve.lengthPerProgressAt( progress ) : 1;
-	const p = curve.getPointAt( progress );
-	const px = p.x, py = p.y, pz = p.z;
-	const chord = ( s ) => {
-
-		const q = curve.getPointAt( s );
-		return Math.hypot( q.x - px, q.y - py, q.z - pz );
-
-	};
-
-	// 水平に back より少し多く戻った点（3D では back 以上離れている）と進行位置の間で、3D の距離が back になる点を二分法で探す。
-	// t あたりの距離は進行位置での値（螺旋では位置によって変わるが、back の範囲ではほぼ一定）。弦は弧より短いので 1 割多く戻る
-	let lo = Math.max( 0, progress - 1.1 * back / length ); // 遠い側
-	let hi = progress; // 近い側
-	if ( chord( lo ) <= back ) return lo; // 始点の近く：0 で止める
-	for ( let i = 0; i < 24; i ++ ) {
-
-		const mid = ( lo + hi ) / 2;
-		if ( chord( mid ) > back ) lo = mid; else hi = mid;
-
-	}
-
-	return ( lo + hi ) / 2;
-
-}
-
-/**
- * 一人称のカメラの位置：rideCameraProgress の点の真上（レール面 + TRAIN_RAIL_OFFSET + height）。
- * @param out 結果を入れる {x,y,z}（Vector3 など）。そのまま返す
- */
-export function rideCameraPosition( curve, progress, out, { back = SCENE.ride.back, height = SCENE.ride.height } = {} ) {
-
-	const p = curve.getPointAt( rideCameraProgress( curve, progress, back ) );
-	out.x = p.x;
-	out.y = p.y + TRAIN_RAIL_OFFSET + height;
-	out.z = p.z;
-	return out;
 
 }
 
@@ -574,6 +527,7 @@ export function createView( { scene, camera, train, events = null, curve = null,
 	scene.add( camera );
 
 	const ridePosition = new Vector3();
+	let framedAspect = null; // ride.setFraming に渡した縦横比
 	const rideQuaternion = new Quaternion();
 	const overviewPosition = new Vector3();
 	const overviewQuaternion = new Quaternion();
@@ -773,9 +727,22 @@ export function createView( { scene, camera, train, events = null, curve = null,
 		const aspect = camera.aspect;
 
 		// 一人称：位置はレールの少し後ろの点の真上、向きは車体の向き（train は main.js がこのフレームの ride の値にしてある）
-		if ( curve && ride ) rideCameraPosition( curve, ride.progress, ridePosition );
+		if ( ride?.cameraPosition ) ridePosition.copy( ride.cameraPosition );
+		else if ( curve && ride ) rideCameraPosition( curve, ride.progress, ridePosition );
 		else ridePosition.set( 0, SCENE.ride.height, SCENE.ride.back ).applyQuaternion( train.quaternion ).add( train.position );
-		pitch.setFromEuler( pitchEuler.set( ( aspect < 1 ? SCENE.ride.pitchDegPortrait : SCENE.ride.pitchDeg ) * DEG, 0, 0 ) );
+		const pitchDeg = aspect < 1 ? SCENE.ride.pitchDegPortrait : SCENE.ride.pitchDeg;
+		pitch.setFromEuler( pitchEuler.set( pitchDeg * DEG, 0, 0 ) );
+		// 走行（ride.js）に、カメラの置き方を渡す：前方のレールが縦の画角に入るように車体の傾きを補正する（縦横比が変わったときだけ）
+		if ( curve && ride?.setFraming && framedAspect !== aspect ) {
+
+			framedAspect = aspect;
+			ride.setFraming( {
+				pitchOffset: pitchDeg * DEG,
+				halfVerticalFov: rideFov( aspect ) / 2 * DEG
+			} );
+
+		}
+
 		rideQuaternion.copy( train.quaternion ).multiply( pitch );
 
 		// 俯瞰：螺旋の点があれば、HUD を避けた範囲に収める構図（画面の大きさが変わったときだけ解き直す）
