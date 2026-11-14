@@ -41,12 +41,15 @@ npm test
 
 ```
 index.html                      ページ本体（スタート画面、HUD の要素、importmap）
+scripts/
+  fetch-nikkei.mjs              FRED から実データを取得し、週次終値を data/local/ に書き出す
 assets/
+  LICENSE-three.js.txt          three.js のライセンス
   css/main.css                  スタイル
   js/
     main.js                     起動処理：データ読み込み、モジュールの組み立て、ループ開始
     config.js                   定数（座標、速度、カメラ、配色など）
-    data.js                     データ読み込み、移動平均、データ点の参照
+    data.js                     データ読み込み（サンプル／実データの切り替え）、移動平均、データ点の参照
     track.js                    経緯度の変換、山手線の経路、レール曲線（TrackCurve）
     ride.js                     走行状態（進行度・速度・一時停止）の更新
     scene.js                    renderer、scene、ライト、カメラ、リサイズ
@@ -64,7 +67,9 @@ assets/
     three.module.js             three.js 本体（同梱、変更しない）
   jsm/misc/RollerCoaster.js     three.js のサンプルのレール生成（同梱、変更しない）
 data/
-  nikkei225.json                日経平均の週次終値
+  nikkei225.json                サンプルデータ（合成。実際の日経平均ではない）
+  nikkei225.meta.json           サンプルデータのメタ情報（kind: sample）
+  local/                        npm run fetch-data で作る実データ（git の管理外）
   train-yamanote.json           山手線の駅（経緯度）
 tests/                          node:test によるテスト
 ```
@@ -73,4 +78,37 @@ tests/                          node:test によるテスト
 
 ## データ出典
 
-確認中です。
+### 同梱のサンプルデータ（実際の日経平均ではありません）
+
+`data/nikkei225.json` は、日経平均株価のおおまかな水準に似せて作った**合成データ**です。各週の値は実際の終値と一致しません。説明は `data/nikkei225.meta.json`（`kind: "sample"`）にあります。リポジトリを取得してそのまま動かしたときは、このサンプルデータで動きます。
+
+### 実データで動かす
+
+実データはリポジトリに含めていません。取得スクリプトを手元で実行すると、実データで動きます。Node 22 以降が必要です。
+
+```sh
+npm run fetch-data      # data/local/ に実データを書き出す
+npm start
+```
+
+ブラウザで http://localhost:8000/?data=local を開きます。`data/local/` は git の管理外です。
+
+- 取得元：米セントルイス連邦準備銀行 FRED の系列 NIKKEI225（日次終値）。`https://fred.stlouisfed.org/graph/fredgraph.csv?id=NIKKEI225&cosd=1990-01-01`
+- 週次への集計：月曜始まりの週ごとに、その週の最終営業日の終値をとります（営業日のない週は行を作りません）。日付は週の月曜日です。
+- 取得に失敗するときは、上の URL を開いて CSV を保存し、`node scripts/fetch-nikkei.mjs --from-file 保存したファイル` を実行してください。
+
+実データの出典表記：
+
+> 出典：日本経済新聞社「日経平均株価」（©日本経済新聞社）。米セントルイス連邦準備銀行 FRED（系列 NIKKEI225）経由で取得。週次値は各週の最終営業日の終値。
+
+### 取得したデータの扱いについて
+
+日経平均株価の値を第三者へ提供すること（実データのファイルを公開の場所に置く、実データの画面を公開するなど）には、日本経済新聞社の利用許諾の手続きが必要になる場合があります。取得したデータは手元での利用にとどめてください。公開する場合は、各自で規約を確認してください。
+
+- 日経平均株価の利用規約：https://indexes.nikkei.co.jp/nkave/archives/file/license_agreement_jp.pdf
+- FRED の利用条件：https://fred.stlouisfed.org/legal/
+
+### その他
+
+- 駅の位置（`data/train-yamanote.json`）は、駅データ.jp（https://ekidata.jp/）のデータを加工したものです。
+- three.js は MIT License です。ライセンス全文は `assets/LICENSE-three.js.txt` にあります。
