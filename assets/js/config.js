@@ -205,7 +205,48 @@ export const RAIL = {
 };
 
 // CONTOUR：等高線と値ラベルの定数（刻み、外側へのずらし、ラベルの大きさ・配置の駅番号など）。担当：高さ目盛り。
-export const CONTOUR = {};
+// 色は PALETTE.contour と HUD_COLORS（contourLabel、contourLabelBg）。
+export const CONTOUR = {
+	// 等高線：1 万円刻み。駅の多角形を外側へ offset ずらした輪。5 万円の倍数の線だけ少し強くする
+	stepYen: 10000,
+	offset: 1.5,
+	line: { opacity: 0.55, strongOpacity: 0.85, strongEveryYen: 50000 },
+	// 値ラベル（Sprite）：テクスチャは値ごとに 1 枚。fontPx は pillHeight に対する文字の大きさ（画面上の文字の高さの基準）
+	label: {
+		// ピルの幅は文字の幅 + 左右の padding（狭い画面でも置けるよう、仕様の 384 固定より詰める）
+		pillHeight: 96, padding: 38, radius: 48, border: 2, fontPx: 56,
+		// 配置する駅の番号。等高線の輪からさらに extraOffset 外へ、y は等高線 + lift
+		stations: [ 0, 5, 10, 15, 20, 25 ],
+		// 俯瞰で、上の駅に置けなかった等高線のためだけに使う予備の駅（狭い画面で、7 本の等高線に 1 つずつ付けるため）
+		spareStations: [ 2, 8, 13, 17, 22, 27, 3, 14 ],
+		// 予備の駅のうち先頭の何か所を、一人称でも使うか（前方にラベルが途切れないよう、駅の間隔を詰める）
+		rideSpareCount: 6,
+		extraOffset: 3,
+		lift: 0.9
+	},
+	// 画面上の文字の高さ（px）。実行時のカメラの距離・画角と表示サイズから、Sprite の大きさ（ワールド単位）を決める
+	// ride：基準距離 rideDistance にあるラベルの文字の高さ（近づくほど大きく、遠いほど小さい。fog で霞む）
+	// overview：俯瞰では距離によらずこの高さにそろえる（幅 compactMaxWidth 以下の画面は compact）
+	textPx: { ride: 14, overview: 15, overviewCompact: 14 },
+	rideDistance: 25,
+	compactMaxWidth: 720,
+	// 一人称：カメラに近いラベルは薄くして消す（hideBelow 以下で 0、fullAbove 以上で 1）
+	nearFade: { hideBelow: 8, fullAbove: 18 },
+	// 一人称：遠いラベルは消す（fadeStart から薄くなり、hideAbove 以上で 0。基準距離で文字が 14px なら、75 で 5px）
+	farFade: { fadeStart: 45, hideAbove: 75 },
+	// 俯瞰：駅名（床の高さ、輪の外側）。priority の順に置き、compact では maxCompact 個まで
+	stationNames: {
+		priority: [ '東京', '新宿', '池袋', '品川', '渋谷', '上野', '大崎' ],
+		maxCompact: 4,
+		y: 0.3,
+		offset: 8
+	},
+	// 俯瞰：ラベル・駅名・HUD のパネルが重ならないよう、優先順に置いて重なるものを間引く
+	// margin：ラベルどうし・HUD との最小の隙間（px）。maxPerLevel：1 本の等高線あたりの値ラベルの上限
+	declutter: { margin: 4, maxPerLevel: 6, maxPerLevelCompact: 3 },
+	// 表示・非表示の切り替えのなめらかさ（時定数 ms）
+	fadeMs: 110
+};
 
 // ANNOT：イベント注釈の定数（目印の大きさ、キャプションの表示時間、イベント一覧の置き場所など）。担当：イベント注釈。
 export const ANNOT = {
