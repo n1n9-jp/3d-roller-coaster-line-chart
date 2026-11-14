@@ -25,7 +25,10 @@
 		<div id="hud">
 			<!-- [hud-readout] 現在値の帯  CSS: readout.css / JS: hud/readout.js -->
 			<div id="hud-readout" class="hud-panel" role="group" aria-label="現在値">
-				<div id="year-display"></div>
+				<div class="ro-date"><span id="year-display"></span><span id="ro-month"></span><span id="ro-day" class="ro-day"></span></div>
+				<div class="ro-label">週次終値</div>
+				<div class="ro-value"><span id="ro-value" class="ro-num"></span><span class="ro-unit">円</span></div>
+				<div id="ro-change" class="ro-change" data-direction="none"><span id="ro-change-full" class="ro-change-full"></span><span id="ro-change-short" class="ro-change-short"></span></div>
 			</div>
 			<!-- [hud-legend] 凡例（俯瞰中だけ）  CSS: readout.css / JS: hud/legend.js -->
 			<div id="hud-legend" role="group" aria-label="凡例"></div>
