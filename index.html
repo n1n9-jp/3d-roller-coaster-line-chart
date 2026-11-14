@@ -55,7 +55,40 @@
 		</div>
 
 		<!-- [end-screen] 終了画面  CSS: endscreen.css / JS: ui/endscreen.js。見出しは #end-title を作ること -->
-		<div id="end-screen" role="dialog" aria-modal="true" aria-labelledby="end-title" hidden></div>
+		<div id="end-screen" role="dialog" aria-modal="true" aria-labelledby="end-title" hidden>
+			<div class="end-card">
+				<h2 id="end-title" class="end-title">一周しました</h2>
+				<p id="end-lead" class="end-lead"></p>
+				<p id="end-sample-note" class="end-note" hidden>サンプルデータ（実際の日経平均ではありません）</p>
+				<dl class="end-stats">
+					<div class="end-stat" data-stat="first">
+						<dt>最初の週</dt>
+						<dd class="end-stat__value tabular"><span class="end-stat__num"></span><span class="end-stat__unit">円</span></dd>
+						<dd class="end-stat__date tabular"></dd>
+					</div>
+					<div class="end-stat" data-stat="last">
+						<dt>最後の週</dt>
+						<dd class="end-stat__value tabular"><span class="end-stat__num"></span><span class="end-stat__unit">円</span></dd>
+						<dd class="end-stat__date tabular"></dd>
+					</div>
+					<div class="end-stat" data-stat="max">
+						<dt>最高値</dt>
+						<dd class="end-stat__value tabular"><span class="end-stat__num"></span><span class="end-stat__unit">円</span></dd>
+						<dd class="end-stat__date tabular"></dd>
+					</div>
+					<div class="end-stat" data-stat="min">
+						<dt>最安値</dt>
+						<dd class="end-stat__value tabular"><span class="end-stat__num"></span><span class="end-stat__unit">円</span></dd>
+						<dd class="end-stat__date tabular"></dd>
+					</div>
+				</dl>
+				<p id="end-change" class="end-change tabular"></p>
+				<div class="end-actions">
+					<button type="button" id="end-restart" class="btn btn--primary end-restart">もう一度乗る</button>
+					<button type="button" id="end-overview" class="btn end-overview">俯瞰で全体を見る</button>
+				</div>
+			</div>
+		</div>
 
 		<!-- [info-panel] 情報パネル  CSS: infopanel.css / JS: ui/infopanel.js。見出しは #info-title を作ること -->
 		<div id="info-panel" role="dialog" aria-modal="true" aria-labelledby="info-title" hidden></div>

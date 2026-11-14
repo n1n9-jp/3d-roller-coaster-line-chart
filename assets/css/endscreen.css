@@ -1,2 +1,215 @@
 /* 終了画面（#end-screen）。担当：終了画面。
-   全面に --c-scrim、中央にカード（仕様 3「終了画面」）。z-index は var(--z-end)。 */
+   全面に --c-scrim、中央にカード（仕様 3「終了画面」）。z-index は var(--z-end)。
+   出入り（仕様 5）：背面 400ms のフェード、カードは scale(--scale-in→1) と opacity 300ms。出は 200ms。
+   JS が hidden を外し、次のフレームで .is-open を付ける。閉じるときは .is-open を外して 200ms 後に hidden。 */
+
+#end-screen {
+	position: fixed;
+	inset: 0;
+	z-index: var(--z-end);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: calc(16px + var(--safe-t)) calc(16px + var(--safe-r)) calc(16px + var(--safe-b)) calc(16px + var(--safe-l));
+	background: var(--c-scrim);
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-in);
+}
+
+#end-screen.is-open {
+	opacity: 1;
+	transition: opacity var(--dur-slow) var(--ease-out);
+}
+
+/* 終了画面が出ている間は HUD を消す（仕様 5「HUD」の出）。#hud 本体のスタイルは hud.css */
+html[data-ended] #hud,
+html[data-ended] #hud.visible {
+	opacity: 0;
+	transition: opacity 200ms var(--ease-in);
+}
+
+.end-card {
+	width: 100%;
+	max-width: 520px;
+	max-height: 100%;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: 28px;
+	background: var(--c-bg-1);
+	border: 1px solid var(--c-panel-border);
+	border-radius: var(--radius-card);
+	opacity: 0;
+	transform: scale(var(--scale-in));
+	transition: opacity var(--dur-fast) var(--ease-in), transform var(--dur-fast) var(--ease-in);
+}
+
+#end-screen.is-open .end-card {
+	opacity: 1;
+	transform: none;
+	transition: opacity 300ms var(--ease-out), transform 300ms var(--ease-out);
+}
+
+.end-title {
+	margin: 0;
+	font-size: var(--fs-20);
+	line-height: var(--lh-20);
+	font-weight: 700;
+	color: var(--c-text-1);
+}
+
+.end-lead {
+	margin-top: 8px;
+	font-size: var(--fs-14);
+	line-height: var(--lh-14);
+	color: var(--c-text-2);
+}
+
+/* サンプルデータの注記（脚注の大きさ、補助の色） */
+.end-note {
+	margin-top: 8px;
+	font-size: var(--fs-12);
+	line-height: var(--lh-12);
+	color: var(--c-text-2);
+}
+
+.end-stats {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px;
+	margin: 20px 0 0;
+}
+
+.end-stat {
+	min-width: 0;
+	padding: 12px;
+	background: var(--c-btn);
+	border-radius: 10px;
+}
+
+.end-stat dt {
+	font-size: var(--fs-12);
+	line-height: var(--lh-12);
+	color: var(--c-text-3);
+}
+
+.end-stat dd {
+	margin: 0;
+}
+
+.end-stat__value {
+	margin-top: 4px;
+	display: flex;
+	align-items: baseline;
+	gap: 2px;
+	white-space: nowrap;
+	color: var(--c-text-1);
+}
+
+.end-stat__num {
+	font-size: var(--fs-28);
+	line-height: var(--lh-28);
+	font-weight: 700;
+	letter-spacing: 0;
+}
+
+.end-stat__unit {
+	font-size: var(--fs-14);
+	line-height: var(--lh-14);
+	font-weight: 600;
+}
+
+.end-stat__date {
+	margin-top: 4px;
+	font-size: var(--fs-12);
+	line-height: var(--lh-12);
+	color: var(--c-text-2);
+}
+
+.end-change {
+	margin-top: 16px;
+	font-size: var(--fs-14);
+	line-height: var(--lh-14);
+	color: var(--c-text-1);
+}
+
+.end-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px;
+	margin-top: 20px;
+}
+
+.end-restart {
+	min-height: 52px;
+	padding: 0 28px;
+	font-size: var(--fs-18);
+	line-height: var(--lh-18);
+}
+
+.end-overview {
+	min-height: 44px;
+}
+
+/* ---- S：720px 以下。ボタンは縦に並べて幅いっぱい ---- */
+@media (max-width: 720px) {
+	.end-card {
+		padding: 20px;
+	}
+
+	.end-stat {
+		padding: 10px;
+	}
+
+	.end-actions {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.end-restart,
+	.end-overview {
+		width: 100%;
+	}
+
+	.end-overview {
+		min-height: 48px;
+	}
+}
+
+/* ---- 短い横長（高さ 520px 以下）：カードを広げて統計を 1 行に、ボタンは横に並べる ---- */
+@media (max-height: 520px) and (orientation: landscape) {
+	.end-card {
+		max-width: 720px;
+		padding: 16px 20px;
+	}
+
+	.end-lead,
+	.end-note {
+		margin-top: 4px;
+	}
+
+	.end-stats {
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 8px;
+		margin-top: 12px;
+	}
+
+	.end-change {
+		margin-top: 10px;
+	}
+
+	.end-actions {
+		flex-direction: row;
+		align-items: center;
+		margin-top: 12px;
+	}
+
+	.end-restart,
+	.end-overview {
+		width: auto;
+	}
+
+	.end-restart {
+		min-height: 48px;
+	}
+}
