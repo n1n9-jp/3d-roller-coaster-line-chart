@@ -117,6 +117,9 @@ export function metaDescription( kind ) {
 
 export const CANVAS_LABEL = '日経平均株価をレールの高さにしたジェットコースターの3D表示';
 
+/** 出来事の注釈（実データのときだけ出る）の出典。 */
+export const EVENTS_SOURCE_TEXT = '出来事の日付と値：FRED（系列 NIKKEI225）、日本銀行、金融庁、気象庁の公表資料';
+
 /**
  * 情報パネル「データ出典」の、データの出どころの段落。
  * 各要素は { text, link?: { href, label } }。
@@ -148,7 +151,9 @@ export function dataSourceItems( meta ) {
 
 	const item = { text };
 	if ( meta.sourceUrl ) item.link = { href: meta.sourceUrl, label: '出典ページ' };
-	return [ item ];
+
+	// 出来事の注釈（data/events.json）は実データのときだけ出る（events-data.js）。出典もそのときだけ出す
+	return [ item, { text: EVENTS_SOURCE_TEXT } ];
 
 }
 
