@@ -10,13 +10,13 @@ import { buildDataset } from '../assets/js/data.js';
 import { overviewSubjectPoints } from '../assets/js/curtain.js';
 import { Scene, PerspectiveCamera, Object3D, Vector3 } from '../assets/js/three.core.js';
 import { SCENE } from '../assets/js/config.js';
-import { readJson } from './helpers.js';
+import { readJson, series1990 } from './helpers.js';
 
 // 5.6 周（ドル円 1971 年〜）、4 周（10 年国債 1986 年〜）、3.6 周（サンプル）、手元にあれば日経平均（3.7 周）
 const DATA = [
 	[ 'ドル円', readJson( 'data/usdjpy.json' ) ],
 	[ '国債10年', readJson( 'data/jgb10.json' ) ],
-	[ 'サンプル', readJson( 'data/nikkei225.json' ) ]
+	[ '1990年始まり', series1990() ]
 ];
 const localUrl = new URL( '../data/local/nikkei225.json', import.meta.url );
 if ( existsSync( localUrl ) ) DATA.push( [ '日経平均', JSON.parse( readFileSync( localUrl, 'utf8' ) ) ] );
@@ -152,7 +152,7 @@ test( '俯瞰の構図（4 つのモード × サンプル・実データ × 3�
 	for ( const { name, points, outer, turns } of SPIRALS ) {
 
 		const extras = scaleWall( outer );
-		for ( const kind of [ 'sample', 'real' ] ) {
+		for ( const kind of [ 'real' ] ) {
 
 			for ( const [ w, h ] of SIZES ) {
 
