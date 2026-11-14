@@ -1,32 +1,324 @@
 /* 現在値の帯（#hud-readout）と凡例（#hud-legend）、サンプルデータのバッジ。担当：現在値の帯。
    スロットの位置とサイズは hud.css。ここでは中の見た目だけを書く（凡例の見た目もここ）。
-   サンプルバッジは #hud-readout の中に置き、position: absolute; top: calc(100% + 8px) で帯の直下に出す。 */
+   サンプルバッジは #hud-readout の中に置き、帯の直下に出す。 */
 
+/* ---- 現在値の帯 ---- */
 #hud-readout {
-	display: flex;
-	align-items: center;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-rows: auto auto;
+	grid-template-areas:
+		"date label"
+		"value change";
+	align-content: center;
+	row-gap: 4px;
+	column-gap: 12px;
+	padding-block: 9px;
+	/* 出入り（仕様 5：HUD の帯。#hud の opacity と重ねる。帯が最初、フェード開始から 200ms 後） */
+	opacity: 0;
+	transform: translateY( calc( -1 * var( --shift-md ) ) );
+	transition: opacity 300ms var(--ease-out), transform 300ms var(--ease-out);
 }
 
-/* 現状の年表示（骨組み）。帯の中に収まる大きさにして、中身は担当が作り直す */
-#year-display {
-	color: var(--c-text-1);
-	font-size: var(--fs-40);
-	line-height: var(--lh-40);
-	font-weight: bold;
+#hud.visible #hud-readout {
+	opacity: 1;
+	transform: none;
+	transition-delay: 200ms;
+}
+
+#hud-readout .ro-date {
+	grid-area: date;
+	min-width: 0;
+	color: var(--c-text-2);
+	font-size: var(--fs-14);
+	line-height: 16px;
+	font-weight: 600;
+	letter-spacing: var(--ls-ja);
 	font-variant-numeric: tabular-nums;
-	letter-spacing: 0.05em;
 	white-space: nowrap;
 }
 
-/* 凡例は俯瞰中だけ出す（html[data-view] は view.js が付ける） */
+#hud-readout .ro-label {
+	grid-area: label;
+	align-self: baseline;
+	justify-self: end;
+	color: var(--c-text-3);
+	font-size: var(--fs-12);
+	line-height: 16px;
+	letter-spacing: var(--ls-ja);
+	white-space: nowrap;
+}
+
+#hud-readout .ro-value {
+	grid-area: value;
+	align-self: baseline;
+	color: var(--c-text-1);
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+#hud-readout .ro-num {
+	font-size: var(--fs-40);
+	line-height: 38px;
+	font-weight: 700;
+	letter-spacing: 0;
+}
+
+#hud-readout .ro-unit {
+	margin-left: 2px;
+	font-size: var(--fs-14);
+	font-weight: 600;
+	letter-spacing: var(--ls-ja);
+}
+
+/* 前週比：色は本文と同じ（上げ下げに赤・緑は使わない。▲▼と符号で示す） */
+#hud-readout .ro-change {
+	grid-area: change;
+	align-self: baseline;
+	justify-self: end;
+	color: var(--c-text-2);
+	font-size: var(--fs-13);
+	line-height: 16px;
+	letter-spacing: 0;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+#hud-readout .ro-change-short {
+	display: none;
+}
+
+/* ---- サンプルデータのバッジ（仕様 1-4）：帯の直下 8px、左端を帯にそろえる ---- */
+#hud-readout .ro-badge {
+	position: absolute;
+	top: calc(100% + 9px); /* 帯の枠（1px）の分 */
+	left: -1px;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	padding: 0 10px;
+	border: 1px solid var(--c-accent);
+	border-radius: 999px;
+	background: color-mix( in srgb, var(--c-accent) 14%, transparent );
+	color: var(--c-accent-text);
+	font-size: var(--fs-12);
+	line-height: 1;
+	font-weight: 600;
+	letter-spacing: var(--ls-ja);
+	white-space: nowrap;
+}
+
+#hud-readout .ro-badge-icon {
+	flex: none;
+}
+
+#hud-readout .ro-badge-short {
+	display: none;
+}
+
+/* ---- S：720px 以下（仕様 3：1 行目に年月と前週比の％、2 行目に値） ---- */
+@media (max-width: 720px) {
+	#hud-readout {
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas:
+			"date change"
+			"value value";
+		row-gap: 2px;
+		padding-block: 7px;
+	}
+
+	#hud-readout .ro-date {
+		font-size: var(--fs-13);
+	}
+
+	#hud-readout .ro-day,
+	#hud-readout .ro-label,
+	#hud-readout .ro-change-full {
+		display: none;
+	}
+
+	#hud-readout .ro-change-short {
+		display: inline;
+	}
+
+	#hud-readout .ro-change {
+		align-self: baseline;
+		font-size: var(--fs-12);
+	}
+
+	#hud-readout .ro-num {
+		font-size: var(--fs-28);
+		line-height: 32px;
+	}
+
+	#hud-readout .ro-unit {
+		font-size: var(--fs-13);
+	}
+
+	#hud-readout .ro-badge {
+		top: calc(100% + 7px); /* 帯の直下 6px */
+		height: 22px;
+		padding: 0 10px;
+		font-size: var(--fs-11);
+	}
+
+	#hud-readout .ro-badge-full {
+		display: none;
+	}
+
+	#hud-readout .ro-badge-short {
+		display: inline;
+	}
+}
+
+/* ---- 短い横長：高さ 56 に詰める。デスクトップの項目（年月日・週次終値・前週比の額）は幅が許す限り出す ---- */
+@media (max-height: 520px) and (orientation: landscape) {
+	#hud-readout {
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas:
+			"date label"
+			"value change";
+		row-gap: 0;
+		padding-block: 3px;
+	}
+
+	#hud-readout .ro-date {
+		font-size: var(--fs-13);
+		line-height: 16px;
+	}
+
+	#hud-readout .ro-label {
+		display: block;
+		line-height: 16px;
+	}
+
+	#hud-readout .ro-num {
+		font-size: var(--fs-28);
+		line-height: 30px;
+	}
+
+	#hud-readout .ro-unit {
+		font-size: var(--fs-13);
+	}
+
+	#hud-readout .ro-change {
+		font-size: var(--fs-12);
+	}
+
+	/* 帯の右側に、縦方向の中央をそろえて並べる（右端から 8px）。短縮形 */
+	#hud-readout .ro-badge {
+		top: 50%;
+		left: calc(100% + 7px);
+		transform: translateY( -50% );
+		height: 22px;
+		font-size: var(--fs-11);
+	}
+
+	#hud-readout .ro-badge-full {
+		display: none;
+	}
+
+	#hud-readout .ro-badge-short {
+		display: inline;
+	}
+}
+
+/* 短い横長でも幅が狭い（帯の右に短縮バッジが入らない。操作ボタン 200px との間が足りない）ときは、
+   バッジを帯の直下に置き、サンプルのときだけ凡例をバッジの分（22 + 6）下げる */
+@media (max-height: 520px) and (orientation: landscape) and (max-width: 760px) {
+	#hud-readout .ro-badge {
+		top: calc(100% + 7px);
+		left: -1px;
+		transform: none;
+	}
+
+	html[data-kind="sample"] #hud-legend {
+		top: calc(var(--hud-legend-top) + 22px + 6px + var(--safe-t));
+	}
+}
+
+/* ---- 凡例（俯瞰中だけ。html[data-view] は view.js が付ける） ---- */
 #hud-legend {
+	display: flex;
+	align-items: center;
+	padding: 0 12px;
+	border: 1px solid var(--c-panel-border);
+	border-radius: 999px;
+	background: var(--c-panel);
+	color: var(--c-text-2);
+	font-size: var(--fs-12);
+	line-height: 1;
+	letter-spacing: var(--ls-ja);
 	opacity: 0;
 	visibility: hidden;
 	transition: opacity var(--dur-fast) var(--ease-out), visibility 0s linear var(--dur-fast);
+}
+
+@supports (backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px)) {
+	#hud-legend {
+		-webkit-backdrop-filter: blur(8px);
+		backdrop-filter: blur(8px);
+	}
 }
 
 html[data-view="overview"] #hud-legend {
 	opacity: 1;
 	visibility: visible;
 	transition: opacity var(--dur-fast) var(--ease-out), visibility 0s;
+}
+
+#hud-legend .legend-list {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	white-space: nowrap;
+}
+
+#hud-legend .legend-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+#hud-legend .legend-swatch {
+	flex: none;
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+}
+
+#hud-legend .legend-swatch--ridden {
+	background: var(--c-ridden);
+}
+
+#hud-legend .legend-swatch--ahead {
+	background: var(--c-ahead);
+}
+
+/* 現在地：丸（--c-marker）に白い輪 1.5px を必ず付ける */
+#hud-legend .legend-swatch--marker {
+	box-sizing: border-box;
+	border: 1.5px solid var(--c-marker-ring);
+	border-radius: 50%;
+	background: var(--c-marker);
+}
+
+#hud-legend .legend-swatch--event {
+	background: var(--c-event);
+	clip-path: polygon( 50% 0, 100% 50%, 50% 100%, 0 50% );
+}
+
+@media (max-width: 720px) {
+	#hud-legend {
+		padding: 0 10px;
+		font-size: var(--fs-11);
+	}
+
+	#hud-legend .legend-list {
+		gap: 12px;
+	}
 }
