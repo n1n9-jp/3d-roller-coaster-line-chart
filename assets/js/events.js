@@ -12,7 +12,7 @@
 //   'infopanel:toggle'                    { trigger? }（開いていれば閉じ、閉じていれば開く）
 //   'infopanel:close'                     なし
 //   'infopanel:change'                    { open }（infopanel.js。開閉したあとに発行）
-//   'soundchange'                         { enabled }（sound-pref.js。音のオン・オフが変わったとき。同期で発行する）
+//   'soundchange'                         { enabled }（sound-pref.js。音のオン・オフが変わったとき。クリックの処理の中で同期して発行し、sound.js が受ける）
 // ctx と state、モジュールのフックの決まりは main.js と README の「開発」を参照。
 
 export function createEvents() {

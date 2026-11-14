@@ -555,3 +555,104 @@ export const MOTION = {
 		speedResponseMs: 2000 // SPEED_RESPONSE_MS 1000 の代わり（速度の変化をよりゆっくりに）
 	}
 };
+
+// SOUND：データに連動するアンビエントサウンド（Web Audio でその場で合成。assets/js/audio/、sound.js）。担当：サウンド。
+// 音の調整はこの節の値だけで済むようにしている。時間は秒、周波数は Hz、音量は 0..1 の線形の倍率。
+// 音の高さは「音階の段（step）」で指定する：step k = rootHz × 2^( floor( k / 5 ) ) × 2^( scale[ k mod 5 ] / 12 )（5 音の音階を 1 オクターブ 5 段で数える）。
+export const SOUND = {
+	// マスター音量（コンプレッサの後）。書き出した波形のピークが −6 dBFS 程度に収まる値（検証：OfflineAudioContext で書き出して計測）
+	masterVolume: 0.75,
+	// フェード：一時停止・終了・音のオフでの消音（outSeconds）と、開始・再開・音のオンでの立ち上がり（inSeconds）
+	fade: { outSeconds: 0.5, inSeconds: 0.8 },
+	// 基音（A2）。パッドの根音で、音の粒・鐘・終わりの和音の音階もここから数える
+	rootHz: 110,
+	// 5 音の音階（基音からの半音）。上り（明るい）と下り（暗い）。音の粒は勾配の色に応じた確率でどちらかから選ぶ
+	scales: { bright: [ 0, 2, 4, 7, 9 ], dark: [ 0, 3, 5, 7, 10 ] },
+	// 写像：値の高さ（データの最小〜最大を 0..1）、勾配（1 年あたりの高さの変化）、速さ（ride.factor = 速さ ÷ 基準の速さ）
+	mapping: {
+		slopeScale: 6, // 勾配 → 和音の色：color = tanh( 勾配 / slopeScale )（−1 暗い .. +1 明るい）。小さいほど少しの上り下りで色が変わる
+		slopeWindowYears: 0.5, // 勾配は進行位置の前後この年数の弦で測る（週ごとの揺れで色が揺れないように）
+		colorSmoothingSeconds: 2.5, // 色の切り替わりの時定数（大きいほどゆっくり変わる）
+		paramGlideSeconds: 0.6, // フィルタのカットオフなど、音のパラメータが目標へ近づく時定数
+		paramUpdateSeconds: 0.1 // パラメータを AudioParam へ書く間隔（毎フレーム書かない）
+	},
+	// 持続音のパッド：根音・5 度・3 度（長 3 度と短 3 度を色で混ぜる）・9 度。各音は detuneCents だけずらした 2 つの発振器
+	pad: {
+		level: 0.16,
+		// [ 基音からの半音, 波形, 音量の比 ]。third は色で長短を混ぜる
+		voices: {
+			root: [ 0, 'sawtooth', 0.55 ],
+			fifth: [ 19, 'triangle', 0.7 ], // 1 オクターブ上の 5 度（E4）
+			majorThird: [ 28, 'triangle', 0.45 ], // 2 オクターブ上の長 3 度（C#5）
+			minorThird: [ 27, 'triangle', 0.45 ], // 2 オクターブ上の短 3 度（C5）
+			ninth: [ 14, 'sine', 0.5 ] // 9 度（B3）
+		},
+		detuneCents: 7,
+		// ローパスのカットオフ：値の高さ 0 → cutoffMinHz、1 → cutoffMaxHz（指数で補間）
+		cutoffMinHz: 320,
+		cutoffMaxHz: 2000,
+		q: 0.8,
+		lfoHz: 0.05, // カットオフのゆっくりした揺れ（周期 20 秒）
+		lfoDepthHz: 140,
+		ampLfoHz: 0.083, // 音量のゆっくりした揺れ（周期 12 秒）
+		ampLfoDepth: 0.2, // level に対する割合
+		delaySend: 0.12,
+		reverbSend: 0.45
+	},
+	// 音の粒：音階から選ぶ短い音（正弦波を少し FM）。値の高さで音域、速さで間隔が変わる
+	grain: {
+		level: 0.13,
+		// 音域：値の高さ 0 → 中心 stepLow、1 → 中心 stepHigh（段は上の音階の数え方）。中心から ±spread 段の範囲で選ぶ
+		stepLow: 6, // B3 付近
+		stepHigh: 20, // A6 付近
+		spread: 2,
+		attackSeconds: 0.05,
+		decaySeconds: 2.4, // 指数の減衰（音量が 1/1000 になるまで）
+		fmRatio: 2,
+		fmIndex: 0.7,
+		// 間隔：基準の速さ（ride.factor = 1）で intervalCruise 秒、interval = intervalCruise ÷ factor^speedExponent を [ intervalMin, intervalMax ] に収める
+		intervalCruise: 1.5,
+		intervalMin: 0.4,
+		intervalMax: 2.6,
+		speedExponent: 1.2,
+		jitter: 0.25, // 間隔の揺らぎ（± 割合）
+		restProbability: 0.18, // 休符（粒を鳴らさない）の確率
+		// 粒のローパス：値の高さで cutoffMinHz → cutoffMaxHz
+		cutoffMinHz: 1500,
+		cutoffMaxHz: 6500,
+		pan: 0.6, // 左右の広がり（± 最大）
+		lookaheadSeconds: 0.3, // 先読み：この先までの粒を予約する
+		delaySend: 0.45,
+		reverbSend: 0.6
+	},
+	// 出来事の鐘（FM）。音の高さは出来事の位置の値の高さで stepLow..stepHigh
+	bell: {
+		level: 0.12,
+		stepLow: 15,
+		stepHigh: 22,
+		modRatio: 1.41, // 非整数比で鐘らしい倍音
+		modIndex: 4, // 打った瞬間の変調の深さ（modDecaySeconds で 0 へ）
+		modDecaySeconds: 1.2,
+		decaySeconds: 5,
+		minGapSeconds: 0.35, // 続けて通過したときの、鐘どうしの最小の間隔
+		delaySend: 0.35,
+		reverbSend: 0.8
+	},
+	// 終点に着いたときの終わりの和音（長調の add9）。鳴らし終えたら fadeOutSeconds かけてマスターを 0 へ
+	finish: {
+		level: 0.1,
+		semitones: [ 12, 19, 26, 28, 31 ], // A3・E4・B4・C#5・E5
+		strumSeconds: 0.12, // 下から順に少しずつずらして鳴らす
+		attackSeconds: 1.2,
+		holdSeconds: 2,
+		releaseSeconds: 4.5,
+		fadeOutSeconds: 2,
+		reverbSend: 0.7
+	},
+	// ディレイ：左右で長さの違う 2 本。フィードバックの経路にローパス（反復ごとに少しずつ暗くなる）
+	delay: { leftSeconds: 0.62, rightSeconds: 0.93, feedback: 0.38, toneHz: 2600, returnLevel: 0.5 },
+	// 残響：インパルス応答はコードで生成（左右で独立なノイズに指数の減衰。seconds で −60 dB）
+	reverb: { seconds: 5, preDelaySeconds: 0.02, toneHz: 5000, returnLevel: 0.55, seed: 7 },
+	// 最後のコンプレッサ
+	compressor: { thresholdDb: - 20, kneeDb: 12, ratio: 3, attackSeconds: 0.02, releaseSeconds: 0.4 }
+};
