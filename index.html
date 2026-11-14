@@ -3,6 +3,7 @@
 	<head>
 		<title>three.js vr - roller coaster</title>
 		<meta charset="utf-8">
+		<link rel="icon" href="data:,">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 		<link type="text/css" rel="stylesheet" href="./assets/css/main.css">
 	</head>
@@ -11,7 +12,8 @@
 			<div id="start-screen">
 				<h1>日経平均株価<br/>3Dジェットコースター</h1>
 				<p>過去30年の株価変動を体感する</p>
-				<button id="start-btn">START RIDE</button>
+				<button id="start-btn" disabled>START RIDE</button>
+				<p id="start-message" role="status" hidden></p>
 			</div>
 			<div id="year-display"></div>
 			<div id="controls-info"><strong>W</strong> for overview &nbsp; | &nbsp; <strong>SPACE</strong> to pause</div>
