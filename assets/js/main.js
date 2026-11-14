@@ -47,12 +47,15 @@ const MODULES = [
 	createControls // キーボード
 ];
 
+// 起動の途中で例外が出たときに、スタート画面へエラーを出すための参照（boot の外の catch が使う）
+let startScreen = null;
+let sceneParts = null;
+
 async function boot() {
 
-	const startScreen = createStartScreen();
+	startScreen = createStartScreen();
 	startScreen.showLoading();
 
-	let sceneParts;
 	try {
 
 		sceneParts = createScene();
@@ -60,7 +63,7 @@ async function boot() {
 	} catch ( error ) {
 
 		console.error( error );
-		startScreen.showError( 'お使いのブラウザでは WebGL が使えないため、表示できません。' );
+		startScreen.showError( 'webgl' );
 		return;
 
 	}
@@ -73,9 +76,7 @@ async function boot() {
 	} catch ( error ) {
 
 		console.error( error );
-		startScreen.showError( error instanceof LocalDataMissingError
-			? '実データがまだありません。npm run fetch-data を実行してから、再読み込みしてください。（URL の ?data=local を外すとサンプルデータで動きます）'
-			: 'データの読み込みに失敗しました。時間をおいて再読み込みしてください。' );
+		startScreen.showError( error instanceof LocalDataMissingError ? 'local' : 'data' );
 		return;
 
 	}
@@ -266,4 +267,13 @@ async function boot() {
 
 }
 
-boot();
+// データ読み込みより後の組み立て（レールの生成など）で例外が出ても、「読み込み中」のまま止めない。
+// スタート画面がまだ無いとき（createStartScreen 自体の失敗）は、そのまま投げ直して index.html のフォールバックに任せる。
+boot().catch( ( error ) => {
+
+	console.error( error );
+	if ( ! startScreen ) throw error;
+	sceneParts?.renderer.setAnimationLoop( null );
+	startScreen.showError( 'boot' );
+
+} );

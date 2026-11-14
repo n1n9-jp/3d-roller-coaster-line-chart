@@ -1,82 +1,374 @@
-/* スタート画面（#start-screen）。担当：スタート画面。
-   現状のスタイルを移しただけの骨組み。仕様 3「スタート画面」と仕様 5 の動きで作り直す。
-   使えるもの：tokens.css の変数、base.css の .btn / .btn--primary。 */
+/* スタート画面（#start-screen）。担当：スタート画面。仕様 3「スタート画面」、仕様 5「動き」。
+   状態は data-state：loading（読み込み中）／ ready／ error／ leaving（START 直後のフェード）。 */
 
 #start-screen {
 	position: fixed;
-	top: 0;
-	left: 0;
-	width: 100%;
-	height: 100%;
+	inset: 0;
+	z-index: var(--z-start);
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	justify-content: center;
-	background: rgba(0, 17, 51, 0.95);
-	pointer-events: all;
-	z-index: var(--z-start);
-	transition: opacity 0.3s;
+	/* 画面が低いときは中身をスクロールで届かせる（中央寄せは .start-main の margin:auto で行う） */
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: calc(24px + var(--safe-t)) calc(24px + var(--safe-r)) 0 calc(24px + var(--safe-l));
+	background: radial-gradient(120% 90% at 50% 40%, var(--c-bg-2) 0%, var(--c-bg-1) 55%, var(--c-bg-0) 100%);
+	pointer-events: auto;
+	opacity: 1;
+	transition: opacity var(--dur-slow) var(--ease-out);
 }
 
-#start-screen h1 {
-	color: #fff;
-	font-size: 2.5rem;
+/* 押した瞬間に操作を受け付けず、フェードアウトする。終わったら ui/start.js が hidden にする */
+#start-screen[data-state="leaving"] {
+	opacity: 0;
+	pointer-events: none;
+}
+
+.start-main {
+	width: 100%;
+	max-width: 560px;
+	margin: auto;
+	padding: 16px 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
 	text-align: center;
-	line-height: 1.4;
-	margin: 0 0 0.5rem;
-	letter-spacing: 0.05em;
 }
 
-#start-screen p {
-	color: rgba(255, 255, 255, 0.6);
-	font-size: 1rem;
-	margin-bottom: 2rem;
+/* ---- キッカー・タイトル・説明 ---- */
+.start-kicker {
+	min-height: 1.5em;
+	margin: 0 0 12px;
+	color: var(--c-accent-text);
+	font-size: var(--fs-14);
+	line-height: var(--lh-14);
+	font-weight: 600;
+	letter-spacing: var(--ls-kicker);
+	font-variant-numeric: tabular-nums;
+}
+
+.start-title {
+	margin: 0 0 16px;
+	color: var(--c-text-1);
+	font-size: var(--fs-40);
+	line-height: var(--lh-40);
+	font-weight: 700;
+	letter-spacing: var(--ls-title);
+}
+
+/* 語の途中で折り返さない。折れる場所は 2 つの span のあいだだけ */
+.start-title span {
+	display: block;
+	white-space: nowrap;
+}
+
+.start-desc {
+	margin: 0 0 20px;
+	color: var(--c-text-2);
+	font-size: var(--fs-16);
+	line-height: var(--lh-16);
+	text-wrap: pretty;
+	word-break: auto-phrase;
+}
+
+.nowrap {
+	white-space: nowrap;
+}
+
+.start-desc:empty,
+.start-kicker:empty {
+	min-height: 0;
+	margin: 0;
+}
+
+/* ---- サンプルデータの注記（仕様 1-4 のバッジ） ---- */
+.start-sample {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-height: 24px;
+	margin: -8px 0 20px;
+	padding: 2px 10px;
+	border: 1px solid var(--c-accent);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--c-accent) 14%, transparent);
+	color: var(--c-accent-text);
+	font-size: var(--fs-12);
+	line-height: var(--lh-12);
+	font-weight: 600;
+	text-align: left;
+}
+
+.start-sample svg {
+	flex: none;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.5;
+	stroke-linecap: round;
+}
+
+/* データが決まる前（読み込み中）とエラーのときは、データから作る文言（キッカー・説明・注記・チップ）を出さない。
+   読み込みが終わって ready になったときに、静かに現れる */
+#start-screen:is( [data-state="loading"], [data-state="error"] ) :is( .start-kicker, .start-desc, .start-sample, .start-chips ) {
+	display: none;
+}
+
+#start-screen[data-state="ready"] :is( .start-kicker, .start-desc, .start-sample, .start-chips ) {
+	animation: start-fade var(--dur-base) var(--ease-out) both;
+}
+
+@keyframes start-fade {
+	from {
+		opacity: 0;
+	}
+}
+
+/* ---- チップ ---- */
+.start-chips {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 8px;
+	margin: 0 0 28px;
+	padding: 0;
+	list-style: none;
+}
+
+.start-chips li {
+	display: inline-flex;
+	align-items: center;
+	min-height: 32px;
+	padding: 0 14px;
+	border: 1px solid var(--c-panel-border);
+	border-radius: 999px;
+	color: var(--c-text-1);
+	font-size: var(--fs-13);
+	line-height: var(--lh-13);
+	font-variant-numeric: tabular-nums;
+}
+
+.start-chips li:empty {
+	display: none;
+}
+
+/* ---- 主ボタン・状態・エラー ---- */
+.start-action {
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 12px;
 }
 
 #start-btn {
-	padding: 16px 48px;
-	font-size: 1.2rem;
-	font-weight: bold;
-	color: #001133;
-	background: #fff;
-	border: none;
-	border-radius: 4px;
-	cursor: pointer;
-	letter-spacing: 0.1em;
-	transition: transform 0.2s, box-shadow 0.2s;
+	gap: 10px;
+	min-width: 240px;
+	min-height: 56px;
+	padding: 0 32px;
+	border-radius: 12px;
+	font-size: var(--fs-18);
+	line-height: var(--lh-18);
+	font-weight: 700;
+	letter-spacing: var(--ls-ja);
 }
 
 #start-btn:disabled {
-	opacity: 0.4;
+	opacity: 0.6;
+}
+
+#start-btn:disabled:hover {
+	background: var(--c-accent);
+}
+
+/* スピナー：円弧 2px、0.9s で回転。読み込み中だけ */
+.start-spinner {
+	display: none;
+	flex: none;
+	width: 16px;
+	height: 16px;
+	border: 2px solid color-mix(in srgb, var(--c-on-accent) 25%, transparent);
+	border-top-color: var(--c-on-accent);
+	border-radius: 50%;
+	animation: start-spin 0.9s linear infinite;
+}
+
+#start-screen[data-state="loading"] .start-spinner {
+	display: block;
+}
+
+@keyframes start-spin {
+	to {
+		transform: rotate( 360deg );
+	}
+}
+
+/* reduced-motion：回転させず、ラベルの「…」だけにする */
+@media (prefers-reduced-motion: reduce) {
+	#start-screen[data-state="loading"] .start-spinner {
+		display: none;
+	}
+}
+
+#start-message {
+	margin: -4px 0 0;
+	color: var(--c-text-2);
+	font-size: var(--fs-13);
+	line-height: var(--lh-13);
+}
+
+.start-error {
+	order: -1; /* 無効にした主ボタンの上に出す */
+	width: 100%;
+	max-width: 480px;
+	padding: 12px 16px;
+	border-left: 3px solid var(--c-danger);
+	background: rgba( 255, 143, 143, 0.08 );
+	text-align: left;
+}
+
+.start-error h2 {
+	margin: 0 0 4px;
+	color: var(--c-danger);
+	font-size: var(--fs-14);
+	line-height: var(--lh-14);
+	font-weight: 700;
+}
+
+.start-error p {
+	margin: 0;
+	color: var(--c-text-1);
+	font-size: var(--fs-14);
+	line-height: var(--lh-14);
+}
+
+.start-error .btn {
+	margin-top: 12px;
+}
+
+/* ---- 文字ボタン ---- */
+.start-info-btn {
+	min-height: 44px;
+	margin-top: 4px;
+	padding: 0 16px;
+	border: 0;
+	border-radius: var(--radius-btn);
+	background: transparent;
+	color: var(--c-text-2);
+	font-size: var(--fs-14);
+	line-height: var(--lh-14);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+
+.start-info-btn:hover:not(:disabled) {
+	color: var(--c-text-1);
+}
+
+.start-info-btn:disabled {
+	opacity: 0.5;
 	cursor: not-allowed;
 }
 
-#start-btn:hover:not(:disabled) {
-	transform: scale(1.05);
-	box-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
+/* エラーのときは、情報パネルが組み立てられていないので出さない */
+#start-screen[data-state="error"] .start-info-btn {
+	display: none;
 }
 
-#start-screen #start-message {
-	margin: 1.5rem 0 0;
-}
-
-#start-screen #start-message.error {
-	color: #ff9a9a;
-}
-
-/* 出典の一行（下端中央） */
+/* ---- 出典の一行（下端。中身が低いときは流れの最後、高いときはスクロールの末尾） ---- */
 #start-credits {
-	position: absolute;
-	left: 24px;
-	right: 24px;
-	bottom: calc(24px + var(--safe-b));
+	flex: none;
+	width: 100%;
+	max-width: 760px;
 	margin: 0;
+	padding: 12px 0 calc(24px + var(--safe-b));
 	text-align: center;
 	font-size: var(--fs-12);
 	line-height: var(--lh-12);
 	color: var(--c-text-3);
 }
 
+#start-credits span {
+	display: inline-block;
+	max-width: 100%;
+}
+
 #start-credits:empty {
 	display: none;
+}
+
+/* ---- S：幅 720px 以下 ---- */
+@media (max-width: 720px) {
+	.start-title {
+		/* 幅 360 でも「3Dジェットコースター」が 1 行に収まる大きさまで縮める */
+		font-size: min(30px, 8vw);
+		letter-spacing: var(--ls-ja);
+	}
+
+	#start-btn {
+		width: 100%;
+		max-width: 320px;
+		min-width: 0;
+	}
+
+	.start-error {
+		max-width: 100%;
+	}
+}
+
+/* ---- 短い横長（高さ 520px 以下かつ landscape）：縦を詰める ---- */
+@media (max-height: 520px) and (orientation: landscape) {
+	#start-screen {
+		padding-top: calc(8px + var(--safe-t));
+	}
+
+	.start-main {
+		max-width: 640px;
+		padding: 4px 0;
+	}
+
+	.start-kicker {
+		margin-bottom: 4px;
+		font-size: var(--fs-13);
+	}
+
+	/* タイトルは 1 行に（折れるなら 2 つの span のあいだだけ） */
+	.start-title {
+		margin-bottom: 8px;
+		font-size: 26px;
+		line-height: 1.2;
+	}
+
+	.start-title span {
+		display: inline-block;
+	}
+
+	.start-desc {
+		margin-bottom: 8px;
+		font-size: var(--fs-14);
+		line-height: var(--lh-14);
+	}
+
+	.start-sample {
+		margin: 0 0 8px;
+	}
+
+	.start-chips {
+		margin-bottom: 12px;
+	}
+
+	.start-chips li {
+		min-height: 28px;
+	}
+
+	#start-btn {
+		min-height: 48px;
+	}
+
+	.start-info-btn {
+		margin-top: 0;
+	}
+
+	#start-credits {
+		padding: 4px 0 calc(8px + var(--safe-b));
+	}
 }

@@ -1,2 +1,190 @@
-/* 情報パネル（#info-panel）。担当：情報パネル。
-   L/M は右から出るシート、S は下から出るシート（仕様 3「情報パネル」）。z-index は var(--z-info)。 */
+/* 情報パネル（#info-panel）。担当：情報パネル。仕様 3「情報パネル」、仕様 5「動き」。
+   #info-panel 自体が全面の背面（スクリム）で、中の .info-sheet がシート。
+   L/M は右から、S（幅 720px 以下）は下から出る。開閉は ui/infopanel.js が .is-open と hidden で行う。 */
+
+#info-panel {
+	position: fixed;
+	inset: 0;
+	z-index: var(--z-info);
+	background: var(--c-scrim);
+	opacity: 0;
+	transition: opacity 200ms var(--ease-in);
+}
+
+#info-panel.is-open {
+	opacity: 1;
+	transition-duration: 200ms;
+	transition-timing-function: var(--ease-out);
+}
+
+.info-sheet {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: 400px;
+	max-width: 100%;
+	display: flex;
+	flex-direction: column;
+	padding: 24px 0 0;
+	background: var(--c-bg-1);
+	border-left: 1px solid var(--c-panel-border);
+	transform: translateX( 100% );
+	transition: transform 200ms var(--ease-in);
+}
+
+#info-panel.is-open .info-sheet {
+	transform: none;
+	transition: transform 280ms var(--ease-out);
+}
+
+.info-grip {
+	display: none;
+}
+
+.info-head {
+	flex: none;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 0 12px 12px 24px;
+}
+
+.info-head h2 {
+	color: var(--c-text-1);
+	font-size: var(--fs-20);
+	line-height: var(--lh-20);
+	font-weight: 700;
+}
+
+.info-close {
+	flex: none;
+	width: 44px;
+	height: 44px;
+	padding: 0;
+}
+
+.info-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	-webkit-overflow-scrolling: touch;
+	padding: 0 24px calc(32px + var(--safe-b));
+	color: var(--c-text-2);
+	font-size: var(--fs-14);
+	line-height: 1.7;
+}
+
+.info-body:focus-visible {
+	outline-offset: -3px;
+}
+
+.info-body section + section {
+	margin-top: 24px;
+}
+
+.info-body h3 {
+	margin: 0 0 8px;
+	color: var(--c-text-1);
+	font-size: var(--fs-14);
+	line-height: var(--lh-14);
+	font-weight: 700;
+}
+
+.info-body p + p,
+.info-body #info-sources + p {
+	margin-top: 8px;
+}
+
+.info-body a {
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	word-break: break-all;
+}
+
+/* ---- 操作の表（2 列。行の高さ 36） ---- */
+.info-keys {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: var(--fs-13);
+	line-height: var(--lh-13);
+}
+
+.info-keys th,
+.info-keys td {
+	height: 36px;
+	padding: 4px 8px 4px 0;
+	border-bottom: 1px solid var(--c-panel-border);
+	text-align: left;
+	vertical-align: middle;
+}
+
+.info-keys thead th {
+	color: var(--c-text-3);
+	font-size: var(--fs-12);
+	font-weight: 400;
+}
+
+.info-keys tbody th {
+	width: 7.5em;
+	color: var(--c-text-1);
+	font-weight: 600;
+}
+
+.info-keys .kbd {
+	margin-right: 4px;
+}
+
+.info-note {
+	margin-top: 8px;
+	color: var(--c-text-3);
+	font-size: var(--fs-13);
+	line-height: var(--lh-13);
+}
+
+/* ---- S：下から出るシート ---- */
+@media (max-width: 720px) {
+	.info-sheet {
+		top: auto;
+		left: 0;
+		width: 100%;
+		max-height: 80vh;
+		max-height: 80dvh;
+		padding-top: 20px;
+		border-left: 0;
+		border-top: 1px solid var(--c-panel-border);
+		border-radius: var(--radius-card) var(--radius-card) 0 0;
+		transform: translateY( 100% );
+	}
+
+	.info-grip {
+		display: block;
+		position: absolute;
+		top: 8px;
+		left: 50%;
+		width: 36px;
+		height: 4px;
+		margin-left: -18px;
+		border-radius: 2px;
+		background: var(--c-btn-border);
+	}
+
+	.info-head {
+		padding: 0 8px 8px 20px;
+	}
+
+	.info-body {
+		padding: 0 20px calc(24px + var(--safe-b));
+	}
+}
+
+/* reduced-motion：移動せず、背面と一緒に opacity だけで出入りする */
+@media (prefers-reduced-motion: reduce) {
+	.info-sheet,
+	#info-panel.is-open .info-sheet {
+		transform: none;
+		transition: none;
+	}
+}
