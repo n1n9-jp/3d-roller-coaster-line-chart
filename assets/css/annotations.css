@@ -191,3 +191,10 @@
 		justify-self: start;
 	}
 }
+
+/* 週の値を出さない出来事（データのない週など）：補足を横いっぱいに使う */
+.caption-card.is-valueless {
+	grid-template-areas:
+		"title title"
+		"note note";
+}

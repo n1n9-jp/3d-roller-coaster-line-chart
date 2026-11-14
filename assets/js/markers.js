@@ -1,7 +1,7 @@
 // イベントの 3D の目印（アーチ・ひし形・縦線・年ラベル）。機能モジュール（createMarkers( ctx )）。担当：イベント注釈。
 //
-// 実データ（dataset.meta.kind === 'real'）のときだけ置く。サンプルでは何もしない。
-// 出来事の位置は events-data.js が data/events.json から計算する（progress）。ここは 3D の部品を置くだけ。
+// 選んだデータの出来事（data/events/<id>.json）だけを置く。ファイルがなければ何も置かない。
+// 出来事の位置は events-data.js が計算する（progress = curve.dateToProgress( date ））。ここは 3D の部品を置くだけ。
 //
 // 各出来事に置くもの（scene の 'event-markers' グループの子）：
 //   アーチ     レール（中心線）をまたぐ半円。平面は水平の接線に垂直で、半円が上。一人称は細いチューブ、俯瞰は 1px の線
@@ -61,8 +61,6 @@ function createLabelTexture( text, label ) {
 }
 
 export function createMarkers( ctx ) {
-
-	if ( ctx.dataset?.meta?.kind !== 'real' ) return {};
 
 	const { scene, curve, camera, renderer } = ctx;
 	const board = getLabelBoard( ctx );

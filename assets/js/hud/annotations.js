@@ -1,12 +1,12 @@
 // イベントのキャプション（#hud-caption）。機能モジュール（createAnnotations( ctx )）。担当：イベント注釈。
 //
-// 実データ（dataset.meta.kind === 'real'）のときだけ動く。サンプルでは何もしない（data/events.json も読まない）。
+// 選んだデータの出来事（data/events/<id>.json。DATASETS[ id ].eventsUrl）だけを出す。ファイルがなければ何も出さない。
 // どの出来事をいつ出すかは events-data.js の createCaptionScheduler（DOM に触らない）が決め、
 // ここは決まった動作を DOM に反映するだけ。時間は ride の時間（state.timeMs）。入れ替えのフェードだけは実時間（state.nowMs）。
 // 見た目は annotations.css。
 
-import { ANNOT } from '../config.js';
-import { ensureEvents, createCaptionScheduler, formatCaption } from '../events-data.js';
+import { ANNOT, START_PROGRESS } from '../config.js';
+import { ensureEvents, createCaptionScheduler, formatCaption, captionStepLimit } from '../events-data.js';
 
 function element( tag, className ) {
 
@@ -17,8 +17,6 @@ function element( tag, className ) {
 }
 
 export function createAnnotations( ctx ) {
-
-	if ( ctx.dataset?.meta?.kind !== 'real' ) return {};
 
 	const root = ctx.ui.slots.caption;
 	const settings = ANNOT.caption;
@@ -57,7 +55,9 @@ export function createAnnotations( ctx ) {
 		const text = formatCaption( event );
 		heading.textContent = text.heading;
 		note.textContent = text.note;
-		value.textContent = text.value;
+		value.textContent = text.value ?? '';
+		value.hidden = text.value === null;
+		card.classList.toggle( 'is-valueless', text.value === null );
 		root.replaceChildren( card );
 		card.classList.remove( 'is-leaving', 'is-visible' );
 		void card.offsetWidth; // 初期状態を確定させてから is-visible を付け、入りの遷移を動かす
@@ -111,7 +111,8 @@ export function createAnnotations( ctx ) {
 			showMs: () => ( reducedMotion ? settings.showMsReduced : settings.showMs ),
 			minShowMs: settings.minShowMs,
 			maxWaitMs: settings.maxWaitMs,
-			maxStepProgress: settings.maxStepProgress
+			maxStepProgress: captionStepLimit( ctx.curve?.years ),
+			startProgress: START_PROGRESS
 		} );
 
 	} );

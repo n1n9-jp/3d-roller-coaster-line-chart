@@ -4,18 +4,6 @@
 
 import { parseDate } from '../format.js';
 
-/**
- * 互換のための暫定：整数・3桁区切り（四捨五入）。events-data.js が、出来事のキャプションの値をこれで書いている。
- * events-data.js が dataset.format.value に移ったら削除する（値の書式は format.js に一本化した）。
- */
-export function formatYen( value ) {
-
-	const rounded = Math.round( value );
-	const grouped = String( Math.abs( rounded ) ).replace( /\B(?=(\d{3})+(?!\d))/g, ',' );
-	return rounded < 0 ? `−${grouped}` : grouped;
-
-}
-
 /** 最後の週で止まったときなど、dataIndex（小数）から系列上の週の位置（整数）を決める。 */
 export function weekIndex( dataIndex, length ) {
 

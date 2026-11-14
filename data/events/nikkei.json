@@ -2,102 +2,85 @@
 	{
 		"date": "1990-01-04",
 		"title": "前年末に当時の最高値",
-		"note": "1989年12月29日の終値が当時の最高値。1990年は2万円台まで下落",
-		"close": 38915.87,
-		"closeDate": "1989-12-29",
+		"note": "1989年12月29日の終値が当時の最高値。1990年は大きく下落した",
 		"source": "https://fred.stlouisfed.org/series/NIKKEI225"
 	},
 	{
 		"date": "1992-08-18",
 		"title": "終値の年間最安値",
-		"note": "1992年で最も安い終値。この日は前日比4.15%安",
-		"close": 14309.41,
+		"note": "1992年で最も安い終値をつけた",
 		"source": "https://fred.stlouisfed.org/series/NIKKEI225"
 	},
 	{
 		"date": "1997-11-24",
 		"title": "山一證券が廃業・解散へ",
-		"note": "休場日。日本銀行が総裁談話を発表。値は翌営業日の終値",
-		"close": 15867.53,
-		"closeDate": "1997-11-25",
+		"note": "休場日。日本銀行が総裁談話を発表した",
 		"source": "https://www.boj.or.jp/about/press/danwa/dan9711c.htm"
 	},
 	{
 		"date": "2000-04-12",
 		"title": "終値の年間最高値",
-		"note": "2000年で最も高い終値。年末には1万3000円台まで下落",
-		"close": 20833.21,
+		"note": "2000年で最も高い終値。その後は年末にかけて下落した",
 		"source": "https://fred.stlouisfed.org/series/NIKKEI225"
 	},
 	{
 		"date": "2003-04-28",
 		"title": "バブル後の最安値を更新",
 		"note": "終値で、1990年以降の最安値をつけた（当時）",
-		"close": 7607.88,
 		"source": "https://fred.stlouisfed.org/series/NIKKEI225"
 	},
 	{
 		"date": "2008-09-15",
 		"title": "リーマン・ブラザーズが破綻",
-		"note": "休場日。金融庁が日本法人に行政処分を出した。値は翌営業日の終値",
-		"close": 11609.72,
-		"closeDate": "2008-09-16",
+		"note": "休場日。金融庁が日本法人に行政処分を出した",
 		"source": "https://www.fsa.go.jp/news/20/syouken/20080915-1.html"
 	},
 	{
 		"date": "2009-03-10",
 		"title": "バブル後の最安値",
 		"note": "1990年以降で最も安い終値。以後は反発に転じた",
-		"close": 7054.98,
 		"source": "https://fred.stlouisfed.org/series/NIKKEI225"
 	},
 	{
 		"date": "2011-03-11",
 		"title": "東日本大震災",
-		"note": "M9.0の地震が発生。3月15日は1015円安と大きく下落した",
-		"close": 10254.43,
+		"note": "M9.0の地震が発生。3月15日には大きく下落した",
 		"source": "https://www.data.jma.go.jp/eqev/data/2011_03_11_tohoku/index.html"
 	},
 	{
 		"date": "2013-04-04",
 		"title": "日銀が量的・質的金融緩和を導入",
-		"note": "「量・質ともに次元の違う金融緩和」を決定。この日は2.2%高",
-		"close": 12634.54,
+		"note": "「量・質ともに次元の違う金融緩和」を決定した",
 		"source": "https://www.boj.or.jp/mopo/mpmdeci/mpr_2013/k130404a.pdf"
 	},
 	{
 		"date": "2020-03-19",
 		"title": "終値の年間最安値",
 		"note": "2020年で最も安い終値。以後は反発に転じた",
-		"close": 16552.83,
 		"source": "https://fred.stlouisfed.org/series/NIKKEI225"
 	},
 	{
 		"date": "2024-02-22",
 		"title": "34年ぶりに最高値を更新",
 		"note": "1989年12月29日の終値（当時の最高値）を上回った",
-		"close": 39098.68,
 		"source": "https://fred.stlouisfed.org/series/NIKKEI225"
 	},
 	{
 		"date": "2024-08-05",
 		"title": "過去最大の下落幅",
-		"note": "1日で4451円安（−12.4%）。翌日は3217円高と反発した",
-		"close": 31458.42,
+		"note": "1日で急落し、翌日は大きく反発した",
 		"source": "https://fred.stlouisfed.org/series/NIKKEI225"
 	},
 	{
 		"date": "2025-10-27",
 		"title": "初の5万円台",
 		"note": "終値が初めて5万円を超えた",
-		"close": 50512.32,
 		"source": "https://fred.stlouisfed.org/series/NIKKEI225"
 	},
 	{
 		"date": "2026-06-25",
 		"title": "7万円台で終値の最高値",
 		"note": "6月18日に初の7万円台。この日が終値の最高値（2026年11月時点）",
-		"close": 72366.34,
 		"source": "https://fred.stlouisfed.org/series/NIKKEI225"
 	}
 ]
