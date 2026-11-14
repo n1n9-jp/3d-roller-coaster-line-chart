@@ -2,7 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseCsv, buildMeta } from '../scripts/fetch-nikkei.mjs';
 import { aggregateWeekly, mondayOf } from '../scripts/lib/weekly.mjs';
-import { buildDataset, dateToIndex, dataModeFromSearch } from '../assets/js/data.js';
+import {
+	buildDataset, dateToIndex, datasetIdFromSearch, dataModeFromSearch, loadData, LocalDataMissingError
+} from '../assets/js/data.js';
+import { DATASETS, DEFAULT_DATASET } from '../assets/js/config.js';
+import { createFormatter } from '../assets/js/format.js';
 import { readJson } from './helpers.js';
 
 // ---- 取得スクリプトの週次集計 ----
@@ -80,16 +84,23 @@ test( 'aggregateWeekly：年をまたぐ週は、月曜日付の年に入り、�
 
 } );
 
-test( 'buildMeta：実データのメタ情報', () => {
+test( 'buildMeta（日経平均）：同梱の2つのデータと同じ項目のメタ情報', () => {
 
 	const weekly = [ { date: '1990-01-01', close: 1 }, { date: '1990-01-08', close: 2 } ];
 	const meta = buildMeta( weekly, '2026-11-14' );
+	assert.equal( meta.id, 'nikkei' );
 	assert.equal( meta.kind, 'real' );
+	assert.equal( meta.unit, '円' );
+	assert.equal( meta.decimals, 0 );
+	assert.equal( meta.valueLabel, '週の最終営業日の値' );
 	assert.equal( meta.fetchedAt, '2026-11-14' );
 	assert.equal( meta.start, '1990-01-01' );
 	assert.equal( meta.end, '1990-01-08' );
 	assert.equal( meta.count, 2 );
 	assert.equal( meta.sourceUrl, 'https://fred.stlouisfed.org/series/NIKKEI225' );
+	assert.ok( meta.attribution && meta.processing );
+	// 同梱のメタ情報（ドル円）と項目の名前と順序が同じ
+	assert.deepEqual( Object.keys( meta ), Object.keys( readJson( 'data/usdjpy.meta.json' ) ) );
 
 } );
 
@@ -140,9 +151,9 @@ test( 'dateToIndex：範囲外は両端に張り付く', () => {
 
 test( 'dateToIndex：同梱データでは日付の順序と添字が単調に対応する', () => {
 
-	const dataset = buildDataset( readJson( 'data/nikkei225.json' ) );
+	const dataset = buildDataset( readJson( 'data/usdjpy.json' ) );
 	let prev = - 1;
-	for ( const date of [ '1990-01-01', '1995-06-15', '2000-01-01', '2012-12-26', '2020-03-19', '2025-12-29' ] ) {
+	for ( const date of [ '1971-01-04', '1985-06-15', '2000-01-01', '2012-12-26', '2020-03-19', '2026-11-02' ] ) {
 
 		const index = dateToIndex( dataset, date );
 		assert.ok( index > prev, date );
@@ -150,49 +161,266 @@ test( 'dateToIndex：同梱データでは日付の順序と添字が単調に�
 
 	}
 
-	assert.equal( dateToIndex( dataset, '2025-12-29' ), dataset.raw.length - 1 );
+	assert.equal( dateToIndex( dataset, '2026-11-02' ), dataset.raw.length - 1 );
 
 } );
 
 // ---- データの切り替え ----
 
-test( 'dataModeFromSearch：?data=local のときだけ local', () => {
+test( 'datasetIdFromSearch：?data= で選ぶ。指定がないとき、知らない値のときは usdjpy', () => {
 
-	assert.equal( dataModeFromSearch( '' ), 'sample' );
-	assert.equal( dataModeFromSearch( '?data=local' ), 'local' );
-	assert.equal( dataModeFromSearch( '?a=1&data=local' ), 'local' );
-	assert.equal( dataModeFromSearch( '?data=other' ), 'sample' );
-
-} );
-
-test( 'buildDataset：meta を dataset.meta に持つ（省略時はサンプル扱い）', () => {
-
-	const raw = [ { date: '2000-01-03', close: 1 }, { date: '2000-01-10', close: 2 } ];
-	const meta = { kind: 'real' };
-	assert.equal( buildDataset( raw, 4, meta ).meta, meta );
-	assert.equal( buildDataset( raw ).meta.kind, 'sample' );
+	assert.equal( DEFAULT_DATASET, 'usdjpy' );
+	assert.equal( datasetIdFromSearch( '' ), 'usdjpy' );
+	assert.equal( datasetIdFromSearch( '?data=usdjpy' ), 'usdjpy' );
+	assert.equal( datasetIdFromSearch( '?data=jgb10' ), 'jgb10' );
+	assert.equal( datasetIdFromSearch( '?data=nikkei' ), 'nikkei' );
+	assert.equal( datasetIdFromSearch( '?a=1&data=jgb10' ), 'jgb10' );
+	assert.equal( datasetIdFromSearch( '?data=foo' ), 'usdjpy' );
+	assert.equal( datasetIdFromSearch( '?data=' ), 'usdjpy' );
+	assert.equal( datasetIdFromSearch( '?data=JGB10' ), 'usdjpy' ); // 大文字小文字は区別する
 
 } );
 
-// ---- 同梱のサンプルデータ ----
+test( 'datasetIdFromSearch：以前の ?data=local は nikkei と同じ', () => {
 
-test( '同梱データ：{ date, close } だけの 1879 件で、meta（サンプル）と一致する', () => {
+	assert.equal( datasetIdFromSearch( '?data=local' ), 'nikkei' );
+	assert.equal( dataModeFromSearch( '?data=local' ), 'nikkei' );
 
-	const nikkei = readJson( 'data/nikkei225.json' );
-	const meta = readJson( 'data/nikkei225.meta.json' );
+} );
 
-	assert.equal( nikkei.length, 1879 );
-	for ( const row of nikkei ) {
+test( 'datasetIdFromSearch：Object のプロパティ名（constructor など）は、データの id として扱わない', () => {
 
-		assert.deepEqual( Object.keys( row ).sort(), [ 'close', 'date' ] );
-		assert.equal( typeof row.close, 'number' );
+	for ( const name of [ 'constructor', 'toString', '__proto__', 'hasOwnProperty' ] ) {
+
+		assert.equal( datasetIdFromSearch( `?data=${name}` ), 'usdjpy', name );
 
 	}
 
-	assert.equal( meta.kind, 'sample' );
-	assert.match( meta.label, /サンプルデータ/ );
-	assert.equal( meta.start, nikkei[ 0 ].date );
-	assert.equal( meta.end, nikkei.at( - 1 ).date );
-	assert.equal( meta.count, nikkei.length );
+} );
+
+test( 'DATASETS：3 つのデータが、書式の定義（単位・桁数・刻み・前週比の書き方・ラベル）をそろえて持つ', () => {
+
+	assert.deepEqual( Object.keys( DATASETS ), [ 'usdjpy', 'jgb10', 'nikkei' ] );
+	for ( const [ id, def ] of Object.entries( DATASETS ) ) {
+
+		assert.equal( def.id, id );
+		for ( const key of [ 'dataUrl', 'metaUrl', 'name', 'short', 'chartTitle', 'readoutLabel', 'unit' ] ) {
+
+			assert.equal( typeof def[ key ], 'string', `${id}.${key}` );
+
+		}
+
+		assert.ok( Number.isInteger( def.decimals ) && def.decimals >= 0, id );
+		assert.ok( def.step > 0 && def.stepCompact > def.step, id );
+		assert.ok( [ 'yen-fx', 'point', 'percent' ].includes( def.changeMode ), id );
+		assert.ok( def.statLabels.max && def.statLabels.min, id );
+
+	}
+
+	assert.equal( DATASETS.nikkei.dataUrl, './data/local/nikkei225.json' );
+	assert.equal( DATASETS.nikkei.metaUrl, './data/local/meta.json' );
+	assert.equal( DATASETS.nikkei.localOnly, true );
+
+} );
+
+test( 'buildDataset：meta と def を持つ。dataset.id・def・meta・format（省略時はドル円）', () => {
+
+	const raw = [ { date: '2000-01-03', close: 1 }, { date: '2000-01-10', close: 2 } ];
+	const meta = { kind: 'real', id: 'jgb10' };
+	const dataset = buildDataset( raw, 4, meta, DATASETS.jgb10 );
+	assert.equal( dataset.meta, meta );
+	assert.equal( dataset.id, 'jgb10' );
+	assert.equal( dataset.def, DATASETS.jgb10 );
+	assert.equal( dataset.format.unit, '%' );
+
+	const byDefault = buildDataset( raw );
+	assert.equal( byDefault.id, 'usdjpy' );
+	assert.equal( byDefault.def, DATASETS.usdjpy );
+	assert.equal( byDefault.format.value( 152.344 ), '152.34円' );
+	assert.equal( byDefault.meta.kind, 'real' );
+
+} );
+
+// ---- loadData（fetch を差し替えて確かめる） ----
+
+/** globalThis.fetch を差し替えて fn を実行する。responses：URL → { status, body }（無ければ 404）。 */
+async function withFetch( responses, fn ) {
+
+	const original = globalThis.fetch;
+	const requested = [];
+	globalThis.fetch = async ( url ) => {
+
+		requested.push( url );
+		const r = responses[ url ] ?? { status: 404 };
+		return { ok: r.status === undefined || r.status < 400, status: r.status ?? 200, json: async () => r.body };
+
+	};
+
+	try {
+
+		return await fn( requested );
+
+	} finally {
+
+		globalThis.fetch = original;
+
+	}
+
+}
+
+const TWO_WEEKS = [ { date: '2000-01-03', close: 1 }, { date: '2000-01-10', close: 2 } ];
+
+test( 'loadData：既定はドル円。{ id, def, series, meta } を返す', async () => {
+
+	const responses = {
+		'./data/usdjpy.json': { body: TWO_WEEKS },
+		'./data/usdjpy.meta.json': { body: readJson( 'data/usdjpy.meta.json' ) }
+	};
+	await withFetch( responses, async ( requested ) => {
+
+		for ( const search of [ '', '?data=foo' ] ) {
+
+			const loaded = await loadData( search );
+			assert.equal( loaded.id, 'usdjpy' );
+			assert.equal( loaded.def, DATASETS.usdjpy );
+			assert.equal( loaded.series, TWO_WEEKS );
+			assert.equal( loaded.meta.id, 'usdjpy' );
+
+		}
+
+		assert.ok( requested.every( ( url ) => url.includes( 'usdjpy' ) ) );
+
+	} );
+
+} );
+
+test( 'loadData：?data=jgb10 は金利のファイルを読む', async () => {
+
+	const responses = {
+		'./data/jgb10.json': { body: TWO_WEEKS },
+		'./data/jgb10.meta.json': { body: readJson( 'data/jgb10.meta.json' ) }
+	};
+	const loaded = await withFetch( responses, () => loadData( '?data=jgb10' ) );
+	assert.equal( loaded.id, 'jgb10' );
+	assert.equal( loaded.meta.unit, '%' );
+
+} );
+
+test( 'loadData：?data=nikkei と ?data=local は data/local/ を読む。古いメタ情報（id・unit なし）は定義で補う', async () => {
+
+	const oldMeta = { kind: 'real', label: '日経平均株価（週次終値）', fetchedAt: '2026-11-14' };
+	const responses = {
+		'./data/local/nikkei225.json': { body: TWO_WEEKS },
+		'./data/local/meta.json': { body: oldMeta }
+	};
+	for ( const search of [ '?data=nikkei', '?data=local' ] ) {
+
+		const loaded = await withFetch( responses, () => loadData( search ) );
+		assert.equal( loaded.id, 'nikkei', search );
+		assert.equal( loaded.meta.id, 'nikkei' );
+		assert.equal( loaded.meta.unit, '円' );
+		assert.equal( loaded.meta.fetchedAt, '2026-11-14' );
+
+	}
+
+} );
+
+test( 'loadData：nikkei のファイルが無い（404）ときは、取得コマンドを案内する LocalDataMissingError', async () => {
+
+	await assert.rejects( withFetch( {}, () => loadData( '?data=nikkei' ) ), ( error ) => {
+
+		assert.ok( error instanceof LocalDataMissingError );
+		assert.match( error.message, /npm run fetch-data/ );
+		return true;
+
+	} );
+
+} );
+
+test( 'loadData：同梱のデータの 404 や、形式の誤りは、ふつうの Error（LocalDataMissingError ではない）', async () => {
+
+	await assert.rejects( withFetch( {}, () => loadData( '' ) ), ( error ) => {
+
+		assert.ok( ! ( error instanceof LocalDataMissingError ) );
+		assert.match( error.message, /404/ );
+		return true;
+
+	} );
+
+	const bad = {
+		'./data/usdjpy.json': { body: [ { date: '2000-01-03', close: 1 } ] }, // 1 週しかない
+		'./data/usdjpy.meta.json': { body: {} }
+	};
+	await assert.rejects( withFetch( bad, () => loadData( '' ) ), /形式が正しくありません/ );
+
+	const wrongId = {
+		'./data/usdjpy.json': { body: TWO_WEEKS },
+		'./data/usdjpy.meta.json': { body: { id: 'jgb10' } }
+	};
+	await assert.rejects( withFetch( wrongId, () => loadData( '' ) ), /形式が正しくありません/ );
+
+} );
+
+// ---- 同梱の実データ ----
+
+for ( const [ id, count, first, last ] of [ [ 'usdjpy', 2912, '1971-01-04', '2026-11-02' ], [ 'jgb10', 2105, '1986-06-30', '2026-11-09' ] ] ) {
+
+	test( `同梱データ（${id}）：{ date, close } だけの ${count} 件で、メタ情報と一致し、定義と単位・桁数がそろう`, () => {
+
+		const series = readJson( `data/${id}.json` );
+		const meta = readJson( `data/${id}.meta.json` );
+		const def = DATASETS[ id ];
+
+		assert.equal( series.length, count );
+		assert.equal( series[ 0 ].date, first );
+		assert.equal( series.at( - 1 ).date, last );
+		for ( const row of series ) {
+
+			assert.deepEqual( Object.keys( row ).sort(), [ 'close', 'date' ] );
+			assert.equal( typeof row.close, 'number' );
+
+		}
+
+		assert.equal( meta.id, id );
+		assert.equal( meta.kind, 'real' );
+		assert.equal( meta.start, series[ 0 ].date );
+		assert.equal( meta.end, series.at( - 1 ).date );
+		assert.equal( meta.count, series.length );
+		assert.equal( meta.unit, def.unit );
+		assert.equal( meta.decimals, def.decimals );
+		assert.equal( meta.label, def.name );
+		for ( const key of [ 'valueLabel', 'attribution', 'processing', 'fetchedAt' ] ) assert.ok( meta[ key ], key );
+
+	} );
+
+	test( `同梱データ（${id}）：読み込んだあとの dataset は、id・meta・def・format を持つ`, async () => {
+
+		const responses = {
+			[ DATASETS[ id ].dataUrl ]: { body: readJson( `data/${id}.json` ) },
+			[ DATASETS[ id ].metaUrl ]: { body: readJson( `data/${id}.meta.json` ) }
+		};
+		const loaded = await withFetch( responses, () => loadData( `?data=${id}` ) );
+		const dataset = buildDataset( loaded.series, 4, loaded.meta, loaded.def );
+
+		assert.equal( dataset.id, id );
+		assert.equal( dataset.meta.id, id );
+		assert.equal( dataset.meta.attribution, readJson( `data/${id}.meta.json` ).attribution );
+		assert.equal( dataset.def, DATASETS[ id ] );
+		assert.equal( dataset.format.unit, DATASETS[ id ].unit );
+		assert.equal( dataset.raw.length, count );
+
+		// 範囲は書式の軸の規則に収まる
+		const { axisMin, axisMax } = dataset.format.ticks( dataset.rawRange.min, dataset.rawRange.max );
+		assert.ok( axisMin <= dataset.rawRange.min && axisMax >= dataset.rawRange.max );
+
+	} );
+
+}
+
+test( 'createFormatter：buildDataset の format は、定義から作ったものと同じ書式', () => {
+
+	const dataset = buildDataset( TWO_WEEKS, 4, undefined, DATASETS.jgb10 );
+	const direct = createFormatter( DATASETS.jgb10 );
+	assert.equal( dataset.format.value( - 0.2934 ), direct.value( - 0.2934 ) );
 
 } );

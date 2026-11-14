@@ -1,64 +1,43 @@
 // ミニグラフの、描画に依存しない計算（Node のテストからもそのまま読める）。
-// 軸の上限と目盛り、ラベルの間引き、年の目盛りの位置。
+// Y 軸（値の書式 dataset.format の目盛りから作る）、ラベルの間引き、年の目盛りの位置。
 
 import { dateToIndex } from '../data.js';
-
-/** 1 万円。Y 軸の目盛りの刻みは常にこれ（3D の等高線と同じ刻み）。 */
-export const YEN_STEP = 10000;
-
-/** グリッド線がこの本数を超えると、ラベルを間引く（仕様：実データの 8 本は間引き、サンプルの 5 本は間引かない）。 */
-export const DENSE_GRID_COUNT = 6;
 
 /** 縦に並ぶラベルの最小の間隔（CSS px）。11〜12px の文字が重ならない値。 */
 export const MIN_LABEL_PITCH = 16;
 
 /**
- * Y 軸。0 から「最高値を 1 万円単位で切り上げた値」まで、1 万円ごと。
- * @returns {{ top: number, count: number, ticks: number[] }} count は 0 を除く目盛りの本数（= top / 1 万円）
+ * Y 軸。値の書式（dataset.format）の目盛り（ticks）から作る。範囲は表示する生データの最小・最大。
+ * 下限 = floor( 最小 / 刻み ) × 刻み、上限 = ceil( 最大 / 刻み ) × 刻み（金利はマイナスがあるので、下限は 0 とは限らない）。
+ * @returns {{ min: number, max: number, span: number, count: number, values: number[], step: number, labelEvery: number, baseValue: number }}
+ *   count は下限から上限までの刻みの数。baseValue は基線の値（0 が範囲にあれば 0、なければ下限）。
  */
-export function yAxis( max, step = YEN_STEP ) {
+export function yAxis( format, range ) {
 
-	const count = Math.max( 1, Math.ceil( max / step ) );
-	const ticks = [];
-	for ( let k = 0; k <= count; k ++ ) ticks.push( k * step );
-	return { top: count * step, count, ticks };
+	const { axisMin, axisMax, values, step, labelEvery } = format.ticks( range.min, range.max );
+	const baseValue = axisMin <= 0 && axisMax >= 0 ? 0 : axisMin;
+	return { min: axisMin, max: axisMax, span: axisMax - axisMin, count: values.length - 1, values, step, labelEvery, baseValue };
 
 }
 
 /**
- * ラベルを何本おきに付けるか（1 = 1 万円ごと、2 = 2 万円ごと…）。
- * グリッド線が多いとき（6 本を超える）は 2 以上。描画域が低くて、ラベルの間隔が minPitch に足りないときは、足りるまで間引く。
+ * ラベルを付ける線の間隔（刻みの何本おきか）。
+ * 基本は axis.labelEvery（線が 7 本を超えるとき 2）。描画域が低くて、ラベルの間隔が minPitch に足りないときは、足りるまで 2 倍にする。
+ * ラベルは、値が step × 間隔の倍数の線に付く（labelValues）。ドル円（50 刻み、下限 50）なら 100・200・300・400。
  */
-export function labelStep( count, plotHeight, minPitch = MIN_LABEL_PITCH ) {
+export function labelStride( axis, plotHeight, minPitch = MIN_LABEL_PITCH ) {
 
-	let step = count > DENSE_GRID_COUNT ? 2 : 1;
-	const pitch = plotHeight / count;
-	for ( const candidate of [ 1, 2, 5, 10, 20, 50 ] ) {
-
-		if ( candidate < step ) continue;
-		step = candidate;
-		if ( pitch * step >= minPitch ) break;
-
-	}
-
-	return step;
+	let stride = axis.labelEvery;
+	const pitch = plotHeight / axis.count;
+	while ( pitch * stride < minPitch && stride < axis.count * 2 ) stride *= 2;
+	return stride;
 
 }
 
-/** ラベルを付ける目盛りの番号（0 は基線。step の倍数）。 */
-export function labelIndices( count, step ) {
+/** ラベルを付ける目盛りの値（stride は labelStride の戻り値）。 */
+export function labelValues( axis, stride ) {
 
-	const result = [];
-	for ( let k = 0; k <= count; k += step ) result.push( k );
-	return result;
-
-}
-
-/** 目盛りのラベル。0 は「0」、それ以外は「1万」「2万」…（1 万円の倍数）。 */
-export function formatYenTick( value ) {
-
-	if ( value === 0 ) return '0';
-	return `${value / YEN_STEP}万`;
+	return axis.values.filter( ( v ) => Math.round( v / axis.step ) % stride === 0 );
 
 }
 
@@ -87,19 +66,5 @@ export function yearTicks( dataset, everyYears = 10 ) {
 	}
 
 	return ticks;
-
-}
-
-/** 'YYYY-MM-DD' → 「2025年12月」。 */
-export function formatYearMonth( date ) {
-
-	return `${Number( date.substring( 0, 4 ) )}年${Number( date.substring( 5, 7 ) )}月`;
-
-}
-
-/** 整数にして桁区切り：12214.4 → '12,214'。 */
-export function formatYen( value ) {
-
-	return Math.round( value ).toLocaleString( 'en-US' );
 
 }

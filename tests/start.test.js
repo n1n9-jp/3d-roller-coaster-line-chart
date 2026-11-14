@@ -1,6 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readJson } from './helpers.js';
 import {
 	parseYMD, formatYearMonth, formatDate, periodOf, kickerText, descriptionText, chipTexts,
 	creditLine, metaDescription, dataSourceItems, EVENTS_SOURCE_TEXT, BASE_DESCRIPTION, SAMPLE_NOTE, ERROR_TEXTS
@@ -27,7 +26,8 @@ test( '日付の読み取りと表記', () => {
 
 test( '期間はデータの最後の週から作る（サンプル）', () => {
 
-	const series = readJson( 'data/nikkei225.json' );
+	// 1990-01-01 から 2025-12-29 まで（日経平均の同梱サンプルがあった頃の期間）。値は使わない
+	const series = [ { date: '1990-01-01', close: 1 }, { date: '2025-12-29', close: 2 } ];
 	const period = periodOf( series );
 	assert.equal( period.startYear, '1990年' );
 	assert.equal( period.startLabel, '1990年1月' );

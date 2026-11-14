@@ -42,11 +42,12 @@ export function createEndScreen( ctx ) {
 
 		const summary = summarize( dataset.raw );
 		if ( ! summary ) return false;
-		const texts = summaryTexts( summary );
+		const texts = summaryTexts( summary, dataset );
+
+		root.querySelector( '#end-title' ).textContent = texts.title;
 
 		root.querySelector( '#end-lead' ).textContent = texts.lead;
 		root.querySelector( '#end-change' ).textContent = texts.change;
-		root.querySelector( '#end-sample-note' ).hidden = dataset.meta?.kind !== 'sample';
 		restartButton.setAttribute( 'aria-label', texts.restartLabel );
 
 		for ( const [ key, stat ] of Object.entries( texts.stats ) ) {

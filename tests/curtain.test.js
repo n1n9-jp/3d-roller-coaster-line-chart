@@ -12,10 +12,10 @@ import {
 	curtainPaletteFrom, topBandPaletteFrom, overviewSubjectPoints
 } from '../assets/js/curtain.js';
 import { fitOverview, overviewMode } from '../assets/js/view.js';
-import { loadFixtures } from './helpers.js';
+import { series1990 as makeSeries1990 } from './helpers.js';
 
-const { nikkei } = loadFixtures();
-const dataset = buildDataset( nikkei );
+const series1990 = makeSeries1990();
+const dataset = buildDataset( series1990 );
 const D = 60;
 const EPS = 1e-4;
 

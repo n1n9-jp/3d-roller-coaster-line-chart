@@ -4,14 +4,15 @@
 // - raw      : 取得したままの週次終値。HUD の表示値とグラフに使う。
 // - smoothed : 移動平均後の系列。レールの形状に使う。
 
-import { DATA_SOURCES, MOVING_AVERAGE_WINDOW } from './config.js';
+import { DATASETS, DEFAULT_DATASET, MOVING_AVERAGE_WINDOW } from './config.js';
+import { createFormatter } from './format.js';
 
-/** ?data=local なのに data/local/ のファイルが無いときのエラー。 */
+/** ?data=nikkei なのに data/local/ のファイルが無いときのエラー（取得コマンドを案内する）。 */
 export class LocalDataMissingError extends Error {
 
 	constructor( url ) {
 
-		super( `${url} が見つかりません。npm run fetch-data を実行して、実データを取得してください。` );
+		super( `${url} が見つかりません。npm run fetch-data を実行して、日経平均のデータを取得してください。` );
 		this.name = 'LocalDataMissingError';
 		this.url = url;
 
@@ -19,12 +20,20 @@ export class LocalDataMissingError extends Error {
 
 }
 
-/** URL の検索部（?data=local など）から、使うデータの種類（'sample' | 'local'）を決める。 */
-export function dataModeFromSearch( search ) {
+/**
+ * URL の検索部（?data=usdjpy など）から、使うデータの id（'usdjpy' | 'jgb10' | 'nikkei'）を決める。
+ * 指定がないとき、知らない値のときは既定（usdjpy）。以前の ?data=local は nikkei と同じ扱い。
+ */
+export function datasetIdFromSearch( search ) {
 
-	return new URLSearchParams( search ).get( 'data' ) === 'local' ? 'local' : 'sample';
+	const value = new URLSearchParams( search ).get( 'data' );
+	if ( value === 'local' ) return 'nikkei';
+	return typeof value === 'string' && Object.hasOwn( DATASETS, value ) ? value : DEFAULT_DATASET;
 
 }
+
+/** 以前の名前（datasetIdFromSearch と同じ）。 */
+export const dataModeFromSearch = datasetIdFromSearch;
 
 async function fetchJson( url, { missingIsLocal = false } = {} ) {
 
@@ -41,34 +50,52 @@ async function fetchJson( url, { missingIsLocal = false } = {} ) {
 }
 
 /**
- * 日経平均の週次データとそのメタ情報を取得する。
+ * メタ情報を整える。古い data/local/meta.json（id・unit などが無い）でも読めるよう、足りない項目は定義から補う。
+ * 同梱の meta は id・label・valueLabel・unit・decimals・attribution・processing・fetchedAt などを持つ（scripts/lib/output.mjs）。
+ */
+function normalizeMeta( meta, def ) {
+
+	return {
+		id: def.id,
+		kind: 'real',
+		label: def.name,
+		valueLabel: '週の最終営業日の値',
+		unit: def.unit,
+		decimals: def.decimals,
+		...meta
+	};
+
+}
+
+/**
+ * 選んだデータの週次データとメタ情報を取得する。
  * search：URL の検索部（省略時は現在のページの ?data=）。
- * 戻り値の meta は { kind: 'sample' | 'real', label, ... }。
+ * 戻り値：{ id, def, series, meta }。series は [ { date, close } ]、def は config.js の DATASETS の 1 件。
  */
 export async function loadData( search = globalThis.location?.search ?? '' ) {
 
-	const mode = dataModeFromSearch( search );
-	const source = DATA_SOURCES[ mode ];
-	const options = { missingIsLocal: mode === 'local' };
+	const id = datasetIdFromSearch( search );
+	const def = DATASETS[ id ];
+	const options = { missingIsLocal: Boolean( def.localOnly ) };
 
-	const [ nikkei, meta ] = await Promise.all( [
-		fetchJson( source.nikkei, options ),
-		fetchJson( source.meta, options )
+	const [ series, meta ] = await Promise.all( [
+		fetchJson( def.dataUrl, options ),
+		fetchJson( def.metaUrl, options )
 	] );
 
-	if ( ! Array.isArray( nikkei ) || nikkei.length < 2 ) {
+	if ( ! Array.isArray( series ) || series.length < 2 ) {
 
-		throw new Error( `${source.nikkei} の形式が正しくありません` );
-
-	}
-
-	if ( meta?.kind !== 'real' && meta?.kind !== 'sample' ) {
-
-		throw new Error( `${source.meta} の形式が正しくありません` );
+		throw new Error( `${def.dataUrl} の形式が正しくありません` );
 
 	}
 
-	return { nikkei, meta };
+	if ( ! meta || typeof meta !== 'object' || ( meta.id !== undefined && meta.id !== def.id ) ) {
+
+		throw new Error( `${def.metaUrl} の形式が正しくありません` );
+
+	}
+
+	return { id, def, series, meta: normalizeMeta( meta, def ) };
 
 }
 
@@ -221,17 +248,20 @@ export function dateToIndex( dataset, date ) {
 
 /**
  * 生データから、表示用（raw）とレール用（smoothed）の系列と範囲をまとめる。
- * meta：データのメタ情報（loadData の meta）。dataset.meta.kind === 'real' で実データと判定できる。
- * 省略時はサンプルデータ扱い。
+ * meta：データのメタ情報（loadData の meta）。def：データの定義（config.js の DATASETS の 1 件。省略時は既定のドル円）。
+ * dataset.id・dataset.def・dataset.meta・dataset.format（値の書式。format.js）を持つ。
  */
-export function buildDataset( raw, windowSize = MOVING_AVERAGE_WINDOW, meta = { kind: 'sample' } ) {
+export function buildDataset( raw, windowSize = MOVING_AVERAGE_WINDOW, meta = undefined, def = DATASETS[ DEFAULT_DATASET ] ) {
 
 	const smoothed = applyMovingAverage( raw, windowSize );
 
 	return {
+		id: def.id,
+		def,
+		meta: meta ?? normalizeMeta( {}, def ),
+		format: createFormatter( def ),
 		raw,
 		smoothed,
-		meta,
 		rawRange: closeRange( raw ),
 		smoothedRange: closeRange( smoothed ),
 		/** t に対応する生データの点（日付と終値）。 */

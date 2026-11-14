@@ -1,65 +1,20 @@
 // 終了画面の要約（DOM に依存しない純粋な関数）。
 // 入力は生データ（dataset.raw）：{ date: 'YYYY-MM-DD', close: number } の配列（古い順）。
-// 表示値は生データの終値を四捨五入した整数。レール用の移動平均後の値は使わない。
+// 値の書式は dataset.format（format.js）。表示値は生データの値（レール用の移動平均後の値は使わない）。
 
-/** 整数をカンマ区切りにする（Intl に頼らない）。 */
-export function formatNumber( n ) {
+import { SPIRAL } from './config.js';
+import { formatWeek, formatYearMonth, parseDate } from './format.js';
 
-	return String( Math.round( n ) ).replace( /\B(?=(\d{3})+(?!\d))/g, ',' );
+// 数と「週」の間で行を折り返さない（「1,923」と「週分…」が別の行に分かれるのを防ぐ。幅のない文字）
+export const WORD_JOINER = '\u2060';
 
-}
-
-/** 終値 → 「41,702円」。 */
-export function formatYen( close ) {
-
-	return `${formatNumber( close )}円`;
-
-}
-
-/** 'YYYY-MM-DD' → { year, month, day }（数値）。Date を通さないので時差の影響を受けない。 */
-export function parseDate( date ) {
-
-	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec( date );
-	if ( ! m ) throw new Error( `日付の形式が正しくありません：${date}` );
-	return { year: Number( m[ 1 ] ), month: Number( m[ 2 ] ), day: Number( m[ 3 ] ) };
-
-}
-
-/** 'YYYY-MM-DD' → 「2024年7月1日の週」。 */
-export function formatWeek( date ) {
-
-	const { year, month, day } = parseDate( date );
-	return `${year}年${month}月${day}日の週`;
-
-}
-
-/** 'YYYY-MM-DD' → 「2024年7月」。 */
-export function formatYearMonth( date ) {
-
-	const { year, month } = parseDate( date );
-	return `${year}年${month}月`;
-
-}
-
-/**
- * 最初の週と最後の週の終値の変化。
- * 戻り値：{ direction: 'up' | 'down' | 'flat', percent: '12.3'（絶対値、小数 1 桁の文字列）, text: '▲12.3%' }。
- * 小数 1 桁に丸めて 0.0 になるときは 'flat'（text は '±0.0%'）。
- */
-export function describeChange( firstClose, lastClose ) {
-
-	const raw = ( lastClose - firstClose ) / firstClose * 100;
-	const percent = Math.abs( raw ).toFixed( 1 );
-
-	if ( percent === '0.0' ) return { direction: 'flat', percent, text: '±0.0%' };
-	if ( raw > 0 ) return { direction: 'up', percent, text: `▲${percent}%` };
-	return { direction: 'down', percent, text: `▼${percent}%` };
-
-}
+const DAY_MS = 86400000;
+const YEAR_DAYS = 365.2425;
 
 /**
  * 系列の要約。最高値と最安値は、同じ値が複数あるときは最初の週を採る。
  * 系列が空なら null。
+ * turns：螺旋を回った周数（最初の週から最後の週までの年数 ÷ 1 周の年数）。
  */
 export function summarize( raw ) {
 
@@ -76,6 +31,7 @@ export function summarize( raw ) {
 
 	const first = raw[ 0 ];
 	const last = raw[ raw.length - 1 ];
+	const days = ( Date.parse( `${last.date}T00:00:00Z` ) - Date.parse( `${first.date}T00:00:00Z` ) ) / DAY_MS;
 
 	return {
 		weeks: raw.length,
@@ -85,25 +41,33 @@ export function summarize( raw ) {
 		min,
 		startLabel: formatYearMonth( first.date ),
 		endLabel: formatYearMonth( last.date ),
-		change: describeChange( first.close, last.close )
+		endYear: parseDate( last.date ).year,
+		turns: days / YEAR_DAYS / SPIRAL.yearsPerTurn
 	};
 
 }
 
-/** 要約から、終了画面に出す文言をまとめる（文言は仕様 6「終了画面」）。 */
-export function summaryTexts( summary ) {
+/**
+ * 要約から、終了画面に出す文言をまとめる（文言は仕様 5-4）。
+ * dataset：{ def, format }（data.js の buildDataset の戻り値）。
+ */
+export function summaryTexts( summary, dataset ) {
 
-	const stat = ( label, point ) => ( { label, value: formatNumber( point.close ), unit: '円', date: formatWeek( point.date ) } );
+	const { def, format } = dataset;
+	const stat = ( label, point ) => ( { label, value: format.number( point.close ), unit: format.unit, date: formatWeek( point.date ) } );
+	const overall = format.overall( summary.last.close, summary.first.close );
 
 	return {
-		lead: `${summary.startLabel}から${summary.endLabel}まで、${summary.weeks}週分の日経平均株価を走りました。`,
+		title: `${summary.endLabel}に到着しました`,
+		lead: `${summary.startLabel}から、らせんを約${summary.turns.toFixed( 1 )}周、${summary.weeks.toLocaleString( 'en-US' )}${WORD_JOINER}週分の${def.name}を走りました。`,
 		stats: {
 			first: stat( '最初の週', summary.first ),
 			last: stat( '最後の週', summary.last ),
-			max: stat( '最高値', summary.max ),
-			min: stat( '最安値', summary.min )
+			max: stat( def.statLabels.max, summary.max ),
+			min: stat( def.statLabels.min, summary.min )
 		},
-		change: `最初の週と比べて ${summary.change.text}`,
+		change: `最初の週と比べて ${overall.text}`,
+		changeDirection: overall.direction,
 		restartLabel: `${summary.startLabel}からもう一度乗る`
 	};
 

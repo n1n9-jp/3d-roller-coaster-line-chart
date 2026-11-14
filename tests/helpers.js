@@ -6,10 +6,12 @@ export function readJson( relativePath ) {
 
 }
 
+/** 同梱の実データ（週次）。usdjpy：1971 年〜（2912 週）、jgb10：1986 年〜（2105 週。マイナスの値がある）。 */
 export function loadFixtures() {
 
 	return {
-		nikkei: readJson( 'data/nikkei225.json' )
+		usdjpy: readJson( 'data/usdjpy.json' ),
+		jgb10: readJson( 'data/jgb10.json' )
 	};
 
 }
@@ -36,5 +38,15 @@ export function stretchedSeries( base, startDate, endDate ) {
 	}
 
 	return out;
+
+}
+
+/**
+ * 1990 年 1 月始まり、2025 年 12 月まで（1879 週。約 3.6 周）の系列。同梱のドル円の値を引き伸ばした仮のデータ。
+ * 開始が西暦の下 1 桁が 0 の年の 1 月 1 日のデータ（日経平均）で、螺旋の作りと乗り心地を同梱データだけで確かめるのに使う。
+ */
+export function series1990() {
+
+	return stretchedSeries( loadFixtures().usdjpy, '1990-01-01', '2025-12-29' );
 
 }

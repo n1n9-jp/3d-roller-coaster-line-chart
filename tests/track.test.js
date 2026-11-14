@@ -4,18 +4,18 @@ import assert from 'node:assert/strict';
 import { TrackCurve, decimalYear, spiralAngle, normalizeAngle } from '../assets/js/track.js';
 import { buildDataset, dateToIndex } from '../assets/js/data.js';
 import { Y_MIN, Y_MAX, SPIRAL } from '../assets/js/config.js';
-import { loadFixtures, stretchedSeries } from './helpers.js';
+import { series1990 as makeSeries1990, stretchedSeries } from './helpers.js';
 
-const { nikkei } = loadFixtures();
+const series1990 = makeSeries1990();
 
-// 開始年の違う 3 つのデータ（1971 年始まり 約 5.6 周、1986 年始まり 約 4 周、1990 年始まりの同梱サンプル）
+// 開始年の違う 3 つのデータ（1971 年始まり 約 5.6 周、1986 年始まり 約 4 周、1990 年始まりの仮のデータ）
 const SERIES = [
-	[ '1971 年始まり', stretchedSeries( nikkei, '1971-01-04', '2026-11-09' ) ],
-	[ '1986 年始まり', stretchedSeries( nikkei, '1986-07-07', '2026-11-09' ) ],
-	[ '1990 年始まり（サンプル）', nikkei ]
+	[ '1971 年始まり', stretchedSeries( series1990, '1971-01-04', '2026-11-09' ) ],
+	[ '1986 年始まり', stretchedSeries( series1990, '1986-07-07', '2026-11-09' ) ],
+	[ '1990 年始まり', series1990 ]
 ];
 const curves = SERIES.map( ( [ name, data ] ) => [ name, new TrackCurve( buildDataset( data ).smoothed ) ] );
-const sample = new TrackCurve( nikkei );
+const sample = new TrackCurve( series1990 );
 
 const DAY_ANGLE = 2 * Math.PI / ( SPIRAL.yearsPerTurn * 365.25 ); // 1 日分の角度
 /** 2 つの角度の差（周回を除いた最小の差）。 */
@@ -40,7 +40,7 @@ test( 'decimalYear：1 月 1 日で整数、年の途中は時間の割合', () 
 test( '設定：1 周 10 年、内側の半径 16、間隔 13（config.js の SPIRAL）。options で変えられる', () => {
 
 	assert.deepEqual( SPIRAL, { yearsPerTurn: 10, innerRadius: 16, turnGap: 13 } );
-	const curve = new TrackCurve( nikkei, { yearsPerTurn: 5, innerRadius: 20, turnGap: 10 } );
+	const curve = new TrackCurve( series1990, { yearsPerTurn: 5, innerRadius: 20, turnGap: 10 } );
 	assert.ok( Math.abs( curve.radiusAt( 0 ) - 20 ) < 1e-9 );
 	assert.ok( Math.abs( curve.turns - curve.years / 5 ) < 1e-12 );
 	assert.ok( Math.abs( curve.radiusAt( 1 ) - ( 20 + 10 * curve.years / 5 ) ) < 1e-9 );
@@ -52,7 +52,7 @@ test( '年代の境目（1980 年・1990 年…の 1 月 1 日）は、開始年
 	const expectedYears = {
 		'1971 年始まり': [ 1980, 1990, 2000, 2010, 2020 ],
 		'1986 年始まり': [ 1990, 2000, 2010, 2020 ],
-		'1990 年始まり（サンプル）': [ 1990, 2000, 2010, 2020 ]
+		'1990 年始まり': [ 1990, 2000, 2010, 2020 ]
 	};
 	for ( const [ name, curve ] of curves ) {
 
@@ -165,9 +165,9 @@ test( '上から見て時計回り（北 → 東 → 南 → 西）、内側か�
 
 test( '高さ：t = 0 は最初の週、t = 1 は最後の週の高さ。範囲は Y_MIN..Y_MAX', () => {
 
-	const curve = new TrackCurve( nikkei );
-	assert.ok( Math.abs( curve.getPointAt( 0 ).y - curve.valueToY( nikkei[ 0 ].close ) ) < 1e-9 );
-	assert.ok( Math.abs( curve.getPointAt( 1 ).y - curve.valueToY( nikkei.at( - 1 ).close ) ) < 1e-9 );
+	const curve = new TrackCurve( series1990 );
+	assert.ok( Math.abs( curve.getPointAt( 0 ).y - curve.valueToY( series1990[ 0 ].close ) ) < 1e-9 );
+	assert.ok( Math.abs( curve.getPointAt( 1 ).y - curve.valueToY( series1990.at( - 1 ).close ) ) < 1e-9 );
 	assert.ok( Math.abs( curve.valueToY( curve.closeMin ) - Y_MIN ) < 1e-9 );
 	assert.ok( Math.abs( curve.valueToY( curve.closeMax ) - Y_MAX ) < 1e-9 );
 	for ( let i = 0; i <= 500; i ++ ) {
@@ -178,10 +178,10 @@ test( '高さ：t = 0 は最初の週、t = 1 は最後の週の高さ。範囲�
 	}
 
 	// 各週の日付の位置で、その週の値の高さ
-	for ( const i of [ 1, 100, 1000, nikkei.length - 2 ] ) {
+	for ( const i of [ 1, 100, 1000, series1990.length - 2 ] ) {
 
-		const t = curve.dateToProgress( nikkei[ i ].date );
-		assert.ok( Math.abs( curve.getYAt( t ) - curve.valueToY( nikkei[ i ].close ) ) < 1e-9, `i=${i}` );
+		const t = curve.dateToProgress( series1990[ i ].date );
+		assert.ok( Math.abs( curve.getYAt( t ) - curve.valueToY( series1990[ i ].close ) ) < 1e-9, `i=${i}` );
 
 	}
 
@@ -242,7 +242,7 @@ test( '接線：水平な単位ベクトルで、進行方向を向く。両端�
 
 test( '高さの勾配：両端では内側の片側差分（反対側の高さを混ぜない）', () => {
 
-	const curve = new TrackCurve( buildDataset( nikkei ).smoothed );
+	const curve = new TrackCurve( buildDataset( series1990 ).smoothed );
 	const h = 86400000 / curve.spanMs;
 	const g0 = curve.getHeightGradientAt( 0 );
 	assert.ok( Math.abs( g0 - ( curve.getYAt( h ) - curve.getYAt( 0 ) ) / h ) < 1e-6 );
@@ -334,19 +334,19 @@ test( '弧長：全長は折れ線の長さと一致。弧長の割合で引い�
 
 test( '日付 ↔ t：往復で一致し、t は時間に比例する（系列の添字とは日付で対応する）', () => {
 
-	const curve = new TrackCurve( nikkei );
-	const dataset = buildDataset( nikkei );
-	assert.equal( curve.dateToProgress( nikkei[ 0 ].date ), 0 );
-	assert.equal( curve.dateToProgress( nikkei.at( - 1 ).date ), 1 );
+	const curve = new TrackCurve( series1990 );
+	const dataset = buildDataset( series1990 );
+	assert.equal( curve.dateToProgress( series1990[ 0 ].date ), 0 );
+	assert.equal( curve.dateToProgress( series1990.at( - 1 ).date ), 1 );
 	assert.equal( curve.dateToProgress( '1980-01-01' ), 0 ); // 範囲外は端
 	assert.equal( curve.dateToProgress( '2099-01-01' ), 1 );
 
-	for ( const i of [ 0, 1, 17, 500, 1234, nikkei.length - 1 ] ) {
+	for ( const i of [ 0, 1, 17, 500, 1234, series1990.length - 1 ] ) {
 
-		const t = curve.dateToProgress( nikkei[ i ].date );
+		const t = curve.dateToProgress( series1990[ i ].date );
 		assert.ok( Math.abs( curve.indexToProgress( i ) - t ) < 1e-12, `i=${i}` );
 		assert.ok( Math.abs( curve.progressToIndex( t ) - i ) < 1e-9, `i=${i}` );
-		assert.ok( Math.abs( curve.timeAt( t ) - Date.parse( `${nikkei[ i ].date}T00:00:00Z` ) ) < 1e-3 );
+		assert.ok( Math.abs( curve.timeAt( t ) - Date.parse( `${series1990[ i ].date}T00:00:00Z` ) ) < 1e-3 );
 
 	}
 
@@ -360,7 +360,7 @@ test( '日付 ↔ t：往復で一致し、t は時間に比例する（系列�
 
 	}
 
-	for ( const u of [ 0, 0.5, 100.25, nikkei.length - 1.5, nikkei.length - 1 ] ) {
+	for ( const u of [ 0, 0.5, 100.25, series1990.length - 1.5, series1990.length - 1 ] ) {
 
 		assert.ok( Math.abs( curve.progressToIndex( curve.indexToProgress( u ) ) - u ) < 1e-9, `u=${u}` );
 
@@ -374,13 +374,13 @@ test( '日付 ↔ t：往復で一致し、t は時間に比例する（系列�
 
 test( '週が 1 つ抜けたデータでも、各週は日付どおりの角度と高さ（添字で決めない）', () => {
 
-	const full = new TrackCurve( nikkei );
-	const gap = nikkei.filter( ( _, i ) => i !== 700 ); // 700 番目の週を抜く
+	const full = new TrackCurve( series1990 );
+	const gap = series1990.filter( ( _, i ) => i !== 700 ); // 700 番目の週を抜く
 	const curve = new TrackCurve( gap );
 	assert.equal( curve.startMs, full.startMs );
 	assert.equal( curve.endMs, full.endMs );
 
-	for ( const item of [ nikkei[ 699 ], nikkei[ 701 ], nikkei[ 1500 ], nikkei[ 1800 ], nikkei.at( - 1 ) ] ) {
+	for ( const item of [ series1990[ 699 ], series1990[ 701 ], series1990[ 1500 ], series1990[ 1800 ], series1990.at( - 1 ) ] ) {
 
 		const a = full.getXZAt( full.dateToProgress( item.date ) );
 		const b = curve.getXZAt( curve.dateToProgress( item.date ) );
@@ -390,6 +390,6 @@ test( '週が 1 つ抜けたデータでも、各週は日付どおりの角度�
 	}
 
 	// 抜けた週の日付は、前後の週の間を日数で補間した位置（添字 699.5）
-	assert.ok( Math.abs( curve.progressToIndex( curve.dateToProgress( nikkei[ 700 ].date ) ) - 699.5 ) < 1e-9 );
+	assert.ok( Math.abs( curve.progressToIndex( curve.dateToProgress( series1990[ 700 ].date ) ) - 699.5 ) < 1e-9 );
 
 } );

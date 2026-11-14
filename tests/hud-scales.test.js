@@ -1,71 +1,90 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-	yAxis, labelStep, labelIndices, formatYenTick, yearTicks, formatYearMonth, formatYen
-} from '../assets/js/hud/scales.js';
+import { yAxis, labelStride, labelValues, yearTicks } from '../assets/js/hud/scales.js';
+import { createFormatter } from '../assets/js/format.js';
+import { DATASETS } from '../assets/js/config.js';
 import { riddenEnd, yearAt } from '../assets/js/hud/map.js';
 import { buildDataset } from '../assets/js/data.js';
 import { TrackCurve } from '../assets/js/track.js';
 import { loadFixtures } from './helpers.js';
 
-const { nikkei } = loadFixtures();
+const { usdjpy, jgb10 } = loadFixtures();
+const rangeOf = ( series ) => {
 
-test( 'Y 軸：上限は最高値を 1 万円単位で切り上げた値（41,701 → 5 万、71,250 → 8 万）', () => {
+	const closes = series.map( d => d.close );
+	return { min: Math.min( ...closes ), max: Math.max( ...closes ) };
 
-	assert.equal( yAxis( 41701 ).top, 50000 );
-	assert.equal( yAxis( 41701 ).count, 5 );
-	assert.equal( yAxis( 71250 ).top, 80000 );
-	assert.equal( yAxis( 71250 ).count, 8 );
-	// ちょうど 1 万円の倍数ならそのまま
-	assert.equal( yAxis( 40000 ).top, 40000 );
-	assert.equal( yAxis( 40000.5 ).top, 50000 );
+};
 
-} );
+const usd = createFormatter( DATASETS.usdjpy );
+const jgb = createFormatter( DATASETS.jgb10 );
+const nik = createFormatter( DATASETS.nikkei );
 
-test( 'Y 軸：目盛りは 0 から上限まで 1 万円ごと', () => {
+test( 'Y 軸（ドル円）：同梱データは 50〜400 円、50 円ごとの 7 本の線と下端、基線は下端', () => {
 
-	assert.deepEqual( yAxis( 41701 ).ticks, [ 0, 10000, 20000, 30000, 40000, 50000 ] );
-	assert.equal( yAxis( 71250 ).ticks.length, 9 );
-	assert.equal( yAxis( 71250 ).ticks.at( - 1 ), 80000 );
-
-} );
-
-test( 'Y 軸：同梱のサンプルは上限 5 万', () => {
-
-	const max = Math.max( ...nikkei.map( d => d.close ) );
-	assert.equal( yAxis( max ).top, 50000 );
+	const axis = yAxis( usd, rangeOf( usdjpy ) );
+	assert.equal( axis.min, 50 );
+	assert.equal( axis.max, 400 );
+	assert.equal( axis.span, 350 );
+	assert.equal( axis.count, 7 );
+	assert.deepEqual( axis.values, [ 50, 100, 150, 200, 250, 300, 350, 400 ] );
+	assert.equal( axis.baseValue, 50 ); // 0 は範囲にないので、下端の線
 
 } );
 
-test( 'ラベルの間引き：グリッド線が 6 本を超えるとき（実データの 8 本）は 2 万円ごと、サンプルの 5 本は 1 万円ごと', () => {
+test( 'Y 軸（金利）：同梱データは −1〜9%。0 が範囲にあるので、基線は 0 の線（その下にマイナスの区間）', () => {
+
+	const axis = yAxis( jgb, rangeOf( jgb10 ) );
+	assert.equal( axis.min, - 1 );
+	assert.equal( axis.max, 9 );
+	assert.equal( axis.count, 10 );
+	assert.equal( axis.baseValue, 0 );
+	assert.ok( axis.values.includes( 0 ) );
+	// マイナスの値の位置は、基線（0）より下
+	const yAt = ( v ) => ( v - axis.min ) / axis.span; // 下端が 0、上端が 1
+	assert.ok( yAt( - 0.293 ) < yAt( axis.baseValue ) );
+	assert.ok( yAt( - 0.293 ) > 0 );
+
+} );
+
+test( 'Y 軸（日経平均）：0〜8 万円（今までの見た目のまま）。基線は 0', () => {
+
+	const axis = yAxis( nik, { min: 7055, max: 72366 } );
+	assert.equal( axis.min, 0 );
+	assert.equal( axis.max, 80000 );
+	assert.equal( axis.count, 8 );
+	assert.equal( axis.baseValue, 0 );
+
+} );
+
+test( 'ラベルの間引き：線が 7 本を超えるデータは 2 本おき、そうでなければ 1 本おき（描画域が十分に高いとき）', () => {
 
 	// 描画域が十分に高い（デスクトップ）
-	assert.equal( labelStep( 5, 114 ), 1 );
-	assert.equal( labelStep( 6, 114 ), 1 );
-	assert.equal( labelStep( 8, 114 ), 2 );
+	assert.equal( labelStride( yAxis( nik, { min: 0, max: 50000 } ), 114 ), 1 ); // 6 本
+	assert.equal( labelStride( yAxis( usd, rangeOf( usdjpy ) ), 114 ), 2 ); // 8 本
+	assert.equal( labelStride( yAxis( jgb, rangeOf( jgb10 ) ), 114 ), 2 ); // 11 本
+	assert.equal( labelStride( yAxis( nik, { min: 7055, max: 72366 } ), 114 ), 2 ); // 9 本
 
 } );
 
-test( 'ラベルの間引き：描画域が低いときも間引く（モバイル）', () => {
+test( 'ラベルの間引き：描画域が低いとき（モバイル、短い横長）は、足りるまでさらに間引く', () => {
 
-	// モバイルの描画域は約 68px：サンプル 5 本は 13.6px ごとで文字が重なるので 2 万円ごと
-	assert.equal( labelStep( 5, 68 ), 2 );
-	// 実データ 8 本は 8.5px ごと。2 万円ごとなら 17px で足りる
-	assert.equal( labelStep( 8, 68 ), 2 );
-	// 短い横長の描画域（約 46px）では、2 万円ごとでも足りないので、さらに間引く
-	assert.ok( labelStep( 8, 46 ) > 2 );
-	assert.ok( labelStep( 5, 46 ) >= 2 );
+	const axis = yAxis( jgb, rangeOf( jgb10 ) ); // 10 区間
+	// モバイルの描画域は約 68px：区間あたり 6.8px。2 本おきでも 13.6px で足りないので 4 本おき
+	assert.equal( labelStride( axis, 68 ), 4 );
+	assert.equal( labelStride( axis, 114 ), 2 );
+	assert.ok( labelStride( axis, 46 ) >= 4 );
 
 } );
 
-test( 'ラベルの間引き：選ばれた間隔のラベル間隔は、必ず最小の間隔以上になる（間引ける限り）', () => {
+test( 'ラベルの間引き：選ばれたラベルの間隔は、必ず最小の間隔以上になる（間引ける限り）', () => {
 
-	for ( const count of [ 3, 5, 8, 12 ] ) {
+	for ( const axis of [ yAxis( usd, rangeOf( usdjpy ) ), yAxis( jgb, rangeOf( jgb10 ) ), yAxis( nik, { min: 0, max: 80000 } ) ] ) {
 
 		for ( const plotHeight of [ 46, 68, 92, 114, 200 ] ) {
 
-			const step = labelStep( count, plotHeight );
-			assert.ok( plotHeight / count * step >= 16 || step >= count, `count ${count}, height ${plotHeight}, step ${step}` );
+			const stride = labelStride( axis, plotHeight );
+			assert.ok( plotHeight / axis.count * stride >= 16 || stride >= axis.count, `count ${axis.count}, height ${plotHeight}, stride ${stride}` );
 
 		}
 
@@ -73,30 +92,34 @@ test( 'ラベルの間引き：選ばれた間隔のラベル間隔は、必ず�
 
 } );
 
-test( 'ラベルの番号：0 と step の倍数。表記は「0」「2万」…', () => {
+test( 'ラベルの値：step × 間隔の倍数の線だけ（ドル円は 100・200・300・400、金利は 0・2・4・6・8）', () => {
 
-	assert.deepEqual( labelIndices( 8, 2 ), [ 0, 2, 4, 6, 8 ] );
-	assert.deepEqual( labelIndices( 5, 1 ), [ 0, 1, 2, 3, 4, 5 ] );
-	assert.deepEqual( labelIndices( 5, 2 ), [ 0, 2, 4 ] );
-	assert.equal( formatYenTick( 0 ), '0' );
-	assert.equal( formatYenTick( 10000 ), '1万' );
-	assert.equal( formatYenTick( 80000 ), '8万' );
+	const u = yAxis( usd, rangeOf( usdjpy ) );
+	assert.deepEqual( labelValues( u, labelStride( u, 114 ) ), [ 100, 200, 300, 400 ] );
+	const j = yAxis( jgb, rangeOf( jgb10 ) );
+	assert.deepEqual( labelValues( j, labelStride( j, 114 ) ), [ 0, 2, 4, 6, 8 ] );
+	const n = yAxis( nik, { min: 7055, max: 72366 } );
+	assert.deepEqual( labelValues( n, labelStride( n, 114 ) ), [ 0, 20000, 40000, 60000, 80000 ] );
+	// 描画域が低いときは、さらに少ない
+	assert.deepEqual( labelValues( j, labelStride( j, 68 ) ), [ 0, 4, 8 ] );
 
 } );
 
 const week = ( date, close = 1 ) => ( { date, close } );
 
-test( '年の目盛り：10 年ごと。同梱のサンプルは 1990・2000・2010・2020', () => {
+test( '年の目盛り：10 年ごと。ドル円は 1980・1990・2000・2010・2020、金利は 1990・2000・2010・2020', () => {
 
-	const dataset = buildDataset( nikkei );
-	const ticks = yearTicks( dataset );
-	assert.deepEqual( ticks.map( t => t.year ), [ 1990, 2000, 2010, 2020 ] );
-	assert.equal( ticks[ 0 ].index, 0 );
-	for ( const { year, index } of ticks ) {
+	for ( const [ series, years ] of [ [ usdjpy, [ 1980, 1990, 2000, 2010, 2020 ] ], [ jgb10, [ 1990, 2000, 2010, 2020 ] ] ] ) {
 
-		// 位置は、その年の最初の週のあたり（週次なので 1 週のずれまで）
-		const date = nikkei[ Math.round( index ) ].date;
-		assert.ok( Math.abs( Date.parse( date ) - Date.parse( `${year}-01-01` ) ) <= 7 * 86400000, `${year}: ${date}` );
+		const ticks = yearTicks( buildDataset( series ) );
+		assert.deepEqual( ticks.map( t => t.year ), years );
+		for ( const { year, index } of ticks ) {
+
+			// 位置は、その年の最初の週のあたり（週次なので 1 週のずれまで）
+			const date = series[ Math.round( index ) ].date;
+			assert.ok( Math.abs( Date.parse( date ) - Date.parse( `${year}-01-01` ) ) <= 7 * 86400000, `${year}: ${date}` );
+
+		}
 
 	}
 
@@ -133,15 +156,6 @@ test( '年の目盛り：実データの範囲（1990-01-01〜2026-11-09）は 2
 
 } );
 
-test( '表記：年月と値', () => {
-
-	assert.equal( formatYearMonth( '2025-12-29' ), '2025年12月' );
-	assert.equal( formatYearMonth( '1990-01-08' ), '1990年1月' );
-	assert.equal( formatYen( 12214.4 ), '12,214' );
-	assert.equal( formatYen( 38791 ), '38,791' );
-
-} );
-
 test( '螺旋の図：走行済みの線の終わり。走行中は現在位置、走り終えたときは終点', () => {
 
 	assert.equal( riddenEnd( 0.4, false ), 0.4 );
@@ -153,9 +167,9 @@ test( '螺旋の図：走行済みの線の終わり。走行中は現在位置�
 
 test( '螺旋の図：「いま：2008年」の年は、進行位置の日付の年', () => {
 
-	const curve = new TrackCurve( nikkei );
-	assert.equal( yearAt( curve, 0 ), 1990 );
-	assert.equal( yearAt( curve, 1 ), Number( nikkei.at( - 1 ).date.slice( 0, 4 ) ) );
+	const curve = new TrackCurve( usdjpy );
+	assert.equal( yearAt( curve, 0 ), 1971 );
+	assert.equal( yearAt( curve, 1 ), Number( usdjpy.at( - 1 ).date.slice( 0, 4 ) ) );
 	assert.equal( yearAt( curve, curve.dateToProgress( '2008-06-30' ) ), 2008 );
 	assert.equal( yearAt( curve, curve.dateToProgress( '2009-01-01' ) ), 2009 );
 	assert.equal( yearAt( curve, 1.5 ), yearAt( curve, 1 ) );

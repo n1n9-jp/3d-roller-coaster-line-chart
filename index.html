@@ -111,8 +111,8 @@
 			<!-- [hud-readout] 現在値の帯  CSS: readout.css / JS: hud/readout.js -->
 			<div id="hud-readout" class="hud-panel" role="group" aria-label="現在値">
 				<div class="ro-date"><span id="year-display"></span><span id="ro-month"></span><span id="ro-day" class="ro-day"></span></div>
-				<div class="ro-label">週次終値</div>
-				<div class="ro-value"><span id="ro-value" class="ro-num"></span><span class="ro-unit">円</span></div>
+				<div id="ro-label" class="ro-label">週次・1ドルあたり</div>
+				<div class="ro-value"><span id="ro-value" class="ro-num"></span><span id="ro-unit" class="ro-unit">円</span></div>
 				<div id="ro-change" class="ro-change" data-direction="none"><span id="ro-change-full" class="ro-change-full"></span><span id="ro-change-short" class="ro-change-short"></span></div>
 			</div>
 			<!-- [hud-legend] 凡例（俯瞰中だけ）  CSS: readout.css / JS: hud/legend.js -->
@@ -143,10 +143,10 @@
 			<!-- [hud-chart] ミニグラフ  CSS: chart.css / JS: hud/chart.js -->
 			<div id="hud-chart" class="hud-panel">
 				<div class="chart-head">
-					<h2 class="chart-title"><span class="chart-title__full">日経平均株価の</span>推移</h2>
+					<h2 class="chart-title"><span class="chart-title__full">ドル円レートの</span><span class="chart-title__tail">推移</span></h2>
 					<span class="chart-unit">円</span>
 				</div>
-				<canvas id="graphCanvas" role="img" aria-label="日経平均株価の折れ線グラフ"></canvas>
+				<canvas id="graphCanvas" role="img" aria-label="ドル円の為替レートの折れ線グラフ"></canvas>
 			</div>
 			<!-- [hud-map] 路線図  CSS: map.css / JS: hud/map.js -->
 			<div id="hud-map" class="hud-panel">
@@ -163,9 +163,8 @@
 		<!-- [end-screen] 終了画面  CSS: endscreen.css / JS: ui/endscreen.js。見出しは #end-title を作ること -->
 		<div id="end-screen" role="dialog" aria-modal="true" aria-labelledby="end-title" hidden>
 			<div class="end-card">
-				<h2 id="end-title" class="end-title">一周しました</h2>
+				<h2 id="end-title" class="end-title"></h2>
 				<p id="end-lead" class="end-lead"></p>
-				<p id="end-sample-note" class="end-note" hidden>サンプルデータ（実際の日経平均ではありません）</p>
 				<dl class="end-stats">
 					<div class="end-stat" data-stat="first">
 						<dt>最初の週</dt>

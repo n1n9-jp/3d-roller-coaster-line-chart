@@ -1,92 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-	parseDate, formatWeekLabel, formatMonthLabel, formatYen, formatPercent, formatChange, weekIndex
-} from '../assets/js/hud/readout.js';
-
-test( '年月：デスクトップは「1990年1月8日の週」、モバイルは「1990年1月」', () => {
-
-	assert.equal( formatWeekLabel( '1990-01-08' ), '1990年1月8日の週' );
-	assert.equal( formatMonthLabel( '1990-01-08' ), '1990年1月' );
-	// 先頭の 0 は付けない。月末・年末も Date を通さずそのまま読む
-	assert.equal( formatWeekLabel( '2008-09-15' ), '2008年9月15日の週' );
-	assert.equal( formatMonthLabel( '2025-12-29' ), '2025年12月' );
-	assert.deepEqual( parseDate( '2026-11-09' ), { year: 2026, month: 11, day: 9 } );
-
-} );
-
-test( '値：3桁区切りの整数、小数は四捨五入', () => {
-
-	assert.equal( formatYen( 38791.29 ), '38,791' );
-	assert.equal( formatYen( 38791.5 ), '38,792' );
-	assert.equal( formatYen( 7081.55 ), '7,082' );
-	assert.equal( formatYen( 71300.4 ), '71,300' );
-	assert.equal( formatYen( 999.5 ), '1,000' );
-	assert.equal( formatYen( 100000 ), '100,000' );
-	assert.equal( formatYen( 0 ), '0' );
-
-} );
-
-test( '％：小数1桁、符号は付けない', () => {
-
-	assert.equal( formatPercent( 0.2 ), '0.2' );
-	assert.equal( formatPercent( - 1.234 ), '1.2' );
-	assert.equal( formatPercent( 12 ), '12.0' );
-	assert.equal( formatPercent( 0.04 ), '0.0' );
-
-} );
-
-test( '前週比：上げ', () => {
-
-	const change = formatChange( 38000, 38380 );
-	assert.equal( change.direction, 'up' );
-	assert.equal( change.amount, '380' );
-	assert.equal( change.percent, '1.0' );
-	assert.equal( change.full, '前週比 ▲380円（+1.0%）' );
-	assert.equal( change.short, '▲1.0%' );
-
-} );
-
-test( '前週比：下げ（符号は U+2212 の −）', () => {
-
-	const change = formatChange( 38852.92, 38791.29 );
-	assert.equal( change.direction, 'down' );
-	assert.equal( change.amount, '62' );
-	assert.equal( change.full, '前週比 ▼62円（−0.2%）' );
-	assert.equal( change.short, '▼0.2%' );
-
-	// 1,000 円以上の差は3桁区切り
-	assert.equal( formatChange( 70000, 68765 ).full, '前週比 ▼1,235円（−1.8%）' );
-
-} );
-
-test( '前週比：変化なし', () => {
-
-	const same = formatChange( 20000, 20000 );
-	assert.equal( same.direction, 'flat' );
-	assert.equal( same.full, '前週比 ±0円' );
-	assert.equal( same.short, '±0%' );
-
-	// 四捨五入して 0 円になる差も「変化なし」
-	assert.equal( formatChange( 20000, 20000.4 ).direction, 'flat' );
-	assert.equal( formatChange( 20000, 19999.4 ).direction, 'down' );
-	assert.equal( formatChange( 20000, 19998 ).direction, 'down' );
-	assert.equal( formatChange( 20000, 19999.6 ).direction, 'flat' );
-
-} );
-
-test( '前週比：最初の週は「—」', () => {
-
-	for ( const previous of [ undefined, NaN, null ] ) {
-
-		const change = formatChange( previous, 38852.92 );
-		assert.equal( change.direction, 'none' );
-		assert.equal( change.full, '前週比 —' );
-		assert.equal( change.short, '—' );
-
-	}
-
-} );
+import { weekIndex, createReadout } from '../assets/js/hud/readout.js';
+import { buildDataset } from '../assets/js/data.js';
+import { DATASETS } from '../assets/js/config.js';
+import { createEvents } from '../assets/js/events.js';
+import { loadFixtures } from './helpers.js';
 
 test( '週の位置：範囲内に丸める', () => {
 
@@ -95,5 +13,103 @@ test( '週の位置：範囲内に丸める', () => {
 	assert.equal( weekIndex( 9, 10 ), 9 );
 	assert.equal( weekIndex( 9.5, 10 ), 9 );
 	assert.equal( weekIndex( - 0.2, 10 ), 0 );
+
+} );
+
+// ---- createReadout：最小の DOM の代用品で、表示する文字列を確かめる ----
+
+const IDS = [ 'year-display', 'ro-month', 'ro-day', 'ro-value', 'ro-unit', 'ro-label', 'ro-change', 'ro-change-full', 'ro-change-short' ];
+
+function withDom( fn ) {
+
+	const original = globalThis.document;
+	const elements = Object.fromEntries( IDS.map( ( id ) => [ id, { id, textContent: '', dataset: {} } ] ) );
+	globalThis.document = { getElementById: ( id ) => elements[ id ] ?? null };
+	try {
+
+		return fn( elements );
+
+	} finally {
+
+		globalThis.document = original;
+
+	}
+
+}
+
+function readoutFor( id, series, elements ) {
+
+	const def = DATASETS[ id ];
+	const dataset = buildDataset( series, 4, undefined, def );
+	const ctx = { dataset, events: createEvents(), ui: { slots: {}, announce() {} } };
+	const readout = createReadout( ctx );
+	const show = ( index ) => readout.update( { point: dataset.raw[ index ], dataIndex: index } );
+	return { dataset, readout, show, text: ( key ) => elements[ key ].textContent };
+
+}
+
+test( '現在値の帯（ドル円）：値は小数2桁、単位は円、ラベルは週次・1ドルあたり、前週比は円安・円高つき', () => {
+
+	const { usdjpy } = loadFixtures();
+	withDom( ( el ) => {
+
+		const r = readoutFor( 'usdjpy', usdjpy, el );
+		// 最初の週（1971-01-04、357.82）：前週比なし
+		assert.equal( r.text( 'year-display' ), '1971' );
+		assert.equal( r.text( 'ro-month' ), '年1月' );
+		assert.equal( r.text( 'ro-day' ), '4日の週' );
+		assert.equal( r.text( 'ro-value' ), '357.82' );
+		assert.equal( r.text( 'ro-unit' ), '円' );
+		assert.equal( r.text( 'ro-label' ), '週次・1ドルあたり' );
+		assert.equal( r.text( 'ro-change-full' ), '前週比 —' );
+		assert.equal( el[ 'ro-change' ].dataset.direction, 'none' );
+
+		// 2 週目（1971-01-11、358.40）：円安方向。最大級の値が 6 文字で収まる
+		r.show( 1 );
+		assert.equal( r.text( 'ro-value' ), '358.40' );
+		assert.equal( r.text( 'ro-change-full' ), '前週比 ▲0.58円安（+0.2%）' );
+		assert.equal( r.text( 'ro-change-short' ), '▲0.58円安' );
+		assert.equal( el[ 'ro-change' ].dataset.direction, 'up' );
+
+	} );
+
+} );
+
+test( '現在値の帯（金利）：マイナスは U+2212、単位は %、前週比はポイント', () => {
+
+	const { jgb10 } = loadFixtures();
+	const negative = jgb10.findIndex( ( d, i ) => i > 0 && d.close < 0 && jgb10[ i - 1 ].close < 0 );
+	assert.ok( negative > 0 );
+	withDom( ( el ) => {
+
+		const r = readoutFor( 'jgb10', jgb10, el );
+		assert.equal( r.text( 'ro-label' ), '週次・利回り' );
+		assert.equal( r.text( 'ro-unit' ), '%' );
+		r.show( negative );
+		assert.match( r.text( 'ro-value' ), /^−0\.\d{3}$/ );
+		assert.match( r.text( 'ro-change-full' ), /^前週比 [▲▼]\d\.\d{3}ポイント$/ );
+		assert.ok( ! r.text( 'ro-change-full' ).includes( '%' ) );
+
+	} );
+
+} );
+
+test( '現在値の帯（日経平均）：3桁区切りの整数、単位は円、ラベルは週次終値、前週比は円と％', () => {
+
+	const { usdjpy } = loadFixtures();
+	// 日経平均の定義で、桁の大きい値（ドル円の系列を 100 倍）を表示する
+	const scaled = usdjpy.map( ( d ) => ( { date: d.date, close: d.close * 200 } ) );
+	withDom( ( el ) => {
+
+		const r = readoutFor( 'nikkei', scaled, el );
+		assert.equal( r.text( 'ro-label' ), '週次終値' );
+		assert.equal( r.text( 'ro-unit' ), '円' );
+		assert.equal( r.text( 'ro-value' ), '71,564' );
+		r.show( 1 );
+		assert.equal( r.text( 'ro-value' ), '71,680' );
+		assert.equal( r.text( 'ro-change-full' ), '前週比 ▲116円（+0.2%）' );
+		assert.equal( r.text( 'ro-change-short' ), '▲0.2%' );
+
+	} );
 
 } );
