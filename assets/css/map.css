@@ -1,0 +1,25 @@
+/* 路線図（#hud-map、中に #mapCanvas）。担当：路線図。
+   スロットの位置とサイズは hud.css。ここでは見出し（山手線 外回り / いま：駅名）と canvas の見た目を書く。 */
+
+#hud-map {
+	display: grid;
+	grid-template-rows: 32px minmax(0, 1fr); /* 見出し 2 行 + canvas */
+}
+
+#mapCanvas {
+	grid-row: 2;
+	display: block;
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+}
+
+@media (max-width: 720px) {
+	#hud-map {
+		grid-template-rows: minmax(0, 1fr); /* S は見出しなし */
+	}
+
+	#mapCanvas {
+		grid-row: 1;
+	}
+}

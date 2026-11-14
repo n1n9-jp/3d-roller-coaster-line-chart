@@ -85,3 +85,83 @@ export const HUD = {
 	text: '#333',
 	font: '10px "Noto Sans", sans-serif'
 };
+
+// =====================================================================
+// ステージ2：デザインの共有定数。各節は機能担当が中身を足す場所。
+// CSS 側の同じ値は assets/css/tokens.css（値を変えるときは両方そろえる）。
+// =====================================================================
+
+// ---- 3D の色（仕様 1-2。three.js にそのまま渡せる数値）----
+export const PALETTE = {
+	skyTop: 0x050b1c, // 空の上端
+	skyHorizon: 0x142650, // 空の地平線・fog
+	floor: 0x0a1530, // 床
+	gridFine: 0x172a52, // グリッド（細）
+	gridBold: 0x23396b, // グリッド（太）
+	railAheadWhite: 0xe6ecf8, // レール：これから、白レール（2 本の細管）
+	railAheadYellow: 0x8d9bbf, // レール：これから、黄色部（中央管・枕木）
+	railRiddenWhite: 0xf2b84b, // レール：走行済み、白レール
+	railRiddenYellow: 0xc98500, // レール：走行済み、黄色部
+	railDeadheadWhite: 0x6c7899, // レール：回送、白レール
+	railDeadheadYellow: 0x3e4a6b, // レール：回送、黄色部
+	pillar: 0x2c3b61, // 支柱
+	shadow: 0x1d335f, // 影（床の足跡）
+	marker: 0xe86a9a, // 現在位置マーカー
+	markerRing: 0xffffff, // マーカーの輪・高さ線
+	event: 0x45b4f0, // イベントの目印
+	contour: 0x6d8ccf, // 等高線
+	hemisphereSky: 0xcdd8ff, // 半球光（空）
+	hemisphereGround: 0x1a2b55, // 半球光（地）
+	directional: 0xffffff, // 平行光
+	railEmissive: 0x0b1226 // レール材質の emissive
+};
+
+// ---- フォント（canvas と Sprite 用。tokens.css の --font-sans と同じ文字列）----
+// 使い方：ctx.font = `600 12px ${FONT_SANS}`
+export const FONT_SANS = 'system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", "Noto Sans JP", "Noto Sans CJK JP", sans-serif';
+
+// ---- canvas に描く 2D の色（tokens.css の同名の変数と同じ値）----
+export const HUD_COLORS = {
+	bg1: '#0b1733',
+	bg2: '#142650',
+	panel: 'rgba(11, 23, 51, 0.90)',
+	panelBorder: 'rgba(150, 170, 220, 0.22)',
+	text1: '#eef2fb',
+	text2: '#b4bfd9',
+	text3: '#96a3c4', // 軸目盛り・脚注（これより暗い文字色は作らない）
+	accentText: '#f2b84b',
+	ridden: '#c98500', // 走行済み
+	ahead: '#7080a8', // これから（文脈線）
+	deadhead: '#7080a8', // 回送（破線 4/3 で区別）
+	marker: '#d55181', // 現在位置（白い輪 1.5px を必ず付ける）
+	markerRing: '#ffffff',
+	event: '#2f97d8', // イベント注釈の目印
+	plotGrid: '#24365f', // グラフのグリッド（細線）
+	plotAxis: '#3a4b75', // 基線
+	contour: '#6d8ccf', // 等高線
+	contourLabel: '#dbe4f7',
+	contourLabelBg: 'rgba(11, 23, 51, 0.72)'
+};
+
+// ---- 周回 ----
+// linkFraction：周回の最後に置く連絡区間（回送）が progress 全体に占める割合。
+// 0 のあいだは連絡区間なし。連絡区間の担当が 0.03 にする。
+// データ区間は progress 0 .. 1 - linkFraction（TrackCurve の dataEnd）。
+export const LOOP = { linkFraction: 0 };
+
+// ---- 以下は空の節。各担当が自分の節にだけ値を足す ----
+
+// SCENE：3D シーンの定数（fog の near/far、背景グラデーション、ライトの強さ、一人称・俯瞰の画角と距離など）。担当：シーン。
+export const SCENE = {};
+
+// RAIL：レールの定数（材質、色分けの設定、支柱・足跡の設定など）。担当：レールの色分け・シーン。
+export const RAIL = {};
+
+// CONTOUR：等高線と値ラベルの定数（刻み、外側へのずらし、ラベルの大きさ・配置の駅番号など）。担当：高さ目盛り。
+export const CONTOUR = {};
+
+// ANNOT：イベント注釈の定数（目印の大きさ、キャプションの表示時間、イベント一覧の置き場所など）。担当：イベント注釈。
+export const ANNOT = {};
+
+// MOTION：動きの定数（視点切り替えの補間時間、脈動の周期、reduced-motion 時の係数など）。担当：シーン・操作。
+export const MOTION = {};

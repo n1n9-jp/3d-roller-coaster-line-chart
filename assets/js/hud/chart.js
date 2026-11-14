@@ -1,66 +1,81 @@
 // ミニグラフ：日経平均の週次終値（生データ）の折れ線と現在位置。
+// 機能モジュール（createChart( ctx )）。担当：ミニグラフ。canvas は #graphCanvas（#hud-chart の中）。
 
 import { HUD } from '../config.js';
-import { indexAt } from '../data.js';
 import { createHudLayer } from './layer.js';
 
 const PADDING = 10;
 
-export function createChart( canvas, dataset ) {
+export function createChart( ctx ) {
 
-	const series = dataset.raw;
-	const { min, max } = dataset.rawRange;
-	const size = HUD.size;
-	const graphW = size - PADDING * 2;
-	const graphH = size - PADDING * 2;
+	const canvas = document.getElementById( 'graphCanvas' );
+	const series = ctx.dataset.raw;
+	const { min, max } = ctx.dataset.rawRange;
+	const last = series.length - 1;
 
-	const xAt = ( t ) => PADDING + t * graphW;
-	const yAt = ( close ) => PADDING + ( 1 - ( close - min ) / ( max - min ) ) * graphH;
+	let W = 0;
+	let H = 0;
+	const xAt = ( u ) => PADDING + u / last * ( W - PADDING * 2 );
+	const yAt = ( close ) => PADDING + ( 1 - ( close - min ) / ( max - min ) ) * ( H - PADDING * 2 );
 
-	const layer = createHudLayer( canvas, size, ( ctx ) => {
+	const layer = createHudLayer( canvas, ( c, w, h ) => {
 
-		ctx.fillStyle = HUD.panelBackground;
-		ctx.fillRect( 0, 0, size, size );
+		W = w;
+		H = h;
 
-		ctx.strokeStyle = HUD.graphGrid;
-		ctx.lineWidth = 1;
-		ctx.beginPath();
-		ctx.moveTo( 0, size / 2 );
-		ctx.lineTo( size, size / 2 );
-		ctx.stroke();
+		c.fillStyle = HUD.panelBackground;
+		c.fillRect( 0, 0, w, h );
 
-		ctx.strokeStyle = HUD.graphLine;
-		ctx.lineWidth = 1.5;
-		ctx.beginPath();
+		c.strokeStyle = HUD.graphGrid;
+		c.lineWidth = 1;
+		c.beginPath();
+		c.moveTo( 0, h / 2 );
+		c.lineTo( w, h / 2 );
+		c.stroke();
+
+		c.strokeStyle = HUD.graphLine;
+		c.lineWidth = 1.5;
+		c.beginPath();
 		for ( let i = 0; i < series.length; i ++ ) {
 
-			const x = xAt( i / ( series.length - 1 ) );
+			const x = xAt( i );
 			const y = yAt( series[ i ].close );
-			if ( i === 0 ) ctx.moveTo( x, y );
-			else ctx.lineTo( x, y );
+			if ( i === 0 ) c.moveTo( x, y );
+			else c.lineTo( x, y );
 
 		}
 
-		ctx.stroke();
+		c.stroke();
 
-		ctx.fillStyle = HUD.text;
-		ctx.font = HUD.font;
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'middle';
-		ctx.fillText( 'Nikkei 225', size / 2, size / 2 );
+		c.fillStyle = HUD.text;
+		c.font = HUD.font;
+		c.textAlign = 'center';
+		c.textBaseline = 'middle';
+		c.fillText( 'Nikkei 225', w / 2, h / 2 );
 
 	} );
 
+	let lastIndex = 0; // 連絡区間では最後に描いた位置のまま
+
 	return {
-		draw( progress ) {
+		update( state ) {
 
-			const ctx = layer.begin();
-			const close = series[ indexAt( series, progress ) ].close;
+			if ( ! state.started || ! layer.width ) return;
 
-			ctx.fillStyle = HUD.marker;
-			ctx.beginPath();
-			ctx.arc( xAt( progress ), yAt( close ), 4, 0, Math.PI * 2 );
-			ctx.fill();
+			const c = layer.begin();
+			if ( state.dataIndex !== null ) lastIndex = state.dataIndex;
+			const u = Math.min( last, lastIndex );
+			const close = series[ Math.floor( u ) ].close;
+
+			c.fillStyle = HUD.marker;
+			c.beginPath();
+			c.arc( xAt( u ), yAt( close ), 4, 0, Math.PI * 2 );
+			c.fill();
+
+		},
+		onReset() {
+
+			lastIndex = 0;
 
 		}
 	};

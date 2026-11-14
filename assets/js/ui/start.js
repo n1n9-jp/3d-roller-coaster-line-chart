@@ -1,16 +1,12 @@
 // スタート画面：読み込み中・エラーのメッセージ、START ボタン、HUD の表示切り替え。
+// main.js が最初に作る（データ読み込み前から使うので、ctx には依存しない）。担当：スタート画面。
 
 export function createStartScreen() {
 
 	const screen = document.getElementById( 'start-screen' );
 	const button = document.getElementById( 'start-btn' );
 	const message = document.getElementById( 'start-message' );
-	const hudElements = [
-		'graphCanvas',
-		'mapCanvas',
-		'year-display',
-		'controls-info'
-	].map( id => document.getElementById( id ) );
+	const hud = document.getElementById( 'hud' );
 
 	function setMessage( text, isError ) {
 
@@ -50,7 +46,7 @@ export function createStartScreen() {
 
 				}, 300 );
 
-				for ( const element of hudElements ) element.classList.add( 'visible' );
+				hud.classList.add( 'visible' );
 				onStart();
 
 			}, { once: true } );

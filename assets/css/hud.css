@@ -1,0 +1,232 @@
+/* HUD の各スロットの配置だけ（仕様 3）。位置・サイズ・余白・safe-area を決める。
+   スロットの中身の見た目は各機能の CSS（readout / chart / map / annotations / controls）が書く。
+
+   モード：L（幅 1024px 以上、既定）／ M（721〜1023px）／ S（720px 以下）／ 短い横長（高さ 520px 以下かつ landscape）。
+   各モードは、すべてのスロットの top / right / bottom / left / width / height を明示する
+   （S と短い横長が重なる画面があるため、前のモードの値を引きずらない）。 */
+
+#hud {
+	--hud-m: 24px;               /* 外側の余白 */
+	--hud-gap: 8px;
+	--hud-band-h: 84px;          /* 現在値の帯の高さ */
+	--hud-legend-top: calc(var(--hud-m) + var(--hud-band-h) + 8px);
+	position: fixed;
+	inset: 0;
+	z-index: var(--z-hud);
+	pointer-events: none;
+	/* START 後に .visible を付ける。出入りの演出は各機能が上書きしてよい */
+	opacity: 0;
+	visibility: hidden;
+	transition: opacity var(--dur-slow) var(--ease-out), visibility 0s linear var(--dur-slow);
+}
+
+#hud.visible {
+	opacity: 1;
+	visibility: visible;
+	transition: opacity var(--dur-slow) var(--ease-out), visibility 0s;
+}
+
+#hud > * {
+	position: absolute;
+	pointer-events: none;
+}
+
+/* ---- L：1024px 以上（既定）---- */
+#hud-readout {
+	top: calc(var(--hud-m) + var(--safe-t));
+	left: calc(var(--hud-m) + var(--safe-l));
+	right: auto;
+	bottom: auto;
+	width: 360px;
+	min-width: 320px;
+	height: var(--hud-band-h);
+}
+
+#hud-legend {
+	top: calc(var(--hud-legend-top) + var(--safe-t));
+	left: calc(var(--hud-m) + var(--safe-l));
+	right: auto;
+	bottom: auto;
+	width: auto;
+	height: 28px;
+}
+
+/* サンプルデータのときは、帯の下にバッジ（高さ 24 + 8）が入るので凡例を下げる（仕様 1-4） */
+html[data-kind="sample"] #hud {
+	--hud-legend-top: calc(var(--hud-m) + var(--hud-band-h) + 8px + 24px + 8px);
+}
+
+#hud-controls {
+	top: calc(var(--hud-m) + var(--safe-t));
+	right: calc(var(--hud-m) + var(--safe-r));
+	left: auto;
+	bottom: auto;
+	width: auto;
+	height: 44px;
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+#hud-chart {
+	left: calc(var(--hud-m) + var(--safe-l));
+	bottom: calc(var(--hud-m) + var(--safe-b));
+	top: auto;
+	right: auto;
+	width: 320px;
+	height: 188px;
+}
+
+#hud-map {
+	right: calc(var(--hud-m) + var(--safe-r));
+	bottom: calc(var(--hud-m) + var(--safe-b));
+	top: auto;
+	left: auto;
+	width: 200px;
+	height: 256px;
+}
+
+/* 下中央。transform は使わない（出入りの演出が transform を使うため）。左右のパネルとは離す */
+#hud-caption {
+	left: 0;
+	right: 0;
+	bottom: calc(var(--hud-m) + var(--safe-b));
+	top: auto;
+	margin: 0 auto;
+	width: clamp(320px, calc(100vw - 736px), 560px);
+	height: auto;
+}
+
+/* ---- M：721〜1023px ---- */
+@media (max-width: 1023.98px) {
+	#hud-chart {
+		width: 280px;
+		height: 168px;
+	}
+
+	#hud-map {
+		width: 176px;
+		height: 220px;
+	}
+
+	/* 左右のパネルの間に 320px が入らないので、パネルの上に出す（仕様は未指定、本骨組みの決定） */
+	#hud-caption {
+		bottom: calc(var(--hud-m) + 220px + 12px + var(--safe-b));
+		width: min(560px, calc(100vw - 2 * var(--hud-m)));
+	}
+}
+
+/* ---- S：720px 以下 ---- */
+@media (max-width: 720px) {
+	#hud {
+		--hud-m: 12px;
+		--hud-band-h: 72px;
+		--hud-legend-top: calc(var(--hud-m) + var(--hud-band-h) + 6px);
+	}
+
+	html[data-kind="sample"] #hud {
+		--hud-legend-top: calc(var(--hud-m) + var(--hud-band-h) + 6px + 22px + 6px);
+	}
+
+	#hud-readout {
+		right: calc(var(--hud-m) + var(--safe-r));
+		width: auto;
+		min-width: 0;
+	}
+
+	#hud-legend {
+		height: 20px;
+		max-width: calc(100vw - 2 * var(--hud-m));
+	}
+
+	#hud-controls {
+		top: auto;
+		left: calc(var(--hud-m) + var(--safe-l));
+		bottom: calc(var(--hud-m) + var(--safe-b));
+		width: auto;
+		height: 48px;
+	}
+
+	#hud-chart {
+		bottom: calc(68px + var(--safe-b));
+		right: calc(var(--hud-m) + 120px + 8px + var(--safe-r));
+		width: auto;
+		height: 128px;
+	}
+
+	#hud-map {
+		bottom: calc(68px + var(--safe-b));
+		width: 120px;
+		height: 128px;
+	}
+
+	#hud-caption {
+		left: calc(var(--hud-m) + var(--safe-l));
+		right: calc(var(--hud-m) + var(--safe-r));
+		bottom: calc(204px + var(--safe-b));
+		width: auto;
+		max-width: 560px;
+	}
+}
+
+/* ---- 短い横長：高さ 520px 以下かつ landscape（M をもとに、詰める）---- */
+@media (max-height: 520px) and (orientation: landscape) {
+	#hud {
+		--hud-m: 24px;
+		--hud-band-h: 56px;
+		--hud-legend-top: calc(var(--hud-m) + var(--hud-band-h) + 8px);
+	}
+
+	/* バッジは帯の右側に並ぶので、凡例は下げない */
+	html[data-kind="sample"] #hud {
+		--hud-legend-top: calc(var(--hud-m) + var(--hud-band-h) + 8px);
+	}
+
+	#hud-readout {
+		left: calc(var(--hud-m) + var(--safe-l));
+		right: auto;
+		/* 右の操作ボタン（44 x 4 + gap 8 x 3 = 200）と重ならない幅 */
+		width: min(360px, calc(100vw - 2 * var(--hud-m) - 200px - 12px));
+		min-width: 0;
+	}
+
+	#hud-legend {
+		height: 28px;
+		max-width: none;
+	}
+
+	#hud-controls {
+		top: calc(var(--hud-m) + var(--safe-t));
+		bottom: auto;
+		left: auto;
+		right: calc(var(--hud-m) + var(--safe-r));
+		width: auto;
+		height: 44px;
+	}
+
+	#hud-chart {
+		left: calc(var(--hud-m) + var(--safe-l));
+		right: auto;
+		bottom: calc(var(--hud-m) + var(--safe-b));
+		width: 220px;
+		height: 112px;
+	}
+
+	#hud-map {
+		right: calc(var(--hud-m) + var(--safe-r));
+		left: auto;
+		bottom: calc(var(--hud-m) + var(--safe-b));
+		width: 104px;
+		height: 112px;
+	}
+
+	/* 1 行で省略表示。左右のパネルの間に収める */
+	#hud-caption {
+		left: calc(var(--hud-m) + var(--safe-l) + 220px + 16px);
+		right: calc(var(--hud-m) + var(--safe-r) + 104px + 16px);
+		bottom: calc(var(--hud-m) + var(--safe-b));
+		margin: 0;
+		width: auto;
+		max-width: none;
+	}
+}

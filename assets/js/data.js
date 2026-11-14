@@ -6,6 +6,8 @@
 
 import { DATA_SOURCES, YAMANOTE_URL, MOVING_AVERAGE_WINDOW } from './config.js';
 
+import { progressToIndex } from './loop.js';
+
 /** ?data=local なのに data/local/ のファイルが無いときのエラー。 */
 export class LocalDataMissingError extends Error {
 
@@ -117,18 +119,19 @@ export function closeRange( series ) {
 
 }
 
-/** t（0..1）が指すデータ点の添字（切り捨て）。 */
-export function indexAt( series, t ) {
+/** t（0..1）が指すデータ点の添字（切り捨て）。連絡区間（dataEnd より先）では最後の点。 */
+export function indexAt( series, t, linkFraction ) {
 
-	return Math.min( series.length - 1, Math.max( 0, Math.floor( t * ( series.length - 1 ) ) ) );
+	const u = progressToIndex( t, series.length, linkFraction ) ?? series.length - 1;
+	return Math.min( series.length - 1, Math.max( 0, Math.floor( u ) ) );
 
 }
 
-/** t（0..1）における終値を隣り合うデータ点の線形補間で返す。 */
-export function interpolateClose( series, t ) {
+/** t（0..1）における終値を隣り合うデータ点の線形補間で返す。連絡区間では最後の点の値。 */
+export function interpolateClose( series, t, linkFraction ) {
 
 	const n = series.length;
-	const raw = t * ( n - 1 );
+	const raw = progressToIndex( t, n, linkFraction ) ?? n - 1;
 	const i0 = Math.min( n - 1, Math.max( 0, Math.floor( raw ) ) );
 	const i1 = Math.min( i0 + 1, n - 1 );
 	const frac = raw - i0;

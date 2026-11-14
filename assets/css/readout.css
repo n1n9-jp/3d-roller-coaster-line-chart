@@ -1,0 +1,32 @@
+/* 現在値の帯（#hud-readout）と凡例（#hud-legend）、サンプルデータのバッジ。担当：現在値の帯。
+   スロットの位置とサイズは hud.css。ここでは中の見た目だけを書く（凡例の見た目もここ）。
+   サンプルバッジは #hud-readout の中に置き、position: absolute; top: calc(100% + 8px) で帯の直下に出す。 */
+
+#hud-readout {
+	display: flex;
+	align-items: center;
+}
+
+/* 現状の年表示（骨組み）。帯の中に収まる大きさにして、中身は担当が作り直す */
+#year-display {
+	color: var(--c-text-1);
+	font-size: var(--fs-40);
+	line-height: var(--lh-40);
+	font-weight: bold;
+	font-variant-numeric: tabular-nums;
+	letter-spacing: 0.05em;
+	white-space: nowrap;
+}
+
+/* 凡例は俯瞰中だけ出す（html[data-view] は view.js が付ける） */
+#hud-legend {
+	opacity: 0;
+	visibility: hidden;
+	transition: opacity var(--dur-fast) var(--ease-out), visibility 0s linear var(--dur-fast);
+}
+
+html[data-view="overview"] #hud-legend {
+	opacity: 1;
+	visibility: visible;
+	transition: opacity var(--dur-fast) var(--ease-out), visibility 0s;
+}

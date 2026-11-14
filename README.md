@@ -18,7 +18,7 @@ npm start
 python3 -m http.server 8000
 ```
 
-ブラウザで http://localhost:8000/ を開き、START RIDE を押します。
+ブラウザで http://localhost:8000/ を開き、START RIDE を押します。URL に `?debug` を付けると、コンソールから `window.__coaster`（状態の取得や進行度の設定）を使えます。
 
 ## テスト
 
@@ -34,35 +34,50 @@ npm test
 
 | キー | 動作 |
 |---|---|
-| W | 押している間は俯瞰視点。離すと一人称に戻る |
-| SPACE | 押している間は停止。離すと再開 |
+| W | 押している間は俯瞰視点。離すと戻る |
+| SPACE | 一時停止と再生のトグル |
+| R | 最初から（1990 年 1 月へ戻る） |
 
 ## ファイル構成
 
 ```
-index.html                      ページ本体（スタート画面、HUD の要素、importmap）
+index.html                      ページ本体（スタート画面、HUD のスロット、終了画面、情報パネル、importmap）
 scripts/
   fetch-nikkei.mjs              FRED から実データを取得し、週次終値を data/local/ に書き出す
 assets/
   LICENSE-three.js.txt          three.js のライセンス
-  css/main.css                  スタイル
+  css/
+    main.css                    @import の一覧だけ
+    tokens.css                  色・フォント・文字サイズ・動きのトークン（CSS 変数）
+    base.css                    リセット、body、パネル・ボタンの共通、reduced-motion
+    hud.css                     HUD のスロットの配置（L / M / S / 短い横長）
+    start.css readout.css chart.css map.css annotations.css
+    controls.css endscreen.css infopanel.css   機能ごとのスタイル
   js/
-    main.js                     起動処理：データ読み込み、モジュールの組み立て、ループ開始
-    config.js                   定数（座標、速度、カメラ、配色など）
+    main.js                     起動処理：共有 ctx を作り、機能モジュールを登録順に生成し、毎フレーム update を呼ぶ
+    config.js                   定数（座標、速度、カメラ、配色 PALETTE / HUD_COLORS、機能ごとの節）
+    events.js                   小さなイベント発行器（on / emit）
+    loop.js                     progress とデータ系列の位置の変換（連絡区間の割合を考慮）
     data.js                     データ読み込み（サンプル／実データの切り替え）、移動平均、データ点の参照
     track.js                    経緯度の変換、山手線の経路、レール曲線（TrackCurve）
-    ride.js                     走行状態（進行度・速度・一時停止）の更新
+    ride.js                     走行状態（進行度・速度・一時停止・開始・終了）と操作 API
     scene.js                    renderer、scene、ライト、カメラ、リサイズ
     environment.js              地形、木、空、回転する円柱
     rail.js                     レール、支柱、影、現在位置マーカー
+    rail-colors.js              レールの色分け（スタブ）
+    scale.js                    等高線と値ラベル（スタブ）
+    markers.js                  イベントの 3D の目印（スタブ）
     view.js                     一人称と俯瞰の切り替え
     controls.js                 キーボード入力
-    start-screen.js             スタート画面（読み込み中・エラー表示、START ボタン）
+    ui/
+      start.js                  スタート画面（読み込み中・エラー表示、START ボタン）
+      buttons.js endscreen.js infopanel.js   操作ボタン・終了画面・情報パネル（スタブ）
     hud/
-      layer.js                  HUD の canvas 共通処理（高解像度対応、静的部分の描き置き）
+      layer.js                  HUD の canvas 共通処理（高解像度対応、静的部分の描き置き、サイズ追従）
       chart.js                  ミニグラフ
       map.js                    路線図
-      readout.js                年表示
+      readout.js                現在値の帯（いまは年表示）
+      annotations.js legend.js  イベントのキャプション・凡例（スタブ）
     three.core.js
     three.module.js             three.js 本体（同梱、変更しない）
   jsm/misc/RollerCoaster.js     three.js のサンプルのレール生成（同梱、変更しない）
@@ -74,7 +89,7 @@ data/
 tests/                          node:test によるテスト
 ```
 
-`track.js` と `ride.js` は three.js のレンダラに依存せず、数学クラスだけを `three.core.js` から相対パスで読みます。このため、ブラウザと Node の両方で動きます。
+`track.js`・`ride.js`・`loop.js`・`events.js` は three.js のレンダラに依存せず、数学クラスだけを `three.core.js` から相対パスで読みます。このため、ブラウザと Node の両方で動きます。
 
 ## データ出典
 

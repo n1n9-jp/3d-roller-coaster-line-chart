@@ -1,25 +1,57 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 	<head>
-		<title>three.js vr - roller coaster</title>
 		<meta charset="utf-8">
+		<title>日経平均株価 3Dジェットコースター</title>
+		<meta name="description" content="1990年からの日経平均株価（週次終値）をレールの高さにした、山手線一周のジェットコースター。株価の上げ下げを一人称視点で体感できます。">
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+		<meta name="theme-color" content="#0b1733">
 		<link rel="icon" href="data:,">
-		<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 		<link type="text/css" rel="stylesheet" href="./assets/css/main.css">
 	</head>
 	<body>
-		<div id="ui-overlay">
-			<div id="start-screen">
-				<h1>日経平均株価<br/>3Dジェットコースター</h1>
-				<p>過去30年の株価変動を体感する</p>
-				<button id="start-btn" disabled>START RIDE</button>
-				<p id="start-message" role="status" hidden></p>
-			</div>
-			<div id="year-display"></div>
-			<div id="controls-info"><strong>W</strong> for overview &nbsp; | &nbsp; <strong>SPACE</strong> to pause</div>
+		<!-- 各ブロックの中身は担当が書く。id と ARIA の枠は変えない（契約は specs/contract.md）。 -->
+
+		<!-- [start-screen] CSS: start.css / JS: ui/start.js -->
+		<div id="start-screen">
+			<h1>日経平均株価<br/>3Dジェットコースター</h1>
+			<p>過去30年の株価変動を体感する</p>
+			<button id="start-btn" disabled>START RIDE</button>
+			<p id="start-message" role="status" hidden></p>
+			<p id="start-credits"></p>
 		</div>
-		<canvas id="graphCanvas" width="200" height="200"></canvas>
-		<canvas id="mapCanvas" width="200" height="200"></canvas>
+
+		<!-- [hud] START 後に .visible が付く。スロットの配置は hud.css -->
+		<div id="hud">
+			<!-- [hud-readout] 現在値の帯  CSS: readout.css / JS: hud/readout.js -->
+			<div id="hud-readout" class="hud-panel" role="group" aria-label="現在値">
+				<div id="year-display"></div>
+			</div>
+			<!-- [hud-legend] 凡例（俯瞰中だけ）  CSS: readout.css / JS: hud/legend.js -->
+			<div id="hud-legend" role="group" aria-label="凡例"></div>
+			<!-- [hud-controls] 操作ボタン  CSS: controls.css / JS: ui/buttons.js -->
+			<div id="hud-controls" role="group" aria-label="操作"></div>
+			<!-- [hud-chart] ミニグラフ  CSS: chart.css / JS: hud/chart.js -->
+			<div id="hud-chart" class="hud-panel">
+				<canvas id="graphCanvas" width="296" height="140" role="img" aria-label="日経平均株価の折れ線グラフ"></canvas>
+			</div>
+			<!-- [hud-map] 路線図  CSS: map.css / JS: hud/map.js -->
+			<div id="hud-map" class="hud-panel">
+				<canvas id="mapCanvas" width="176" height="200" role="img" aria-label="山手線の路線図"></canvas>
+			</div>
+			<!-- [hud-caption] イベントキャプション  CSS: annotations.css / JS: hud/annotations.js -->
+			<div id="hud-caption" role="status" aria-live="polite"></div>
+		</div>
+
+		<!-- [end-screen] 終了画面  CSS: endscreen.css / JS: ui/endscreen.js。見出しは #end-title を作ること -->
+		<div id="end-screen" role="dialog" aria-modal="true" aria-labelledby="end-title" hidden></div>
+
+		<!-- [info-panel] 情報パネル  CSS: infopanel.css / JS: ui/infopanel.js。見出しは #info-title を作ること -->
+		<div id="info-panel" role="dialog" aria-modal="true" aria-labelledby="info-title" hidden></div>
+
+		<!-- [live-region] 読み上げ用（視覚的に隠す）。ctx.ui.announce( text ) で書き込む -->
+		<div id="live-region" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+
 		<script type="importmap">
 			{
 				"imports": {
@@ -29,6 +61,5 @@
 			}
 		</script>
 		<script type="module" src="./assets/js/main.js"></script>
-
 	</body>
 </html>

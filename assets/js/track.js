@@ -6,8 +6,9 @@
 //  three.module.js は three.core.js を再エクスポートしているので、同じクラスになる。）
 
 import { Vector3 } from './three.core.js';
-import { GEO_CENTER, GEO_SCALE, Y_MIN, Y_MAX } from './config.js';
+import { GEO_CENTER, GEO_SCALE, Y_MIN, Y_MAX, LOOP } from './config.js';
 import { closeRange, interpolateClose } from './data.js';
+import { progressToIndex, indexToProgress } from './loop.js';
 
 /** 経緯度 → ワールド座標の水平位置。 */
 export function geoToXZ( lon, lat ) {
@@ -99,11 +100,16 @@ export class TrackCurve {
 	/**
 	 * @param stations 駅の配列（lon, lat を持つ）
 	 * @param series   レールの高さに使う系列（移動平均後）
+	 * @param options  { linkFraction }：周回の最後に置く連絡区間の割合（既定は LOOP.linkFraction）
 	 */
-	constructor( stations, series ) {
+	constructor( stations, series, { linkFraction = LOOP.linkFraction } = {} ) {
 
 		this.seg = buildStationSegments( stations );
 		this.series = series;
+		/** 連絡区間の割合。0 のあいだは連絡区間なし。 */
+		this.linkFraction = linkFraction;
+		/** データ区間の終わり（progress）。0 .. dataEnd が系列の全体に対応する。 */
+		this.dataEnd = 1 - linkFraction;
 		const { min, max } = closeRange( series );
 		this.closeMin = min;
 		this.closeMax = max;
@@ -126,9 +132,40 @@ export class TrackCurve {
 
 	}
 
+	/** t が連絡区間（dataEnd より先）か。 */
+	isLink( t ) {
+
+		return t > this.dataEnd;
+
+	}
+
+	/** progress → 系列上の位置（小数）。データ区間だけ。連絡区間では null。 */
+	progressToIndex( t ) {
+
+		return progressToIndex( t, this.series.length, this.linkFraction );
+
+	}
+
+	/** 系列上の位置（小数）→ progress。 */
+	indexToProgress( u ) {
+
+		return indexToProgress( u, this.series.length, this.linkFraction );
+
+	}
+
 	getYAt( t ) {
 
-		return this.valueToY( interpolateClose( this.series, t ) );
+		if ( this.isLink( t ) ) {
+
+			// 連絡区間（担当が作り込む）。いまは最後の高さから最初の高さへ直線でつなぐだけ。
+			const k = ( t - this.dataEnd ) / this.linkFraction;
+			const last = this.series[ this.series.length - 1 ].close;
+			const first = this.series[ 0 ].close;
+			return this.valueToY( last + ( first - last ) * k );
+
+		}
+
+		return this.valueToY( interpolateClose( this.series, t, this.linkFraction ) );
 
 	}
 
