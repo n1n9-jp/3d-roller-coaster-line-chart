@@ -10,7 +10,9 @@
 //
 // カメラはシーン直下に置き、ワールド座標で動かす。
 //   一人称：車体（train）の姿勢から、上へ SCENE.ride.height、後ろへ back、下向きに pitchDeg。
-//   俯瞰：  target から南（+z）へ仰角 55°、距離 radius / sin( min( 縦画角, 横画角 ) / 2 )。
+//   俯瞰：  南（+z）から仰角 SCENE.overview.elevationDeg。位置は fitOverview が、輪の点（setOverviewSubject）を
+//           HUD を避けた範囲（SCENE.overview.frame）に収めるように決める。点が無いときは
+//           target から距離 radius / sin( min( 縦画角, 横画角 ) / 2 )。
 //   切り替え：MOTION.viewTransitionMs（ease-in-out）で位置・向き・画角・fog を補間する。
 //             時刻は state.nowMs。prefers-reduced-motion: reduce では瞬時。
 
@@ -79,12 +81,117 @@ export function overviewFov( aspect ) {
 
 }
 
-/** 俯瞰のカメラと target の距離。縦横の狭い方の画角に、半径 radius の球が収まる距離。 */
+// 直近の構図（fitOverview の結果）。overviewDistance が返す
+let lastFit = null;
+
+/**
+ * 俯瞰のカメラと target の距離。
+ * 輪の点から構図を決めたあと（view.setOverviewSubject のあと）は、その距離（カメラから輪の中心の奥行き）。
+ * それまでは、縦横の狭い方の画角に、半径 radius の球が収まる距離。
+ */
 export function overviewDistance( aspect ) {
 
+	if ( lastFit && Math.abs( lastFit.aspect - aspect ) < 1e-6 ) return lastFit.distance;
 	const vfov = overviewFov( aspect ) * DEG;
 	const hfov = 2 * Math.atan( Math.tan( vfov / 2 ) * aspect );
 	return SCENE.overview.radius / Math.sin( Math.min( vfov, hfov ) / 2 );
+
+}
+
+/** HUD の配置のモード（hud.css と同じ判定）：'short'（高さ 520 以下かつ横長）／ 'narrow'（幅 720 以下）／ 'wide'。 */
+export function overviewMode( width, height ) {
+
+	if ( height <= 520 && width >= height ) return 'short';
+	if ( width <= 720 ) return 'narrow';
+	return 'wide';
+
+}
+
+/**
+ * 俯瞰の構図を決める（three.js 非依存）。向きは南から仰角 elevationDeg で固定し、カメラの位置だけを動かして、
+ * 点 points（{x,y,z} の配列）の投影の外接矩形が、画面から insets（px）を引いた範囲の中央に、
+ * 幅 maxWidth・高さ maxHeight（画面に対する割合）を超えない最大の大きさで収まるようにする。
+ * 透視投影なので、奥行きと横のずれを交互に直す反復で解く。
+ * @returns { position, target, distance, bounds }  bounds は収めた外接矩形（NDC、-1..1）
+ */
+export function fitOverview( points, { width, height, fovDeg, elevationDeg, insets, maxWidth = 1, maxHeight = 1, iterations = 40 } ) {
+
+	const e = elevationDeg * DEG;
+	// 前（カメラ → 輪）、右、上
+	const f = { x: 0, y: - Math.sin( e ), z: - Math.cos( e ) };
+	const r = { x: 1, y: 0, z: 0 };
+	const u = { x: 0, y: Math.cos( e ), z: - Math.sin( e ) };
+	const tanV = Math.tan( fovDeg * DEG / 2 );
+	const tanH = tanV * width / height;
+
+	// 収める範囲（NDC）と大きさの上限
+	const sx0 = - 1 + 2 * insets.left / width, sx1 = 1 - 2 * insets.right / width;
+	const sy0 = - 1 + 2 * insets.bottom / height, sy1 = 1 - 2 * insets.top / height;
+	const aw = Math.max( 1e-3, Math.min( sx1 - sx0, 2 * maxWidth ) );
+	const ah = Math.max( 1e-3, Math.min( sy1 - sy0, 2 * maxHeight ) );
+	const cx = ( sx0 + sx1 ) / 2, cy = ( sy0 + sy1 ) / 2;
+
+	// 重心
+	let gx = 0, gy = 0, gz = 0;
+	for ( const p of points ) {
+
+		gx += p.x; gy += p.y; gz += p.z;
+
+	}
+
+	const n = Math.max( 1, points.length );
+	gx /= n; gy /= n; gz /= n;
+
+	// 初期位置：重心から後ろへ十分に離す
+	let d0 = 0;
+	for ( const p of points ) d0 = Math.max( d0, Math.hypot( p.x - gx, p.y - gy, p.z - gz ) );
+	d0 = d0 / Math.sin( Math.min( Math.atan( tanV ), Math.atan( tanH ) ) ) + 1;
+	const C = { x: gx - f.x * d0, y: gy - f.y * d0, z: gz - f.z * d0 };
+
+	let bounds = null;
+	let depthG = d0;
+
+	function measure() {
+
+		let x0 = Infinity, x1 = - Infinity, y0 = Infinity, y1 = - Infinity;
+		for ( const p of points ) {
+
+			const vx = p.x - C.x, vy = p.y - C.y, vz = p.z - C.z;
+			const depth = Math.max( 1e-3, vx * f.x + vy * f.y + vz * f.z );
+			const nx = ( vx * r.x + vy * r.y + vz * r.z ) / ( depth * tanH );
+			const ny = ( vx * u.x + vy * u.y + vz * u.z ) / ( depth * tanV );
+			if ( nx < x0 ) x0 = nx;
+			if ( nx > x1 ) x1 = nx;
+			if ( ny < y0 ) y0 = ny;
+			if ( ny > y1 ) y1 = ny;
+
+		}
+
+		depthG = ( gx - C.x ) * f.x + ( gy - C.y ) * f.y + ( gz - C.z ) * f.z;
+		return { x0, x1, y0, y1 };
+
+	}
+
+	for ( let i = 0; i < iterations; i ++ ) {
+
+		bounds = measure();
+		// 大きさ：重心の奥行きを 1/k にする（近似）
+		const k = Math.min( aw / ( bounds.x1 - bounds.x0 ), ah / ( bounds.y1 - bounds.y0 ) );
+		const nextDepth = depthG / k;
+		const move = depthG - nextDepth;
+		C.x += f.x * move; C.y += f.y * move; C.z += f.z * move;
+		// 位置：外接矩形の中心を範囲の中心へ（新しい奥行きで、NDC のずれをワールドの横・縦のずれに直す）
+		const mx = ( ( bounds.x0 + bounds.x1 ) / 2 ) * k - cx;
+		const my = ( ( bounds.y0 + bounds.y1 ) / 2 ) * k - cy;
+		const sx = mx * nextDepth * tanH, sy = my * nextDepth * tanV;
+		C.x += r.x * sx + u.x * sy; C.y += r.y * sx + u.y * sy; C.z += r.z * sx + u.z * sy;
+		if ( Math.abs( k - 1 ) < 1e-5 && Math.abs( mx ) < 1e-5 && Math.abs( my ) < 1e-5 ) break;
+
+	}
+
+	bounds = measure();
+	const target = { x: C.x + f.x * depthG, y: C.y + f.y * depthG, z: C.z + f.z * depthG };
+	return { position: { ...C }, target, distance: depthG, bounds };
 
 }
 
@@ -123,6 +230,53 @@ export function createView( { scene, camera, train, events = null } ) {
 	const pitchEuler = new Euler();
 	const elevation = SCENE.overview.elevationDeg * DEG;
 	const overviewDirection = new Vector3( 0, Math.sin( elevation ), Math.cos( elevation ) );
+	const overviewTarget = new Vector3();
+
+	// 俯瞰の構図に収める点（curtain.js が setOverviewSubject で渡す）と、解いた構図のキャッシュ
+	let subject = null;
+	let fitKey = '';
+	let fit = null;
+
+	function viewportSize( aspect ) {
+
+		if ( typeof window !== 'undefined' && window.innerWidth > 0 && window.innerHeight > 0 ) {
+
+			return { width: window.innerWidth, height: window.innerHeight };
+
+		}
+
+		return { width: 1000 * aspect, height: 1000 };
+
+	}
+
+	function currentFit( aspect ) {
+
+		if ( ! subject ) return null;
+		const { width, height } = viewportSize( aspect );
+		const key = `${width}x${height}:${aspect.toFixed( 6 )}`;
+		if ( key !== fitKey ) {
+
+			const mode = overviewMode( width, height );
+			const frame = SCENE.overview.frame;
+			fit = fitOverview( subject, {
+				width,
+				height,
+				fovDeg: overviewFov( aspect ),
+				elevationDeg: SCENE.overview.elevationDeg,
+				insets: frame.insets[ mode ],
+				maxWidth: frame.maxWidth[ mode ],
+				maxHeight: frame.maxHeight[ mode ]
+			} );
+			fit.aspect = aspect;
+			fit.mode = mode;
+			fitKey = key;
+			lastFit = fit;
+
+		}
+
+		return fit;
+
+	}
 
 	function placeCamera() {
 
@@ -133,10 +287,24 @@ export function createView( { scene, camera, train, events = null } ) {
 		pitch.setFromEuler( pitchEuler.set( ( aspect < 1 ? SCENE.ride.pitchDegPortrait : SCENE.ride.pitchDeg ) * DEG, 0, 0 ) );
 		rideQuaternion.copy( train.quaternion ).multiply( pitch );
 
-		// 俯瞰
-		const distance = overviewDistance( aspect );
-		overviewPosition.copy( overviewDirection ).multiplyScalar( distance ).add( target );
-		lookMatrix.lookAt( overviewPosition, target, up );
+		// 俯瞰：輪の点があれば、HUD を避けた範囲に収める構図（画面の大きさが変わったときだけ解き直す）
+		let distance;
+		const fit = currentFit( aspect );
+		if ( fit ) {
+
+			distance = fit.distance;
+			overviewPosition.set( fit.position.x, fit.position.y, fit.position.z );
+			overviewTarget.set( fit.target.x, fit.target.y, fit.target.z );
+
+		} else {
+
+			distance = overviewDistance( aspect );
+			overviewTarget.copy( target );
+			overviewPosition.copy( overviewDirection ).multiplyScalar( distance ).add( target );
+
+		}
+
+		lookMatrix.lookAt( overviewPosition, overviewTarget, up );
 		overviewQuaternion.setFromRotationMatrix( lookMatrix );
 
 		const b = blend;
@@ -194,6 +362,34 @@ export function createView( { scene, camera, train, events = null } ) {
 		get current() {
 
 			return current;
+
+		},
+		/** 視点の補間の進み具合（0 = 一人称 .. 1 = 俯瞰）。俯瞰だけの表示のフェードに使う。 */
+		get blend() {
+
+			return blend;
+
+		},
+		/** 俯瞰のカメラから輪の中心までの距離（いまの画面の大きさでの値）。 */
+		get overviewDistance() {
+
+			return overviewDistance( camera.aspect );
+
+		},
+		/** 俯瞰の構図（fitOverview の結果。輪の点が無いときは null）。 */
+		get overviewFit() {
+
+			return currentFit( camera.aspect );
+
+		},
+		/** 俯瞰で画面に収める点（{x,y,z} の配列）。次のフレームから構図を解き直す。 */
+		setOverviewSubject( points ) {
+
+			subject = points && points.length ? points.map( ( p ) => ( { x: p.x, y: p.y, z: p.z } ) ) : null;
+			fitKey = '';
+			fit = null;
+			if ( ! subject ) lastFit = null;
+			placeCamera();
 
 		},
 		get isOverview() {
