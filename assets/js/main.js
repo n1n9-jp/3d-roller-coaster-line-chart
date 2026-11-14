@@ -92,7 +92,7 @@ async function boot() {
 
 	const events = createEvents();
 	const ride = createRide( curve, events );
-	const view = createView( { scene, camera, train, events } );
+	const view = createView( { scene, camera, train, events, curve, ride, kind: dataset.meta.kind } );
 
 	// データの種類（'sample' | 'real'）。CSS が html[data-kind] を見る。meta は loadData が必ず返す
 	document.documentElement.dataset.kind = dataset.meta.kind;
@@ -128,7 +128,26 @@ async function boot() {
 
 	const ctx = { renderer, scene, camera, train, dataset, stations, curve, ride, view, ui, events, config };
 
-	const modules = MODULES.map( ( create ) => {
+	// ---- 状態（毎フレーム、全モジュールへ同じものを渡す）----
+	let nowMs = 0;
+	let deltaMs = 0;
+	let timeMs = 0;
+	let shownYear = null;
+
+	// 'viewchange' と 'restart' は、モジュールの生成より前に購読する。events は登録順に呼ぶので、
+	// main.js の onViewChange・onReset の配信が、各モジュールが自分で購読したハンドラより先になる（契約 6 章）。
+	// 生成の途中で発行されても参照できるよう、modules は先に宣言しておく（生成が終わるまでは空）
+	let modules = [];
+	events.on( 'viewchange', ( { view: next } ) => callHook( 'onViewChange', next ) );
+	events.on( 'restart', () => {
+
+		timeMs = 0;
+		shownYear = null;
+		callHook( 'onReset' );
+
+	} );
+
+	modules = MODULES.map( ( create ) => {
 
 		const entry = { name: create.name, hooks: {}, failed: false };
 		try {
@@ -171,12 +190,6 @@ async function boot() {
 	train.position.copy( ride.position );
 	train.quaternion.copy( ride.quaternion );
 
-	// ---- 状態（毎フレーム、全モジュールへ同じものを渡す）----
-	let nowMs = 0;
-	let deltaMs = 0;
-	let timeMs = 0;
-	let shownYear = null;
-
 	function makeState() {
 
 		const progress = ride.progress;
@@ -196,15 +209,6 @@ async function boot() {
 		};
 
 	}
-
-	events.on( 'viewchange', ( { view: next } ) => callHook( 'onViewChange', next ) );
-	events.on( 'restart', () => {
-
-		timeMs = 0;
-		shownYear = null;
-		callHook( 'onReset' );
-
-	} );
 
 	let prevTime = null;
 

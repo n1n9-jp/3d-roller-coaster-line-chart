@@ -226,7 +226,7 @@ test( 'HUD のモードの判定は hud.css と同じ', () => {
 
 	assert.equal( overviewMode( 1440, 900 ), 'wide' );
 	assert.equal( overviewMode( 1024, 768 ), 'wide' );
-	assert.equal( overviewMode( 800, 600 ), 'wide' );
+	assert.equal( overviewMode( 800, 600 ), 'medium' ); // M（721〜1023px）
 	assert.equal( overviewMode( 390, 844 ), 'narrow' );
 	assert.equal( overviewMode( 844, 390 ), 'short' );
 	assert.equal( overviewMode( 600, 500 ), 'short' );

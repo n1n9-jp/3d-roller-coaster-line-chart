@@ -39,14 +39,25 @@ export const Y_MAX = 35;
 export const SPEED_MIN = 0.00006 / FRAME_MS; // 3.6e-6 /ms（1 周 約 278 秒）
 export const SPEED_MAX = 0.0003 / FRAME_MS; // 1.8e-5 /ms
 export const SPEED_INITIAL = SPEED_MIN;
-// 速度の変化量 = 高さ勾配 × 係数 × delta（ms）。60fps のとき 1 フレームで 勾配 × 1e-7。
-export const GRAVITY = 0.0000001 / FRAME_MS; // 6e-9
+// 速度は、勾配から決まる「目標の速度」へ一次遅れで近づく（ride.js）。
+//   目標 = SPEED_CRUISE × exp( - GRAVITY × 高さ勾配 )（SPEED_MIN..上限に収める）
+//   速度 ← 目標 + ( 速度 - 目標 ) × exp( - delta / SPEED_RESPONSE_MS )
+// 平らなところで SPEED_CRUISE、下り（勾配が負）で速く、上りで遅くなる。勾配はデータの週ごとの揺れで細かく変わるので、
+// 一次遅れでならし、長い下り・上りでだけ速度がはっきり変わるようにする（1 周 約 150〜160 秒）。
+export const SPEED_CRUISE = 5e-6; // /ms（平らなところの速度）
+// 高さ勾配 dy/dt（ワールドの y / progress）1 あたりの、目標の速度の対数の変化。勾配 ±230（中央値くらい）で 約 2 倍 / 半分
+export const GRAVITY = 0.003;
+// 一次遅れの時定数（ms）。この時間で目標との差が 1/e になる
+export const SPEED_RESPONSE_MS = 1000;
 // 向きの補間：60fps で 1 フレームあたり 8% 目標へ近づく
 export const ORIENTATION_BLEND_PER_FRAME = 0.08;
 // 開始位置（0 = 大崎、1990 年 1 月）
 export const START_PROGRESS = 0;
-// 勾配（y / t）をレール方向ベクトルの y 成分へ変換する係数
-export const RAIL_SLOPE_VISUAL_SCALE = 0.0009;
+// 車体の傾き：レールの実際の勾配（dy / 水平の長さ = 高さ勾配 / 周長 curve.seg.totalLength）に対する比率。
+// 1 でレールと同じ傾き。小さくすると、急な上り下りで前方のレールが画面の上下へ外れる
+export const RAIL_SLOPE_RATIO = 0.7;
+// 車体の傾きに使う勾配：進行位置の前後この長さ（水平。ワールドの単位）の弦の勾配
+export const RAIL_SLOPE_WINDOW = 5;
 
 // ---- カメラ ----
 // 画角・カメラの位置・俯瞰の視点は SCENE（下）にある
@@ -178,9 +189,11 @@ export const SCENE = {
 	},
 	// 俯瞰：南（+z）から仰角 elevationDeg で見下ろす。
 	// 構図は view.js が、輪の点（curtain.js が view.setOverviewSubject で渡す、レールの上端と床の点）を画面に投影して決める：
-	//   画面から HUD を避けた余白 frame.insets[ モード ]（px）を引いた範囲に、輪の外接矩形を収める（中央に置く）。
+	//   画面から HUD を避けた余白（px）を引いた範囲に、輪の外接矩形を収める（中央に置く）。
 	//   ただし輪の幅・高さは画面の maxWidth・maxHeight（割合）まで。
-	//   モードは hud.css と同じ：short（高さ 520 以下かつ横長）／ narrow（幅 720 以下）／ wide（それ以外。L と M）。
+	//   モードは hud.css と同じ：short（高さ 520 以下かつ横長）／ narrow（幅 720 以下）／ medium（721〜1023。M）／ wide（L）。
+	//   余白は、サンプルデータでは frame.insets[ モード ]、実データ（dataset.meta.kind === 'real'）では
+	//   出来事のキャプションを避けた frame.captionInsets[ モード ]（キャプションは実データのときだけ出る）。
 	// 輪の点がまだ無いときは、従来の式（target から距離 radius / sin( min( vfov, hfov ) / 2 )）。
 	overview: {
 		target: { x: 0, y: 15, z: 0 },
@@ -189,16 +202,29 @@ export const SCENE = {
 		fovLandscape: 50, // 横長の画面の縦画角
 		fovPortrait: 65, // 縦長の画面の縦画角
 		frame: {
+			// サンプルデータ（キャプションなし。帯の下にバッジがある）
 			insets: {
 				// L/M：上は凡例（サンプルのバッジ込みで 176）の下、下は端から少しだけ（ミニグラフと路線図は左右の隅で、輪の下端は細い）
 				wide: { top: 184, right: 24, bottom: 40, left: 24 },
+				medium: { top: 184, right: 24, bottom: 40, left: 24 },
 				// S：上は帯 + バッジ + 凡例（138）、下はミニグラフ・路線図（下から 196）の上
 				narrow: { top: 148, right: 12, bottom: 206, left: 12 },
 				// 短い横長：上は帯（80）の下。左右のパネルは隅にあり、輪の上端の幅は中央の空きに収まる
 				short: { top: 88, right: 24, bottom: 12, left: 24 }
 			},
-			maxWidth: { wide: 0.9, narrow: 0.8, short: 0.9 },
-			maxHeight: { wide: 0.72, narrow: 0.9, short: 0.9 }
+			// 実データ（バッジなし。出来事のキャプションが出る。キャプションの位置は hud.css と annotations.css）
+			captionInsets: {
+				// L：上は凡例（144）の下。下は下中央のキャプション（下から 24 + 高さ最大 約 96）の上
+				wide: { top: 152, right: 24, bottom: 136, left: 24 },
+				// M：俯瞰のあいだ、キャプションは凡例の下（上から 152、高さ最大 約 92。annotations.css）へ移るので、上をその下に
+				medium: { top: 256, right: 24, bottom: 40, left: 24 },
+				// S：上は帯 + 凡例（110）の下。下はキャプション（下から 204 + 高さ最大 約 100）の上
+				narrow: { top: 118, right: 12, bottom: 312, left: 12 },
+				// 短い横長：俯瞰のあいだ、キャプションは左の列（凡例の下、ミニグラフの上。幅 220。annotations.css）へ移るので、左を空ける
+				short: { top: 88, right: 24, bottom: 12, left: 260 }
+			},
+			maxWidth: { wide: 0.9, medium: 0.9, narrow: 0.8, short: 0.9 },
+			maxHeight: { wide: 0.72, medium: 0.72, narrow: 0.9, short: 0.9 }
 		}
 	}
 };
@@ -333,8 +359,10 @@ export const MOTION = {
 	viewEase: [ 0.4, 0, 0.2, 1 ],
 	// prefers-reduced-motion: reduce のときの一人称の値（穏やかな設定）。ride.js が使う
 	reducedRide: {
-		railSlopeVisualScale: 0.0003, // RAIL_SLOPE_VISUAL_SCALE 0.0009 の代わり（傾きを 1/3 に）
+		railSlopeRatio: 0.45, // RAIL_SLOPE_RATIO 0.7 の代わり（傾きを控えめに。前方のレールは画面に残る範囲）
 		orientationBlendPerFrame: 0.04, // ORIENTATION_BLEND_PER_FRAME 0.08 の代わり
-		speedMaxFactor: 0.5 // SPEED_MAX に掛ける
+		speedMaxFactor: 0.5, // SPEED_MAX に掛ける
+		gravityFactor: 0.5, // GRAVITY に掛ける（勾配による速度の変わり方を半分に）
+		speedResponseMs: 2000 // SPEED_RESPONSE_MS 1000 の代わり（速度の変化をよりゆっくりに）
 	}
 };
