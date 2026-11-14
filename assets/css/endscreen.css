@@ -144,7 +144,7 @@ html[data-ended] #hud.visible {
 	min-height: 44px;
 }
 
-/* ---- S：720px 以下。ボタンは縦に並べて幅いっぱい ---- */
+/* ---- S：720px 以下。「もう一度乗る」は幅いっぱい、副ボタンはその下に横並び ---- */
 @media (max-width: 720px) {
 	.end-card {
 		padding: 20px;
@@ -155,17 +155,20 @@ html[data-ended] #hud.visible {
 	}
 
 	.end-actions {
-		flex-direction: column;
 		align-items: stretch;
 	}
 
-	.end-restart,
-	.end-overview {
+	.end-restart {
 		width: 100%;
 	}
 
+	/* 副ボタン（俯瞰で全体を見る／スタート画面へ）は、2 つを横に並べる */
 	.end-overview {
+		flex: 1 1 0;
+		min-width: 0;
 		min-height: 48px;
+		padding: 0 8px;
+		white-space: nowrap;
 	}
 }
 
