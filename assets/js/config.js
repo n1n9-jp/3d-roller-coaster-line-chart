@@ -155,7 +155,22 @@ export const LOOP = { linkFraction: 0 };
 export const SCENE = {};
 
 // RAIL：レールの定数（材質、色分けの設定、支柱・足跡の設定など）。担当：レールの色分け・シーン。
-export const RAIL = {};
+// 色はすべて PALETTE（railAhead* / railRidden* / railDeadhead* / pillar / shadow / marker / markerRing / railEmissive）。
+export const RAIL = {
+	// レールの材質（MeshPhongMaterial、vertexColors。emissive は PALETTE.railEmissive）
+	material: { shininess: 60, specular: 0x334466 },
+	// 支柱（MeshPhongMaterial、色は PALETTE.pillar）。高さ 10 を超える地点は同梱ファイルが門型にする
+	pillar: { shininess: 10, y: 0.1 },
+	// 床の足跡（RollerCoasterShadowGeometry、MeshBasicMaterial、色は PALETTE.shadow）
+	shadow: { opacity: 0.9, y: 0.05 },
+	// 現在位置マーカー（俯瞰のときだけ表示）
+	marker: {
+		radius: 2.5, widthSegments: 24, heightSegments: 16, // 球
+		ringInner: 3.2, ringOuter: 3.7, ringSegments: 48, // カメラに向く白い輪
+		ringOpacity: 0.9, ringOpacityMin: 0.4, pulseMs: 1600, // 脈動 0.9 → 0.4 → 0.9（reduced-motion では 0.9 のまま）
+		lineOpacity: 0.35 // 床までの白い縦線
+	}
+};
 
 // CONTOUR：等高線と値ラベルの定数（刻み、外側へのずらし、ラベルの大きさ・配置の駅番号など）。担当：高さ目盛り。
 export const CONTOUR = {};
