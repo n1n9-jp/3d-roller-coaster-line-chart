@@ -14,7 +14,7 @@ import { readJson, stretchedSeries } from './helpers.js';
 
 const usd = readJson( 'data/usdjpy.json' );
 const jgb = readJson( 'data/jgb10.json' );
-const nikkei = readJson( 'data/nikkei225.json' );
+const nikkei = usd; // 1990 年始まりの系列の土台（同梱のドル円の値を引き伸ばして使う）
 
 function curveFor( raw ) {
 
