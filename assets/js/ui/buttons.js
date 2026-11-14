@@ -153,8 +153,8 @@ export function createButtons( ctx ) {
 
 			actions[ action ]?.();
 			// マウスやタッチで押したあとは、フォーカスを外す。残すと、そのあとの Space が
-			// 「同じボタンをもう一度押す」になる（最初から・視点）。キーボードで押したとき（detail 0）は残す。
-			if ( e.detail > 0 && ( action === 'view' || action === 'restart' ) ) button.el.blur();
+			// 「同じボタンをもう一度押す」になる（最初から・視点・音）。キーボードで押したとき（detail 0）は残す。
+			if ( e.detail > 0 && ( action === 'view' || action === 'restart' || action === 'sound' ) ) button.el.blur();
 
 		} );
 
