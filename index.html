@@ -6,18 +6,98 @@
 		<meta name="description" content="1990年からの日経平均株価（週次終値）をレールの高さにした、山手線一周のジェットコースター。株価の上げ下げを一人称視点で体感できます。">
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 		<meta name="theme-color" content="#0b1733">
-		<link rel="icon" href="data:,">
+		<meta property="og:title" content="日経平均株価 3Dジェットコースター">
+		<meta property="og:description" content="1990年からの日経平均株価（週次終値）をレールの高さにした、山手線一周のジェットコースター。株価の上げ下げを一人称視点で体感できます。">
+		<meta property="og:type" content="website">
+		<meta property="og:locale" content="ja_JP">
+		<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
 		<link type="text/css" rel="stylesheet" href="./assets/css/main.css">
+		<!-- 起動のフォールバック：モジュールの読み込み自体に失敗したとき（ファイルが 404、構文エラー、file:// で開いたなど）は
+		     ui/start.js も動かないので、ここでスタート画面にエラーを出す。「読み込み中」のあいだだけ働く。 -->
+		<script>
+			( function () {
+
+				function fail() {
+
+					var screen = document.getElementById( 'start-screen' );
+					if ( ! screen ) {
+
+						document.addEventListener( 'DOMContentLoaded', fail, { once: true } );
+						return;
+
+					}
+
+					if ( screen.getAttribute( 'data-state' ) !== 'loading' ) return;
+
+					var isFile = location.protocol === 'file:';
+					document.getElementById( 'start-error-title' ).textContent = isFile ? 'ページを開けませんでした' : '起動中に問題が起きました';
+					document.getElementById( 'start-error-body' ).textContent = isFile
+						? 'このページはファイルを直接開くと動きません。README の手順でローカルサーバーから開いてください。'
+						: 'ページを再読み込みしてください。解決しないときは、別のブラウザでお試しください。';
+					document.getElementById( 'start-reload' ).hidden = isFile;
+					document.getElementById( 'start-error' ).hidden = false;
+					document.getElementById( 'start-message' ).hidden = true;
+					var button = document.getElementById( 'start-btn' );
+					button.querySelector( '.start-btn-label' ).textContent = '乗車する';
+					button.setAttribute( 'aria-busy', 'false' );
+					screen.setAttribute( 'data-state', 'error' );
+
+				}
+
+				// スクリプト要素の読み込み失敗（error は伝わらないので、捕捉フェーズで受ける）と、起動中の未処理の例外
+				window.addEventListener( 'error', function ( event ) {
+
+					var target = event.target;
+					if ( target && target !== window && target.tagName !== 'SCRIPT' ) return;
+					fail();
+
+				}, true );
+				window.addEventListener( 'unhandledrejection', fail );
+
+				document.addEventListener( 'DOMContentLoaded', function () {
+
+					document.getElementById( 'start-reload' ).addEventListener( 'click', function () {
+
+						location.reload();
+
+					} );
+
+				} );
+
+			}() );
+		</script>
 	</head>
 	<body>
 		<!-- 各ブロックの中身は担当が書く。id と ARIA の枠は変えない（契約は specs/contract.md）。 -->
 
 		<!-- [start-screen] CSS: start.css / JS: ui/start.js -->
-		<div id="start-screen">
-			<h1>日経平均株価<br/>3Dジェットコースター</h1>
-			<p>過去30年の株価変動を体感する</p>
-			<button id="start-btn" disabled>START RIDE</button>
-			<p id="start-message" role="status" hidden></p>
+		<div id="start-screen" data-state="loading">
+			<div class="start-main">
+				<p id="start-kicker" class="start-kicker"></p>
+				<h1 class="start-title"><span>日経平均株価</span> <span>3Dジェットコースター</span></h1>
+				<p id="start-desc" class="start-desc"></p>
+				<p id="start-sample" class="start-sample" hidden>
+					<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="5.25"/><path d="M6 3.2v3.3M6 8.4v.1"/></svg>
+					<span></span>
+				</p>
+				<ul class="start-chips">
+					<li>高さ＝株価（週次終値）</li>
+					<li id="start-chip-loop"></li>
+				</ul>
+				<div class="start-action">
+					<button id="start-btn" class="btn btn--primary" type="button" disabled aria-disabled="true" aria-busy="true">
+						<span class="start-spinner" aria-hidden="true"></span>
+						<span class="start-btn-label">読み込み中…</span>
+					</button>
+					<p id="start-message" role="status">株価データを読み込んでいます</p>
+					<div id="start-error" class="start-error" role="alert" hidden>
+						<h2 id="start-error-title"></h2>
+						<p id="start-error-body"></p>
+						<button id="start-reload" class="btn" type="button" hidden>再読み込み</button>
+					</div>
+				</div>
+				<button id="start-info-btn" class="start-info-btn" type="button" disabled>操作方法と出典</button>
+			</div>
 			<p id="start-credits"></p>
 		</div>
 
@@ -112,7 +192,51 @@
 		</div>
 
 		<!-- [info-panel] 情報パネル  CSS: infopanel.css / JS: ui/infopanel.js。見出しは #info-title を作ること -->
-		<div id="info-panel" role="dialog" aria-modal="true" aria-labelledby="info-title" hidden></div>
+		<div id="info-panel" role="dialog" aria-modal="true" aria-labelledby="info-title" hidden>
+			<div class="info-sheet">
+				<span class="info-grip" aria-hidden="true"></span>
+				<header class="info-head">
+					<h2 id="info-title">このコンテンツについて</h2>
+					<button id="info-close" class="btn info-close" type="button" aria-label="情報パネルを閉じる（Esc）" title="閉じる">
+						<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+					</button>
+				</header>
+				<div class="info-body" tabindex="0">
+					<section>
+						<h3>しくみ</h3>
+						<p>レールの高さは日経平均株価の週次終値です。乗り心地をなめらかにするため、レールの形には<span id="info-window">4</span>週の移動平均を使っています（画面の数値は実際の終値です）。水平の経路は山手線の駅の位置で、大崎駅を出発して外回りに一周します。線路の脇の等高線は1万円ごとの高さを示します。<span id="info-link-note">最後の短い区間は、出発点の高さへ戻るための連絡区間で、データはありません。走行はその手前で終わります。</span></p>
+					</section>
+					<section>
+						<h3>操作</h3>
+						<table class="info-keys">
+							<thead>
+								<tr><th scope="col">操作</th><th scope="col">キー・ボタン</th></tr>
+							</thead>
+							<tbody>
+								<tr><th scope="row">一時停止・再生</th><td><kbd class="kbd">Space</kbd>／「一時停止」ボタン</td></tr>
+								<tr><th scope="row">俯瞰</th><td><kbd class="kbd">W</kbd>（押している間）／「俯瞰」ボタン（押すたびに切り替え）</td></tr>
+								<tr><th scope="row">最初から</th><td><kbd class="kbd">R</kbd>／「最初から」ボタン</td></tr>
+								<tr><th scope="row">情報パネル</th><td><kbd class="kbd">I</kbd>／「情報」ボタン。閉じるのは <kbd class="kbd">Esc</kbd></td></tr>
+							</tbody>
+						</table>
+						<p class="info-note">スマートフォンでは、画面下のボタンで操作できます。</p>
+					</section>
+					<section>
+						<h3>データ出典</h3>
+						<div id="info-sources"></div>
+						<p>駅の位置：<a href="https://ekidata.jp/" target="_blank" rel="noopener">駅データ.jp</a>のデータを加工しています。</p>
+					</section>
+					<section>
+						<h3>クレジット</h3>
+						<p>3D描画：<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a>（MIT License）。レールの形状は three.js のサンプル「webxr_vr_rollercoaster」をもとにしています。</p>
+					</section>
+					<section>
+						<h3>ご注意</h3>
+						<p>このコンテンツは株価の動きを体感するためのもので、投資の助言ではありません。</p>
+					</section>
+				</div>
+			</div>
+		</div>
 
 		<!-- [live-region] 読み上げ用（視覚的に隠す）。ctx.ui.announce( text ) で書き込む -->
 		<div id="live-region" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
