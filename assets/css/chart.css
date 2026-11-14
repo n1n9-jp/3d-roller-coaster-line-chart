@@ -1,11 +1,51 @@
-/* ミニグラフ（#hud-chart、中に #graphCanvas）。担当：ミニグラフ。
-   スロットの位置とサイズは hud.css。ここでは見出し行と canvas の見た目を書く。
-   canvas の CSS サイズが論理サイズ（js/hud/layer.js が ResizeObserver で追従する）。 */
+/* ミニグラフ（#hud-chart、中に見出し行と #graphCanvas）。担当：ミニグラフ。
+   スロットの位置とサイズは hud.css。ここでは見出し行と canvas の見た目、HUD が出るときの入りの動きを書く。
+   canvas の大きさは CSS が決める（js/hud/layer.js が ResizeObserver で追従して、内部解像度を合わせる）。
+   見出し（日経平均株価の推移）と単位（円）は HTML。canvas の中は軸と線だけ。 */
 
 #hud-chart {
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
 	grid-template-rows: 20px minmax(0, 1fr); /* 見出し行 + canvas */
 	row-gap: 4px;
+	/* 入りの動き（仕様 5：HUD の行）。帯→ボタン→ミニグラフ→路線図の順に 60ms ずつ、フェード開始から 200ms 後 */
+	--hud-in: 300ms;
+	opacity: 0;
+	transform: translateY(var(--shift-md));
+	transition: opacity 200ms var(--ease-in), transform 200ms var(--ease-in);
+}
+
+#hud.visible #hud-chart {
+	opacity: 1;
+	transform: none;
+	transition: opacity var(--hud-in) var(--ease-out) 320ms, transform var(--hud-in) var(--ease-out) 320ms;
+}
+
+.chart-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+	min-width: 0;
+}
+
+.chart-title {
+	margin: 0;
+	min-width: 0;
+	color: var(--c-text-2);
+	font-size: var(--fs-13);
+	line-height: 20px;
+	font-weight: 600;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.chart-unit {
+	flex: none;
+	color: var(--c-text-3);
+	font-size: var(--fs-12);
+	line-height: 20px;
 }
 
 #graphCanvas {
@@ -13,5 +53,53 @@
 	display: block;
 	width: 100%;
 	height: 100%;
+	min-width: 0;
 	min-height: 0;
+}
+
+/* S：見出しは「推移」だけ。パネルの高さが 128 なので、見出し行を詰めて描画域を確保する */
+@media (max-width: 720px) {
+	#hud-chart {
+		grid-template-rows: 16px minmax(0, 1fr);
+		row-gap: 2px;
+	}
+
+	.chart-title {
+		font-size: var(--fs-12);
+		line-height: 16px;
+	}
+
+	.chart-title__full {
+		display: none;
+	}
+
+	.chart-unit {
+		font-size: var(--fs-11);
+		line-height: 16px;
+	}
+}
+
+/* 短い横長：パネルが 220x112。見出し行を詰める */
+@media (max-height: 520px) and (orientation: landscape) {
+	#hud-chart {
+		--panel-pad: 8px;
+		grid-template-rows: 16px minmax(0, 1fr);
+		row-gap: 2px;
+	}
+
+	.chart-title {
+		font-size: var(--fs-12);
+		line-height: 16px;
+	}
+
+	.chart-unit {
+		font-size: var(--fs-11);
+		line-height: 16px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#hud-chart {
+		--hud-in: 150ms;
+	}
 }
