@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRide, baseYearsPerSecond, speedFactor, speedFactorRange, curveYears } from '../assets/js/ride.js';
+import { createRide, baseYearsPerSecond, speedFactor, speedFactorRange, curveYears, progressAlongRail } from '../assets/js/ride.js';
 import { Vector3, Quaternion } from '../assets/js/three.core.js';
 import { createEvents } from '../assets/js/events.js';
 import { TrackCurve } from '../assets/js/track.js';
@@ -400,7 +400,7 @@ test( '傾斜：前方ベクトルの y 成分の符号は勾配の符号に対�
 	assert.ok( forwardOf( down ).y < - 0.1, `down y=${forwardOf( down ).y}` );
 	assert.ok( Math.abs( forwardOf( flat ).y ) < 1e-9 );
 
-	// 実データの曲線では、前後 RAIL_SLOPE_WINDOW（水平の長さ）の弦の勾配で傾く。
+	// 実データの曲線では、前後 RAIL_SLOPE_WINDOW（レールに沿った 3D の長さ）の弦の勾配で傾く。
 	// 傾きは実際の勾配（dy/dt / その位置の t あたりの水平距離）の RAIL_SLOPE_RATIO 倍
 	const curve = new TrackCurve( dataset.smoothed );
 	const ride = createRide( curve );
@@ -409,9 +409,8 @@ test( '傾斜：前方ベクトルの y 成分の符号は勾配の符号に対�
 
 		const progress = i / 400;
 		const length = curve.lengthPerProgressAt( progress );
-		const half = RAIL_SLOPE_WINDOW / length;
-		const t1 = Math.max( 0, progress - half );
-		const t2 = Math.min( 1, progress + half );
+		const t1 = progressAlongRail( curve, progress, RAIL_SLOPE_WINDOW, - 1 ) ?? 0;
+		const t2 = progressAlongRail( curve, progress, RAIL_SLOPE_WINDOW, 1 ) ?? 1;
 		const gradient = ( curve.getPointAt( t2 ).y - curve.getPointAt( t1 ).y ) / ( t2 - t1 );
 		ride.progress = progress;
 		ride.updatePose( 1 );
