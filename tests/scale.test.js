@@ -4,8 +4,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
 	FALLBACK_FORMAT, resolveFormat, contourTicks, polarToXZ, spiralOffsetPoint, offsetSpiralPath, wallGeometry,
-	decadeMarks, decadeLabel, layoutDecadeRects, layoutAxisColumn, leaderDots, labelWorldHeight, screenTextPx, isCompactViewport
+	decadeMarks, decadeLabel, layoutDecadeRects, layoutAxisColumn, leaderDots, labelWorldHeight, screenTextPx, isCompactViewport,
+	contourWindow, contourFade, contourLevelWeight, axisModeFor, layoutAxisAbove, polylineDots
 } from '../assets/js/scale.js';
+import { createFormatter } from '../assets/js/format.js';
+import { DATASETS } from '../assets/js/config.js';
 import { overlappingPairs, collidesAny } from '../assets/js/labels.js';
 import { TrackCurve } from '../assets/js/track.js';
 import { buildDataset } from '../assets/js/data.js';
@@ -290,5 +293,129 @@ test( '狭い画面の判定と、ラベルの大きさ（画面上の文字の�
 	assert.ok( Math.abs( screenTextPx( { worldHeight: h, distance: 200, fovDeg: 50, viewportHeight: 900 } ) - 15 ) < 1e-9 );
 	// 距離が倍なら倍の大きさ
 	assert.ok( Math.abs( labelWorldHeight( { distance: 400, fovDeg: 50, viewportHeight: 900, textPx: 15 } ) - 2 * h ) < 1e-9 );
+
+} );
+
+test( '一人称の等高線の範囲：前方 ahead（内側の周では 1 周の lapFraction まで）と後方 behind。端に向かって薄くなる', () => {
+
+	const W = CONTOUR.window;
+	for ( const { curve } of [ usdC, jgbC, nk37 ] ) {
+
+		for ( const t of [ 0, 0.02, 0.3, 0.6, 0.99 ] ) {
+
+			const win = contourWindow( curve, t );
+			const lap = 2 * Math.PI * ( curve.radiusAt( t ) + CONTOUR.offset );
+			assert.ok( win.ahead <= W.ahead + 1e-9 && win.ahead <= lap * W.lapFraction + 1e-9 );
+			// 隣の周まで回り込まない（前方は 1 周の半分未満）
+			assert.ok( win.ahead < lap / 2 );
+			assert.ok( Math.abs( win.s0 - curve.arcFractionAt( t ) * curve.totalLength ) < 1e-9 );
+			assert.equal( win.behind, W.behind );
+
+		}
+
+		// 外側の周では ahead いっぱい
+		assert.equal( contourWindow( curve, 0.99 ).ahead, W.ahead );
+
+	}
+
+	const { ahead, behind } = { ahead: 60, behind: 6 };
+	assert.equal( contourFade( 0, ahead, behind ), 1 );
+	assert.equal( contourFade( ahead * W.fadeFrom, ahead, behind ), 1 );
+	assert.equal( contourFade( ahead, ahead, behind ), 0 );
+	assert.equal( contourFade( ahead + 5, ahead, behind ), 0 );
+	assert.equal( contourFade( - behind, ahead, behind ), 0 );
+	assert.ok( contourFade( - behind / 2, ahead, behind ) > 0 && contourFade( - behind / 2, ahead, behind ) < 1 );
+	// 前方は、遠いほど薄い（単調）
+	let prev = 1;
+	for ( let d = 0; d <= ahead; d += 2 ) {
+
+		const f = contourFade( d, ahead, behind );
+		assert.ok( f <= prev + 1e-12 );
+		prev = f;
+
+	}
+
+	// 前方の値ラベルを置く範囲（labelReach）では、線はまだ見える濃さ
+	assert.ok( contourFade( ahead * W.labelReach, ahead, behind ) > 0.4 );
+
+} );
+
+test( '等高線の刻みの向きの濃さ：いまの値を挟む線と隣は 1、離れるほど薄く（下限 levelMin）', () => {
+
+	const W = CONTOUR.window;
+	assert.equal( contourLevelWeight( 150, 151.2, 50 ), 1 );
+	assert.equal( contourLevelWeight( 200, 151.2, 50 ), 1 );
+	assert.equal( contourLevelWeight( 100, 151.2, 50 ), 1 ); // 1.02 刻み
+	assert.ok( contourLevelWeight( 250, 151.2, 50 ) < 1 );
+	assert.ok( contourLevelWeight( 350, 151.2, 50 ) < contourLevelWeight( 250, 151.2, 50 ) );
+	assert.equal( contourLevelWeight( 1000, 151.2, 50 ), W.levelMin );
+	assert.equal( contourLevelWeight( 1000, NaN, 50 ), 1 ); // 値が無いとき
+	assert.equal( contourLevelWeight( 0, 1, 0 ), 1 );
+
+} );
+
+test( '強い線：データの書式の strongEvery（ドル円 100 円、日経平均 5 万円）。金利は無し（0 の線は zeroIndex）', () => {
+
+	const usdF = createFormatter( DATASETS.usdjpy );
+	const usdT = contourTicks( usdF, { min: 75.6, max: 358.4 } );
+	assert.deepEqual( usdT.values.filter( ( v, i ) => usdT.strong[ i ] ), [ 100, 200, 300 ] );
+	const jgbF = createFormatter( DATASETS.jgb10 );
+	const jgbT = contourTicks( jgbF, { min: - 0.293, max: 8.1 } );
+	assert.ok( jgbT.strong.every( ( s ) => ! s ) );
+	assert.equal( jgbT.values[ jgbT.zeroIndex ], 0 );
+	const nikF = createFormatter( DATASETS.nikkei );
+	const nikT = contourTicks( nikF, { min: 7054, max: 52000 } );
+	assert.deepEqual( nikT.values.filter( ( v, i ) => nikT.strong[ i ] ), [ 50000 ] );
+
+} );
+
+test( '値ラベルの軸の置き方：縦長の狭い画面だけ above（壁の端の上）、ほかは side（螺旋の左の外）', () => {
+
+	assert.equal( axisModeFor( 390, 844 ), 'above' );
+	assert.equal( axisModeFor( 430, 760 ), 'above' );
+	assert.equal( axisModeFor( 844, 390 ), 'side' );
+	assert.equal( axisModeFor( 800, 900 ), 'side' );
+	assert.equal( axisModeFor( 1024, 768 ), 'side' );
+	assert.equal( axisModeFor( 1440, 900 ), 'side' );
+
+} );
+
+test( '値ラベルの軸（above）：壁の端の上に、螺旋より上から下から上へ並べる。引き出し線は交わらず、ラベルを通らない', () => {
+
+	const viewport = { width: 390, height: 844 };
+	const pillPx = 14 * 96 / 56;
+	const A = CONTOUR.axis.above;
+	// 壁の外側の端（画面の左端の近く）、5 本の横線が 8px 間隔
+	const anchors = [ 0, 1, 2, 3, 4 ].map( ( i ) => ( { x: 16, y: 420 - i * 8 } ) );
+	const widths = anchors.map( () => 50 );
+	// 列の幅の範囲では、螺旋の上端が y = 330
+	const col = layoutAxisAbove( anchors, widths, { pillPx, viewport, ceiling: () => 330 } );
+	assert.equal( col.collisions, 0 );
+	assert.equal( col.left, 16 + A.fanPx );
+	assert.ok( Math.abs( col.rects[ 0 ].y + pillPx / 2 - 330 ) < 1e-9, '列の下端は螺旋の上' );
+	for ( let i = 1; i < 5; i ++ ) assert.ok( col.spread[ i - 1 ] - col.spread[ i ] >= pillPx + CONTOUR.axis.gapPx - 1e-9, '下から上へ' );
+	assert.ok( col.rects.every( ( r ) => Math.abs( r.x - r.w / 2 - col.left ) < 1e-9 ), '左寄せ' );
+	assert.deepEqual( overlappingPairs( col.rects ), [] );
+	// 螺旋が無ければ、壁の最上段より liftPx 上から
+	const free = layoutAxisAbove( anchors, widths, { pillPx, viewport } );
+	assert.ok( Math.abs( free.rects[ 0 ].y + pillPx / 2 - ( 388 - A.liftPx ) ) < 1e-9 );
+	// 引き出し線：アンカーから、ラベルの左端まで。ラベルの左端より左だけを通る
+	assert.equal( col.leaders.length, 5 );
+	col.leaders.forEach( ( line, i ) => {
+
+		assert.deepEqual( line[ 0 ], { x: anchors[ i ].x, y: anchors[ i ].y } );
+		assert.ok( Math.abs( line[ line.length - 1 ].y - col.spread[ i ] ) < 1e-9 );
+		assert.ok( line.every( ( p ) => p.x < col.left ) );
+
+	} );
+	// 上の HUD に掛かるときは下へずらす
+	const hud = [ { x: 195, y: 200, w: 366, h: 200 } ];
+	const moved = layoutAxisAbove( anchors, widths, { pillPx, viewport, hard: hud, ceiling: () => 330 } );
+	assert.equal( moved.collisions, 0 );
+	assert.ok( moved.shift > 0 );
+	// 折れ線の点
+	const dots = polylineDots( col.leaders );
+	assert.ok( dots.length > 10 );
+	assert.ok( dots.every( ( d ) => d.x <= col.left ) );
 
 } );

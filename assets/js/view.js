@@ -198,16 +198,15 @@ function resolveBox( box, width, height ) {
 
 /**
  * HUD の矩形（CSS px）の既定値。DOM が無いとき（テスト）と、DOM から読めないときに使う（hud.css・readout.css の値）。
- * kind：'sample' はバッジがあり凡例が下がる。'real' は出来事のキャプション（高さ captionReservePx）を足す。
+ * caption：出来事のキャプションの分（高さ captionReservePx）を足すか（そのデータに出来事の注釈があるとき）。
+ * キャプションの矩形には soft: true を付ける（構図はそれを避けるが、縦の位置の基準にはしない。fitOverview）。
  */
-export function overviewHudRects( mode, width, height, kind = null ) {
+export function overviewHudRects( mode, width, height, { caption = false } = {} ) {
 
-	const F = SCENE.overview.frame;
-	const H = F.hudFallback[ mode ];
-	const boxes = [ ...H.common ];
-	boxes.push( ...( kind === 'sample' ? H.sample : H.real ) );
-	if ( kind === 'real' && H.caption ) boxes.push( typeof H.caption === 'function' ? H.caption( width, height ) : H.caption );
-	return boxes.map( ( b ) => resolveBox( b, width, height ) );
+	const H = SCENE.overview.frame.hudFallback[ mode ];
+	const rects = [ ...H.common, ...H.legend ].map( ( b ) => resolveBox( b, width, height ) );
+	if ( caption && H.caption ) rects.push( { ...resolveBox( typeof H.caption === 'function' ? H.caption( width, height ) : H.caption, width, height ), soft: true } );
+	return rects;
 
 }
 
@@ -302,7 +301,8 @@ function boundsOf( pts ) {
  *    透視投影なので、奥行きと横のずれを交互に直す反復で解く。
  * 2. obstacles（HUD のパネルの矩形。CSS px、y は下向き）があるときは、点の投影の凸包が、どの矩形
  *    （gapPx 広げたもの）とも重ならない範囲で、最も大きく写る大きさと位置を探す（大きさは二分法、位置は格子）。
- *    同じ大きさで置ける位置が幅を持つときは、その範囲の中央。
+ *    同じ大きさで置ける位置が幅を持つときは、その範囲の中央。ただし soft: true の矩形（出来事のキャプション。出ていない
+ *    ことの方が多い）は、避けはするが「中央」の基準には入れない：soft の矩形を除いて置ける範囲の中央に、最も近い位置。
  * @returns { position, target, distance, bounds, screen, pxPerUnit, scale }
  *   bounds は点の外接矩形（NDC、-1..1）、screen は同じ矩形の CSS px（y は下向き）、
  *   pxPerUnit は target の奥行きでの 1 単位の大きさ（px）、scale は 1 に対する縮小の割合（obstacles が無いときは 1）
@@ -419,7 +419,8 @@ export function fitOverview( points, {
 	// 避ける矩形（gapPx 広げる）と、収める範囲（px）
 	const rects = obstacles
 		.filter( ( o ) => o.right > o.left && o.bottom > o.top )
-		.map( ( o ) => ( { left: o.left - gapPx, top: o.top - gapPx, right: o.right + gapPx, bottom: o.bottom + gapPx } ) );
+		.map( ( o ) => ( { left: o.left - gapPx, top: o.top - gapPx, right: o.right + gapPx, bottom: o.bottom + gapPx, soft: !! o.soft } ) );
+	const hardRects = rects.filter( ( rc ) => ! rc.soft );
 	const safe = { left: insets.left, top: insets.top, right: width - insets.right, bottom: height - insets.bottom };
 
 	// 基準の構図での凸包（外接矩形の中心からの相対位置）。大きさ s・中心 c の候補では c + s·rel に写ると近似する
@@ -431,7 +432,7 @@ export function fitOverview( points, {
 	const sign = Math.sign( signedArea( hull0 ) ) || 1;
 	const poly = rel.map( () => ( { x: 0, y: 0 } ) );
 
-	function fits( s, cx, cy ) {
+	function fits( s, cx, cy, list = rects ) {
 
 		for ( let i = 0; i < rel.length; i ++ ) {
 
@@ -441,13 +442,14 @@ export function fitOverview( points, {
 		}
 
 		const bb = { left: cx - s * w0 / 2, right: cx + s * w0 / 2, top: cy - s * h0 / 2, bottom: cy + s * h0 / 2 };
-		for ( const rc of rects ) if ( hullHitsRect( poly, sign, bb, rc ) ) return false;
+		for ( const rc of list ) if ( hullHitsRect( poly, sign, bb, rc ) ) return false;
 		return true;
 
 	}
 
 	/**
-	 * 大きさ s で置ける位置（無ければ null）。置ける位置（格子の点）の重心に最も近い点。
+	 * 大きさ s で置ける位置（無ければ null）。置ける位置（格子の点）のうち、中央の基準に最も近い点。
+	 * 中央の基準は、soft の矩形を除いて置ける位置の重心（soft が無ければ、置ける位置の重心）。
 	 * 置ける範囲が広いとき（大きさが上限で決まるとき）は、HUD に挟まれた空きの中央に来る。
 	 */
 	function placeAt( s, steps = 24 ) {
@@ -456,6 +458,8 @@ export function fitOverview( points, {
 		const xa = safe.left + hw, xb = safe.right - hw, ya = safe.top + hh, yb = safe.bottom - hh;
 		if ( xa > xb + 1e-6 || ya > yb + 1e-6 ) return null;
 		const ok = [];
+		const loose = [];
+		const hasSoft = hardRects.length < rects.length;
 		const nx = xb - xa < 1e-6 ? 0 : steps, ny = yb - ya < 1e-6 ? 0 : steps;
 		for ( let i = 0; i <= nx; i ++ ) {
 
@@ -464,20 +468,22 @@ export function fitOverview( points, {
 
 				const cy = ny ? ya + ( yb - ya ) * j / ny : ( ya + yb ) / 2;
 				if ( fits( s, cx, cy ) ) ok.push( { x: cx, y: cy } );
+				if ( hasSoft && fits( s, cx, cy, hardRects ) ) loose.push( { x: cx, y: cy } );
 
 			}
 
 		}
 
 		if ( ok.length === 0 ) return null;
+		const ref = hasSoft && loose.length ? loose : ok;
 		let mx = 0, my = 0;
-		for ( const p of ok ) {
+		for ( const p of ref ) {
 
 			mx += p.x; my += p.y;
 
 		}
 
-		mx /= ok.length; my /= ok.length;
+		mx /= ref.length; my /= ref.length;
 		let best = ok[ 0 ], bestD = Infinity;
 		for ( const p of ok ) {
 
@@ -550,7 +556,7 @@ function prefersReducedMotion() {
 
 }
 
-export function createView( { scene, camera, train, events = null, curve = null, ride = null, kind = null } ) {
+export function createView( { scene, camera, train, events = null, curve = null, ride = null } ) {
 
 	let current = 'ride';
 
@@ -588,13 +594,17 @@ export function createView( { scene, camera, train, events = null, curve = null,
 	let fitKey = '';
 	let fit = null;
 
-	// データの種類（'sample' | 'real'）。main.js が dataset.meta.kind を渡す。無いときは <html data-kind>
-	function dataKind() {
+	// そのデータに出来事の注釈があるか（'eventsready' の件数。0 件でも空の配列で届く）。
+	// ある間だけ、俯瞰の構図が出来事のキャプションの場所を避ける。届くまでは「無い」として扱う
+	let hasCaption = false;
+	events?.on?.( 'eventsready', ( payload ) => {
 
-		if ( kind ) return kind;
-		return typeof document !== 'undefined' ? document.documentElement.dataset.kind ?? null : null;
+		const next = ( payload?.events?.length ?? 0 ) > 0;
+		if ( next === hasCaption ) return;
+		hasCaption = next;
+		hudDirty = true;
 
-	}
+	} );
 
 	function viewportSize( aspect ) {
 
@@ -636,7 +646,7 @@ export function createView( { scene, camera, train, events = null, curve = null,
 
 		}
 
-		if ( dataKind() === 'real' ) {
+		if ( hasCaption ) {
 
 			const el = document.querySelector( F.captionSelector );
 			if ( el ) {
@@ -646,10 +656,11 @@ export function createView( { scene, camera, train, events = null, curve = null,
 				if ( b.width > 0 ) {
 
 					const reserve = F.captionReservePx;
-					// 画面の下半分にあるスロットは下寄せ（上へ伸びる）、上半分は上寄せ（下へ伸びる）
+					// 画面の下半分にあるスロットは下寄せ（上へ伸びる）、上半分は上寄せ（下へ伸びる）。
+					// soft：避けるが、構図の縦の位置の基準（HUD の間の空きの中央）には入れない（fitOverview）
 					rects.push( ( b.top + b.bottom ) / 2 > height / 2
-						? { left: b.left, right: b.right, top: Math.min( b.top, b.bottom - reserve ), bottom: b.bottom }
-						: { left: b.left, right: b.right, top: b.top, bottom: Math.max( b.bottom, b.top + reserve ) } );
+						? { left: b.left, right: b.right, top: Math.min( b.top, b.bottom - reserve ), bottom: b.bottom, soft: true }
+						: { left: b.left, right: b.right, top: b.top, bottom: Math.max( b.bottom, b.top + reserve ), soft: true } );
 
 				}
 
@@ -657,9 +668,10 @@ export function createView( { scene, camera, train, events = null, curve = null,
 
 		}
 
-		if ( found === 0 ) return overviewHudRects( overviewMode( width, height ), width, height, dataKind() );
+		if ( found === 0 ) return overviewHudRects( overviewMode( width, height ), width, height, { caption: hasCaption } );
 		return rects.map( ( r ) => ( {
-			left: Math.round( r.left ), top: Math.round( r.top ), right: Math.round( r.right ), bottom: Math.round( r.bottom )
+			left: Math.round( r.left ), top: Math.round( r.top ), right: Math.round( r.right ), bottom: Math.round( r.bottom ),
+			...( r.soft ? { soft: true } : {} )
 		} ) );
 
 	}
@@ -682,7 +694,7 @@ export function createView( { scene, camera, train, events = null, curve = null,
 
 	function currentHudRects( width, height ) {
 
-		if ( ! hasDom ) return overviewHudRects( overviewMode( width, height ), width, height, dataKind() );
+		if ( ! hasDom ) return overviewHudRects( overviewMode( width, height ), width, height, { caption: hasCaption } );
 		if ( hudDirty || ! hudRects ) {
 
 			hudRects = readHudRects( width, height );
@@ -719,7 +731,7 @@ export function createView( { scene, camera, train, events = null, curve = null,
 		if ( ! fitPoints ) return null;
 		const { width, height } = viewportSize( aspect );
 		const obstacles = currentHudRects( width, height );
-		const key = `${width}x${height}:${aspect.toFixed( 6 )}:${dataKind()}:${JSON.stringify( obstacles )}`;
+		const key = `${width}x${height}:${aspect.toFixed( 6 )}:${JSON.stringify( obstacles )}`;
 		if ( key !== fitKey ) {
 
 			const mode = overviewMode( width, height );

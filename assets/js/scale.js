@@ -5,15 +5,22 @@
 // 書式がまだ無いとき（日経平均）は FALLBACK_FORMAT（1 万円刻み、「2万円」）。書式が後から入れ替わったら作り直す。
 //
 // ■ 一人称
-//   等高線：螺旋の中心線を外側（半径が増える向き）へ CONTOUR.offset ずらした線を、各刻みの高さ（curve.valueToY）に全長 1 本ずつ。
-//           1 本の LineSegments（頂点色の alpha で強い線を分ける）にまとめる。遠くは fog で霞む。俯瞰へ向かうと薄くして消す。
-//   値ラベル：いまの値を挟む上下の等高線に 1 つずつ。前方の読みやすい場所（近すぎず遠すぎない）に置き、いつも手前に描く。
+//   等高線：螺旋の中心線を外側（半径が増える向き）へ CONTOUR.offset ずらした線を、各刻みの高さ（curve.valueToY）に引く。
+//           出すのは、いまの位置の近く（弧長で前方 CONTOUR.window.ahead、後方 behind）だけで、端に向かって薄くする。
+//           隣の周・その先の周の線は出さない（螺旋では視界を何本も横切り、どれがいまのレールの脇の線か分からなくなる）。
+//           1 本の LineSegments に、弧長の順（区間ごとに全刻み）に並べておき、毎フレーム、範囲の分の頂点の alpha だけを
+//           書き換えて（addUpdateRange）、描画範囲（drawRange）を動かす。俯瞰へ向かうと薄くして消す。
+//   値ラベル：いまの値を挟む上下の等高線に 1 つずつ。等高線を出している前方の範囲の、読みやすい場所（近すぎず遠すぎない）に
+//           置き、線と一緒に薄くする。いつも手前に描く。
 //   年代のラベル：前方の次の境目（北のスポーク）だけ、レールの上に出す。通過する手前で消す。
 // ■ 俯瞰
 //   目盛りの壁：西のスポーク上（CONTOUR.wall）。各刻みの高さの横線・両端の柱・薄い面（はしごの形）。1 本の LineSegments と 1 枚の面。
 //   値ラベルの軸：壁の外側の端から、各横線の高さで左へ引き出し線を出し、ラベルを下から上へ並べる（labels.js の spreadAxis）。
-//                 狭い画面では粗い刻み（ticks の compact）。ラベルの列の分の余白は、俯瞰の構図に足す点として view に渡す
-//                 （ctx.view.setOverviewExtras( 'scale', points )。口が無いときは何もしない）。
+//                 縦長の狭い画面（axisModeFor が 'above'）では、列を螺旋の左の外ではなく、壁の外側の端の上（外周より上の
+//                 空いている左上）に置く（横幅を食わないので、螺旋を画面の幅いっぱいに映せる）。
+//                 狭い画面では粗い刻み（ticks の compact）。壁とラベルの列の点は、俯瞰の構図に足す点として view に渡す
+//                 （ctx.view.setOverviewExtras( 'scale', points )。口が無いときは何もしない）。俯瞰の構図のカメラ
+//                 （view.overviewFit）で列の位置を見積もり、画面の大きさや視点が変わったときに、俯瞰に入る前から収まりを付けておく。
 //   年代のスポーク：床の上の細い線（中心から北へ）。一人称でも出す（fog で霞む）。
 //   年代のラベル：スポークと各周の交点の床に「1990年」。隣と重なるときは左右交互、それでも重なるときは 20 年ごと。
 //
@@ -26,9 +33,11 @@
 
 import {
 	Group, LineSegments, Line, LineBasicMaterial, BufferGeometry, Float32BufferAttribute, Mesh, MeshBasicMaterial,
-	Sprite, SpriteMaterial, CanvasTexture, SRGBColorSpace, Vector2, Vector3, MathUtils, Color, DoubleSide
+	Sprite, SpriteMaterial, CanvasTexture, SRGBColorSpace, Vector2, Vector3, MathUtils, Color, DoubleSide,
+	DynamicDrawUsage, PerspectiveCamera
 } from './three.core.js';
 import { CONTOUR, PALETTE, HUD_COLORS, FONT_SANS } from './config.js';
+import { overviewFov } from './view.js';
 import { spreadAxis, collidesAny, insideViewport, rectsOverlap, placeByPriority, getLabelBoard } from './labels.js';
 
 const DEG = Math.PI / 180;
@@ -68,7 +77,7 @@ export function resolveFormat( dataset ) {
 /**
  * 3D の目盛りの値：format.ticks の値のうち、データの範囲（min..max）の内側だけ（線は範囲の外に引かない）。
  * labeled：俯瞰の軸でラベルを付けるか（maxLabels 本を超えるときは、値が 2 × step の倍数の線だけ）。
- * zeroIndex：値 0 の線の番号（無ければ −1）。strong：強い線か（format.strongEvery の倍数。0 は除く）。
+ * zeroIndex：値 0 の線の番号（無ければ −1）。strong：強い線か（format.strongEvery の倍数。0 は除く。0 の線は zeroIndex で別に扱う）。
  */
 export function contourTicks( format, range, { compact = false, maxLabels = CONTOUR.wall.maxLabels } = {} ) {
 
@@ -117,6 +126,40 @@ export function offsetSpiralPath( curve, offset, segment ) {
 	}
 
 	return { xz, count: n + 1, spacing: curve.totalLength / n };
+
+}
+
+// ---- 一人称の等高線の範囲 ----
+
+/**
+ * 一人称で等高線を出す範囲（元の螺旋の弧長）：いまの位置 s0 から前方 ahead、後方 behind。
+ * 前方は、その位置の 1 周の長さ（2π × 等高線の半径）の lapFraction までに縮める。
+ */
+export function contourWindow( curve, progress, { ahead = CONTOUR.window.ahead, behind = CONTOUR.window.behind, lapFraction = CONTOUR.window.lapFraction, offset = CONTOUR.offset } = {} ) {
+
+	const s0 = curve.arcFractionAt( progress ) * curve.totalLength;
+	const lap = 2 * Math.PI * ( curve.radiusAt( progress ) + offset );
+	return { s0, ahead: Math.min( ahead, lap * lapFraction ), behind };
+
+}
+
+/**
+ * 刻みの向きの濃さ（0..1）：線の値 v と、いまの値 value の差が、刻み step で levelFull 以内なら 1。
+ * そこから 1 刻みごとに levelPer ずつ薄くし、levelMin を下回らない。value が数でないときは 1。
+ */
+export function contourLevelWeight( v, value, step, { levelFull = CONTOUR.window.levelFull, levelPer = CONTOUR.window.levelPer, levelMin = CONTOUR.window.levelMin } = {} ) {
+
+	if ( ! Number.isFinite( value ) || ! ( step > 0 ) ) return 1;
+	const levels = Math.abs( v - value ) / step;
+	return Math.max( levelMin, Math.min( 1, 1 - ( levels - levelFull ) * levelPer ) );
+
+}
+
+/** いまの位置からの弧長 d（前方が正）の等高線の濃さ（0..1）。前方は ahead × fadeFrom から ahead へ、後方は −behind から 0 へ。 */
+export function contourFade( d, ahead, behind, fadeFrom = CONTOUR.window.fadeFrom ) {
+
+	if ( d < 0 ) return behind > 0 ? MathUtils.smoothstep( d, - behind, 0 ) : 0;
+	return 1 - MathUtils.smoothstep( d, ahead * fadeFrom, ahead );
 
 }
 
@@ -294,6 +337,85 @@ export function leaderDots( anchors, spread, edge ) {
 
 }
 
+/** 折れ線（画面の px）の列を、数 px おきの小さな矩形の列にする（重なりの判定用）。 */
+export function polylineDots( lines ) {
+
+	const dots = [];
+	for ( const line of lines ) {
+
+		for ( let j = 0; j < line.length - 1; j ++ ) {
+
+			const p = line[ j ];
+			const q = line[ j + 1 ];
+			const n = Math.max( 1, Math.ceil( Math.hypot( q.x - p.x, q.y - p.y ) / 4 ) );
+			for ( let t = 0; t <= n; t ++ ) dots.push( { x: p.x + ( q.x - p.x ) * t / n, y: p.y + ( q.y - p.y ) * t / n, w: 2, h: 2 } );
+
+		}
+
+	}
+
+	return dots;
+
+}
+
+/**
+ * 値ラベルの軸の置き方：縦長の狭い画面（幅 compactMaxWidth 以下で縦長）は 'above'（壁の外側の端の上に列）、
+ * それ以外は 'side'（螺旋の左の外に列）。
+ */
+export function axisModeFor( width, height ) {
+
+	return width <= CONTOUR.compactMaxWidth && height > width ? 'above' : 'side';
+
+}
+
+/**
+ * 'above' の値ラベルの列（画面の px）。anchors：壁の外側の端の、各横線の画面上の位置（下から順）。widths：各ラベルの幅。
+ * 列の左端は、アンカーのいちばん左から fanPx 右（画面の端から insetPx 以上）。ラベルは左寄せで、下から上へ pillPx + gapPx ごと。
+ * 列の下端は、ceiling( x0, x1 )（列の幅の範囲で、それより下に螺旋がある画面の y。無ければ Infinity）と、
+ * いちばん上のアンカーより liftPx 上の、高い方。HUD（hard）や画面の上端に掛かるときは、shiftPx 刻みで下へずらす
+ * （最初に重ならなくなったずらし。どれも重なるときは重なりの最も少ないもの）。
+ * 引き出し線：アンカー → ラベルの高さで、ラベルの左端の stubPx 手前（斜め）→ ラベルの左端（横）。
+ * 戻り値：{ rects（anchors と同じ順）, spread（各ラベルの y）, left（列の左端）, right（列の右端）, shift, collisions, leaders }。
+ */
+export function layoutAxisAbove( anchors, widths, {
+	pillPx, gapPx = CONTOUR.axis.gapPx, viewport, hard = [], ceiling = () => Infinity,
+	fanPx = CONTOUR.axis.above.fanPx, stubPx = CONTOUR.axis.above.stubPx, liftPx = CONTOUR.axis.above.liftPx,
+	insetPx = CONTOUR.axis.insetPx, margin = CONTOUR.axis.margin, shiftPx = CONTOUR.axis.shiftPx, shiftSteps = CONTOUR.axis.shiftSteps
+} ) {
+
+	const n = anchors.length;
+	if ( n === 0 ) return { rects: [], spread: [], left: 0, right: 0, shift: 0, collisions: 0, leaders: [] };
+	const maxW = Math.max( ...widths );
+	const minAnchorX = Math.min( ...anchors.map( ( a ) => a.x ) );
+	const topAnchorY = Math.min( ...anchors.map( ( a ) => a.y ) );
+	const left = Math.max( insetPx + stubPx, minAnchorX + fanPx );
+	const right = left + maxW;
+	const bottom = Math.min( topAnchorY - liftPx, ceiling( left, right ) );
+	const pitch = pillPx + gapPx;
+
+	let best = null;
+	for ( let k = 0; k <= shiftSteps; k ++ ) {
+
+		const shift = k * shiftPx;
+		const spread = anchors.map( ( a, i ) => bottom + shift - pillPx / 2 - i * pitch );
+		const rects = spread.map( ( y, i ) => ( { x: left + widths[ i ] / 2, y, w: widths[ i ], h: pillPx } ) );
+		let collisions = 0;
+		for ( const r of rects ) if ( ! insideViewport( r, viewport, insetPx ) || collidesAny( r, hard, margin ) ) collisions ++;
+		if ( ! best || collisions < best.collisions ) best = { rects, spread, left, right, shift, collisions };
+		if ( collisions === 0 ) break;
+
+	}
+
+	best.leaders = anchors.map( ( a, i ) => {
+
+		const y = best.spread[ i ];
+		return [ { x: a.x, y: a.y }, { x: left - stubPx, y }, { x: left - 1, y } ];
+
+	} );
+	return best;
+
+}
+
 // ---- 大きさ ----
 
 /**
@@ -456,12 +578,15 @@ export function createScale( ctx ) {
 
 	}
 
-	// ---- 一人称の等高線（1 本の LineSegments） ----
+	// ---- 一人称の等高線（1 本の LineSegments。弧長の区間ごとに、全刻みの線分を並べる） ----
 	const contourGeometry = new BufferGeometry();
 	const contourMaterial = new LineBasicMaterial( { vertexColors: true, transparent: true, depthWrite: false, opacity: 1 } );
 	const contours = new LineSegments( contourGeometry, contourMaterial );
 	contours.name = 'contour-lines';
 	group.add( contours );
+	let contourBase = []; // 刻みごとの濃さ（強い線・0 の線は strongOpacity）
+	// いま出している範囲（区間の番号 kA..kB）と、そのときの位置。stats は直近の書き換えの量と時間（検証用）
+	const contourState = { s0: NaN, value: NaN, ahead: NaN, behind: NaN, kA: 0, kB: 0, stats: { vertices: 0, floats: 0, ms: 0, frames: 0 } };
 
 	// ---- 一人称の値ラベル ----
 	const rideGroup = new Group();
@@ -574,20 +699,40 @@ export function createScale( ctx ) {
 
 		rideTicks = contourTicks( format, range );
 		rideYs = rideTicks.values.map( ( v ) => curve.valueToY( v ) );
-		const segments = [];
+		contourBase = rideTicks.values.map( ( v, i ) => ( rideTicks.strong[ i ] || i === rideTicks.zeroIndex ? CONTOUR.line.strongOpacity : CONTOUR.line.opacity ) );
+
+		// 区間 k の刻み i の線分が、頂点 ( k × 刻みの数 + i ) × 2 と、その次。alpha は最初 0（範囲の分だけ毎フレーム書く）
 		const { xz, count } = contourPath;
-		rideTicks.values.forEach( ( v, i ) => {
+		const nT = rideYs.length;
+		const segs = count - 1;
+		const pos = new Float32Array( segs * nT * 6 );
+		const col = new Float32Array( segs * nT * 8 );
+		lineColor.setHex( PALETTE.contour );
+		for ( let k = 0; k < segs; k ++ ) {
 
-			const y = rideYs[ i ];
-			const alpha = rideTicks.strong[ i ] ? CONTOUR.line.strongOpacity : CONTOUR.line.opacity;
-			for ( let k = 0; k < count - 1; k ++ ) {
+			for ( let i = 0; i < nT; i ++ ) {
 
-				segments.push( { a: { x: xz[ 2 * k ], y, z: xz[ 2 * k + 1 ] }, b: { x: xz[ 2 * k + 2 ], y, z: xz[ 2 * k + 3 ] }, color: PALETTE.contour, alpha } );
+				const y = rideYs[ i ];
+				const o = ( k * nT + i ) * 6;
+				pos[ o ] = xz[ 2 * k ]; pos[ o + 1 ] = y; pos[ o + 2 ] = xz[ 2 * k + 1 ];
+				pos[ o + 3 ] = xz[ 2 * k + 2 ]; pos[ o + 4 ] = y; pos[ o + 5 ] = xz[ 2 * k + 3 ];
+				const c = ( k * nT + i ) * 8;
+				col[ c ] = col[ c + 4 ] = lineColor.r;
+				col[ c + 1 ] = col[ c + 5 ] = lineColor.g;
+				col[ c + 2 ] = col[ c + 6 ] = lineColor.b;
 
 			}
 
-		} );
-		writeSegments( contourGeometry, segments );
+		}
+
+		contourGeometry.setAttribute( 'position', new Float32BufferAttribute( pos, 3 ) );
+		const colorAttribute = new Float32BufferAttribute( col, 4 );
+		colorAttribute.setUsage( DynamicDrawUsage );
+		contourGeometry.setAttribute( 'color', colorAttribute );
+		contourGeometry.computeBoundingSphere();
+		contourGeometry.setDrawRange( 0, 0 );
+		contourState.s0 = NaN;
+		contourState.kA = contourState.kB = 0;
 
 		rideEntries = rideTicks.values.map( ( v, level ) => {
 
@@ -647,6 +792,7 @@ export function createScale( ctx ) {
 		leaderGeometry.setAttribute( 'position', new Float32BufferAttribute( new Float32Array( Math.max( 1, axisEntries.length ) * 3 * 2 * 3 ), 3 ) );
 		layout = null;
 		layoutKey = '';
+		needSettle = true;
 
 	}
 
@@ -657,19 +803,23 @@ export function createScale( ctx ) {
 		valueTextures.clear();
 		buildRide();
 		buildWall( wallCompact ?? false );
+		needSettle = true;
 
 	}
 
 	// ---- 俯瞰の構図に足す点（壁と、値ラベルの列） ----
 	let extrasKey = '';
 	let extrasTries = 0;
+	let needSettle = true;
 	let lastExtras = null;
+	/** 構図に足す点を view に渡す。前回とほぼ同じ（0.5 未満の差）なら渡さない。戻り値：渡したか。 */
 	function setExtras( points ) {
 
 		const prev = lastExtras;
-		if ( prev && prev.length === points.length && prev.every( ( p, i ) => Math.hypot( p.x - points[ i ].x, p.y - points[ i ].y, p.z - points[ i ].z ) < 0.5 ) ) return;
+		if ( prev && prev.length === points.length && prev.every( ( p, i ) => Math.hypot( p.x - points[ i ].x, p.y - points[ i ].y, p.z - points[ i ].z ) < 0.5 ) ) return false;
 		lastExtras = points;
 		ctx.view?.setOverviewExtras?.( 'scale', points );
+		return true;
 
 	}
 
@@ -709,6 +859,12 @@ export function createScale( ctx ) {
 		currentView = next;
 		board.hud.invalidate();
 		layoutKey = '';
+		if ( next === 'overview' ) {
+
+			needSettle = true;
+			extrasTries = 0;
+
+		}
 
 	}
 
@@ -719,16 +875,19 @@ export function createScale( ctx ) {
 	const worldPosition = new Vector3();
 	const ndc = new Vector3();
 
+	// 投影に使うカメラ。ふだんは camera。俯瞰に入る前に構図を見積もるときだけ、俯瞰の構図のカメラ（overviewCamera）
+	let projCam = camera;
+
 	function toScreen( x, y, z, width, height ) {
 
-		ndc.set( x, y, z ).project( camera );
+		ndc.set( x, y, z ).project( projCam );
 		return { x: ( ndc.x + 1 ) / 2 * width, y: ( 1 - ndc.y ) / 2 * height, z: ndc.z };
 
 	}
 
 	function toWorld( sx, sy, ndcZ, width, height, target ) {
 
-		return target.set( sx / width * 2 - 1, 1 - sy / height * 2, ndcZ ).unproject( camera );
+		return target.set( sx / width * 2 - 1, 1 - sy / height * 2, ndcZ ).unproject( projCam );
 
 	}
 
@@ -745,18 +904,64 @@ export function createScale( ctx ) {
 
 	// ---- 俯瞰の配置 ----
 
-	function computeOverview( width, height, compact, hud ) {
+	// 螺旋のレールの上端の点（'above' の列の下端を、螺旋より上にするため。弧長およそ 2 ごと）
+	const silhouette = ( () => {
+
+		const n = Math.max( 64, Math.ceil( curve.totalLength / 2 ) );
+		const pts = new Float32Array( ( n + 1 ) * 3 );
+		for ( let i = 0; i <= n; i ++ ) {
+
+			const p = curve.getPointAt( curve.progressAtArcFraction( i / n ) );
+			pts[ 3 * i ] = p.x;
+			pts[ 3 * i + 1 ] = p.y;
+			pts[ 3 * i + 2 ] = p.z;
+
+		}
+
+		return pts;
+
+	} )();
+
+	/** 画面の x0..x1 の範囲にある螺旋（レールの上端）のうち、いちばん上の画面の y から clearPx 上（範囲に無ければ Infinity）。 */
+	function ceilingOver( x0, x1, width, height ) {
+
+		let top = Infinity;
+		for ( let i = 0; i < silhouette.length; i += 3 ) {
+
+			const q = toScreen( silhouette[ i ], silhouette[ i + 1 ], silhouette[ i + 2 ], width, height );
+			if ( q.x >= x0 - A.above.clearPx && q.x <= x1 + A.above.clearPx && q.y < top ) top = q.y;
+
+		}
+
+		return top - A.above.clearPx;
+
+	}
+
+	function computeOverview( width, height, compact, hud, axisMode = 'side' ) {
 
 		const viewport = { width, height };
 		const pillPx = ( compact ? CONTOUR.textPx.overviewCompact : CONTOUR.textPx.overview ) * CONTOUR.label.pillHeight / CONTOUR.label.fontPx;
 		const outer = wallInfo.outer;
 
-		// 値ラベルの軸（HUD を避ける）
+		// 値ラベルの軸（HUD を避ける）。'side' は螺旋の左の外、'above' は壁の外側の端の上
 		const anchors = axisEntries.map( ( a ) => toScreen( outer.x, a.y, outer.z, width, height ) );
 		const widths = axisEntries.map( ( a ) => pillPx * a.aspect );
-		const leaderPx = compact ? A.leaderPxCompact : A.leaderPx;
-		const column = layoutAxisColumn( anchors, widths, { pillPx, leaderPx, viewport, hard: hud } );
-		const dots = leaderDots( anchors, column.spread, column.edge );
+		let column;
+		let leaderLines;
+		if ( axisMode === 'above' ) {
+
+			column = layoutAxisAbove( anchors, widths, { pillPx, viewport, hard: hud, ceiling: ( x0, x1 ) => ceilingOver( x0, x1, width, height ) } );
+			leaderLines = column.leaders;
+
+		} else {
+
+			const leaderPx = compact ? A.leaderPxCompact : A.leaderPx;
+			column = layoutAxisColumn( anchors, widths, { pillPx, leaderPx, viewport, hard: hud } );
+			leaderLines = anchors.map( ( a, k ) => leaderPolyline( a, column.spread[ k ], column.edge ) );
+
+		}
+
+		const dots = polylineDots( leaderLines );
 
 		// 年代のラベル（HUD と軸を避ける。重なるときは古いものから隠す）
 		const textPx = compact ? D.textPxCompact : D.textPx;
@@ -775,7 +980,7 @@ export function createScale( ctx ) {
 			} ) ),
 			{ obstacles: [ ...hud, ...column.rects, ...dots ], viewport, margin: CONTOUR.declutter.margin }
 		);
-		return { anchors, column, dots, compact, pillPx, items, decade: { mode: arranged.mode, placed } };
+		return { anchors, column, leaderLines, dots, compact, axisMode, pillPx, items, decade: { mode: arranged.mode, placed } };
 
 	}
 
@@ -794,7 +999,7 @@ export function createScale( ctx ) {
 
 		lay.anchors.forEach( ( a, k ) => {
 
-			const line = leaderPolyline( a, lay.column.spread[ k ], lay.column.edge );
+			const line = lay.leaderLines[ k ];
 			for ( let j = 0; j < line.length - 1; j ++ ) {
 
 				put( toWorld( line[ j ].x, line[ j ].y, a.z, width, height, p ) );
@@ -826,19 +1031,148 @@ export function createScale( ctx ) {
 
 		} );
 
-		// 俯瞰の構図に、壁とラベルの列の点を足す（ラベルが画面の左端で切れないように）。構図が変わるので、何度か直して収める
+		// 俯瞰の構図に、壁とラベルの列の点を足す（ラベルが画面の端で切れないように）。構図が変わるので、何度か直して収める
 		if ( extrasTries < 4 && lay.anchors.length ) {
 
 			extrasTries ++;
-			const left = lay.column.desiredLeft - A.extraPadPx;
-			const top = lay.anchors[ lay.anchors.length - 1 ];
-			const bottom = lay.anchors[ 0 ];
-			const spread = lay.column.spread;
-			const pTop = toWorld( left, Math.min( top.y, spread[ spread.length - 1 ] - lay.pillPx / 2 ), top.z, width, height, new Vector3() );
-			const pBottom = toWorld( left, Math.max( bottom.y, spread[ 0 ] + lay.pillPx / 2 ), bottom.z, width, height, new Vector3() );
-			setExtras( [ ...wallPoints(), { x: pTop.x, y: pTop.y, z: pTop.z }, { x: pBottom.x, y: pBottom.y, z: pBottom.z } ] );
+			setExtras( extrasFromLayout( lay, width, height ) );
 
 		}
+
+	}
+
+	/** 配置 lay（投影は projCam）から、俯瞰の構図に足す点：壁と、ラベルの列の外側の角（余白 extraPadPx）。 */
+	function extrasFromLayout( lay, width, height ) {
+
+		const pad = A.extraPadPx;
+		const top = lay.anchors[ lay.anchors.length - 1 ];
+		const bottom = lay.anchors[ 0 ];
+		const spread = lay.column.spread;
+		const highest = spread[ spread.length - 1 ] - lay.pillPx / 2 - pad;
+		const at = ( x, y, z ) => {
+
+			const p = toWorld( x, y, z, width, height, new Vector3() );
+			return { x: p.x, y: p.y, z: p.z };
+
+		};
+
+		if ( lay.axisMode === 'above' ) {
+
+			return [ ...wallPoints(), at( lay.column.left - A.above.stubPx - pad, highest, top.z ), at( lay.column.right + pad, highest, top.z ) ];
+
+		}
+
+		const left = lay.column.desiredLeft - pad;
+		return [
+			...wallPoints(),
+			at( left, Math.min( top.y, highest + pad ), top.z ),
+			at( left, Math.max( bottom.y, spread[ 0 ] + lay.pillPx / 2 ), bottom.z )
+		];
+
+	}
+
+	// 俯瞰の構図のカメラ（view.overviewFit から。俯瞰に入る前に、ラベルの列の位置を見積もるため）
+	const overviewCam = new PerspectiveCamera( 50, 1, 0.1, 5000 );
+	function overviewCamera( width, height ) {
+
+		const fit = ctx.view?.overviewFit;
+		if ( ! fit ) return null;
+		overviewCam.fov = overviewFov( width / height );
+		overviewCam.aspect = width / height;
+		overviewCam.updateProjectionMatrix();
+		overviewCam.position.set( fit.position.x, fit.position.y, fit.position.z );
+		overviewCam.lookAt( fit.target.x, fit.target.y, fit.target.z );
+		overviewCam.updateMatrixWorld();
+		return overviewCam;
+
+	}
+
+	/**
+	 * 俯瞰の構図に足す点を、俯瞰の構図のカメラで見積もって収める（画面の大きさ・軸の置き方・書式・視点が変わったとき）。
+	 * 構図は足す点で変わるので、変わらなくなるまで（最大 maxRounds 回）繰り返す。
+	 */
+	function settleExtras( width, height, compact, axisMode, hud, maxRounds = 5 ) {
+
+		if ( ! axisEntries.length || typeof ctx.view?.setOverviewExtras !== 'function' ) return;
+		for ( let i = 0; i < maxRounds; i ++ ) {
+
+			const cam = overviewCamera( width, height );
+			if ( ! cam ) return;
+			projCam = cam;
+			let points;
+			try {
+
+				points = extrasFromLayout( computeOverview( width, height, compact, hud, axisMode ), width, height );
+
+			} finally {
+
+				projCam = camera;
+
+			}
+
+			if ( ! setExtras( points ) ) return;
+
+		}
+
+	}
+
+	// ---- 一人称の等高線の範囲 ----
+
+	let win = { s0: 0, ahead: CONTOUR.window.ahead, behind: CONTOUR.window.behind };
+
+	/** いまの位置の近くの区間だけを描き、その頂点の alpha を、範囲の端に向かって薄くなるように書き換える。 */
+	function updateContourWindow() {
+
+		const CW = CONTOUR.window;
+		const st = contourState;
+		const value = Number.isFinite( win.value ) ? win.value : NaN;
+		if ( Math.abs( win.s0 - st.s0 ) < CW.minStep && Math.abs( win.ahead - st.ahead ) < CW.minStep
+			&& ( value === st.value || Math.abs( value - st.value ) < rideTicks.step * 0.01 ) ) return;
+		const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+		const nT = rideYs.length;
+		const segs = contourPath.count - 1;
+		const sp = contourPath.spacing;
+		const kA = MathUtils.clamp( Math.floor( ( win.s0 - win.behind ) / sp ), 0, segs );
+		const kB = MathUtils.clamp( Math.ceil( ( win.s0 + win.ahead ) / sp ), kA, segs );
+		const attribute = contourGeometry.attributes.color;
+		const col = attribute.array;
+		const base = contourBase.map( ( b, i ) => b * contourLevelWeight( rideTicks.values[ i ], value, rideTicks.step ) );
+		for ( let k = kA; k < kB; k ++ ) {
+
+			const fa = contourFade( k * sp - win.s0, win.ahead, win.behind );
+			const fb = contourFade( ( k + 1 ) * sp - win.s0, win.ahead, win.behind );
+			for ( let i = 0; i < nT; i ++ ) {
+
+				const c = ( k * nT + i ) * 8;
+				col[ c + 3 ] = base[ i ] * fa;
+				col[ c + 7 ] = base[ i ] * fb;
+
+			}
+
+		}
+
+		attribute.clearUpdateRanges();
+		if ( kB > kA ) attribute.addUpdateRange( kA * nT * 8, ( kB - kA ) * nT * 8 );
+		attribute.needsUpdate = true;
+		contourGeometry.setDrawRange( kA * nT * 2, ( kB - kA ) * nT * 2 );
+		st.s0 = win.s0;
+		st.value = value;
+		st.ahead = win.ahead;
+		st.behind = win.behind;
+		st.kA = kA;
+		st.kB = kB;
+		st.stats.vertices = ( kB - kA ) * nT * 2;
+		st.stats.floats = ( kB - kA ) * nT * 8;
+		st.stats.ms = ( typeof performance !== 'undefined' ? performance.now() : 0 ) - t0;
+		st.stats.frames ++;
+
+	}
+
+	/** 一人称の値ラベルの候補 k（labelPath の点）が、等高線を出している前方の範囲の中か。 */
+	function inLabelReach( k ) {
+
+		const d = k * labelPath.spacing - win.s0;
+		return d >= 0 && d <= win.ahead * CONTOUR.window.labelReach;
 
 	}
 
@@ -848,6 +1182,7 @@ export function createScale( ctx ) {
 	function evaluateRideSample( e, k, width, height, placed ) {
 
 		const R = CONTOUR.ride;
+		if ( ! inLabelReach( k ) ) return null;
 		const xz = labelPath.xz;
 		worldPosition.set( xz[ 2 * k ], e.y, xz[ 2 * k + 1 ] );
 		const d = worldPosition.distanceTo( cameraPosition );
@@ -888,14 +1223,9 @@ export function createScale( ctx ) {
 
 		const value = state.point?.close;
 		const wanted = Number.isFinite( value ) ? bracketLevels( value ) : new Set();
-		const R = CONTOUR.ride;
-		const s0 = curve.arcFractionAt( state.progress ) * curve.totalLength;
-		const k0 = Math.max( 0, Math.floor( ( s0 - R.behind ) / labelPath.spacing ) );
-		const k1 = Math.min( labelPath.count - 1, Math.ceil( ( s0 + R.aheadMax ) / labelPath.spacing ) );
-		// 隣の周まで：その位置の 1 周の長さ（2πr）の 1.2 倍の前後
-		const lap = 2 * Math.PI * ( curve.radiusAt( state.progress ) + curve.turnGap ) * 1.2;
-		const wideK0 = Math.max( 0, Math.floor( ( s0 - lap ) / labelPath.spacing ) );
-		const wideK1 = Math.min( labelPath.count - 1, Math.ceil( ( s0 + lap ) / labelPath.spacing ) );
+		// 候補は、等高線を出している前方の範囲（隣の周には置かない。線の無いところに値ラベルだけ浮かないように）
+		const k0 = Math.max( 0, Math.ceil( win.s0 / labelPath.spacing ) );
+		const k1 = Math.min( labelPath.count - 1, Math.floor( ( win.s0 + win.ahead * CONTOUR.window.labelReach ) / labelPath.spacing ) );
 		const placed = [];
 		for ( const e of rideEntries ) {
 
@@ -922,7 +1252,7 @@ export function createScale( ctx ) {
 
 			}
 
-			// 前方のいまの周の上から選ぶ。置けなければ、隣の周（内側・外側）の上も探す（maxDistance の内側）
+			// 前方のいまの周の上から選ぶ
 			let best = null;
 			let bestIndex = - 1;
 			const search = ( from, to, step ) => {
@@ -942,7 +1272,6 @@ export function createScale( ctx ) {
 			};
 
 			search( k0, k1, 1 );
-			if ( ! best ) search( wideK0, wideK1, 2 );
 
 			e.anchor = bestIndex;
 			e.pending = false;
@@ -976,7 +1305,9 @@ export function createScale( ctx ) {
 			const h = labelWorldHeight( { distance: depth, fovDeg: camera.fov, viewportHeight: height, textPx } );
 			e.sprite.scale.set( h * e.aspect, h, 1 );
 			const d = worldPosition.distanceTo( cameraPosition );
-			e.near = MathUtils.smoothstep( d, R.minDistance * 0.6, R.minDistance );
+			// 近すぎるときと、等高線が薄くなる範囲の端では、線と一緒に薄くする
+			e.near = MathUtils.smoothstep( d, R.minDistance * 0.6, R.minDistance )
+				* contourFade( e.anchor * labelPath.spacing - win.s0, win.ahead, win.behind );
 			const pxPerWorld = height / ( 2 * depth * tanHalf );
 			e.rect = { x: width / 2 + viewPosition.x * pxPerWorld, y: height / 2 - viewPosition.y * pxPerWorld, w: h * e.aspect * pxPerWorld, h: h * pxPerWorld };
 			e.textPx = textPx;
@@ -1040,11 +1371,13 @@ export function createScale( ctx ) {
 		const compact = isCompactViewport( width, height );
 		if ( compact !== wallCompact ) buildWall( compact );
 
+		const axisMode = axisModeFor( width, height );
 		const sizeKey = `${width}x${height}`;
 		if ( sizeKey !== extrasKey ) {
 
 			extrasKey = sizeKey;
 			extrasTries = 0;
+			needSettle = true;
 
 		}
 
@@ -1054,10 +1387,21 @@ export function createScale( ctx ) {
 		// HUD のパネル（キャプションを含む）。読み直しは 400ms ごと（labels.js の createHudReader。年ラベルと共有）
 		obstacles = board.hud.read( nowMs, sizeKey );
 
-		// 一人称の等高線：俯瞰へ向かうと薄くする
+		// 俯瞰の構図に足す点を、俯瞰に入る前（画面の大きさ・書式が変わったとき、俯瞰へ切り替えた直後）に収めておく
+		if ( needSettle ) {
+
+			needSettle = false;
+			settleExtras( width, height, compact, axisMode, obstacles );
+
+		}
+
+		// 一人称の等高線：いまの位置の近くだけ。俯瞰へ向かうと薄くする
 		const rideK = 1 - MathUtils.smoothstep( blend, CONTOUR.rideFade.hideFrom, CONTOUR.rideFade.hideTo );
 		contourMaterial.opacity = rideK;
 		contours.visible = rideK > 0.01;
+		win = contourWindow( curve, Number.isFinite( state.progress ) ? state.progress : 0 );
+		win.value = state.point?.close;
+		if ( contours.visible ) updateContourWindow();
 
 		// 一人称の値ラベルと年代のラベル
 		for ( const e of rideEntries ) e.wanted = false;
@@ -1085,7 +1429,7 @@ export function createScale( ctx ) {
 			if ( key !== layoutKey || ! layout ) {
 
 				layoutKey = key;
-				layout = computeOverview( width, height, compact, obstacles );
+				layout = computeOverview( width, height, compact, obstacles, axisMode );
 				applyOverview( layout, width, height );
 				decadeLayout = layout.decade;
 
@@ -1177,6 +1521,8 @@ export function createScale( ctx ) {
 				ride: { visible: e.ride.sprite.visible, rect: e.ride.rect }
 			} ) ),
 			decadeMode: decadeLayout?.mode ?? null,
+			axisMode: layout?.axisMode ?? null,
+			contour: { kA: contourState.kA, kB: contourState.kB, s0: contourState.s0, ahead: contourState.ahead, segments: contourState.kB - contourState.kA, drawCount: contourGeometry.drawRange.count, ...contourState.stats },
 			extras: lastExtras,
 			board: board.snapshot()
 		};

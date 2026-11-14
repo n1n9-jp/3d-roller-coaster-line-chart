@@ -32,6 +32,8 @@ export const DATASETS = {
 		group: false,
 		step: 50,
 		stepCompact: 100,
+		// 3D の等高線で強く描く線の間隔（100円・200円・300円）
+		strongEvery: 100,
 		statLabels: { max: '最高値（最も円安）', min: '最安値（最も円高）' },
 		changeMode: 'yen-fx',
 		chips: [ '高さ＝1ドルの円の値段', '高いほど円安' ],
@@ -50,6 +52,8 @@ export const DATASETS = {
 		group: false,
 		step: 1,
 		stepCompact: 2,
+		// 強く描く線は 0% の線だけ（0 の線は、どのデータでも範囲にあれば強く描く。scale.js）
+		strongEvery: null,
 		statLabels: { max: '最も高い金利', min: '最も低い金利' },
 		changeMode: 'point',
 		chips: [ '高さ＝10年国債の金利', '長期金利の代表的な指標' ],
@@ -68,6 +72,8 @@ export const DATASETS = {
 		group: true,
 		step: 10000,
 		stepCompact: 20000,
+		// 5万円の線を強く描く
+		strongEvery: 50000,
 		statLabels: { max: '最高値', min: '最安値' },
 		changeMode: 'percent',
 		chips: [ '高さ＝株価（週次終値）', '手元で取得したデータ' ],
@@ -267,7 +273,9 @@ export const SCENE = {
 	//   2. 点の投影の凸包が、HUD のパネルの矩形（gapPx 広げたもの）と重ならない範囲で、最も大きくなる大きさと位置を探す。
 	//      螺旋はほぼ楕円に写るので、四隅のパネル（ミニグラフ・螺旋の図）の脇まで広げられる。
 	//   HUD の矩形は、実行時に DOM（hudSelectors の要素の getBoundingClientRect）から読む。キャプション（captionSelector）は
-	//   実データ（dataset.meta.kind === 'real'。出来事の注釈が出る）のときだけ、スロットの端から高さ captionReservePx を確保する。
+	//   そのデータに出来事の注釈があるとき（'eventsready' の件数が 1 以上）だけ、スロットの端から高さ captionReservePx を確保する。
+	//   キャプションは出来事を通るときだけ出るので、構図はそれを避けるが、縦の位置は「キャプションを除いた HUD の間の空き」の
+	//   中央に寄せる（fitOverview の softObstacles）。
 	//   DOM が無いとき（テスト）は hudFallback（hud.css・readout.css・annotations.css の値。safe-area は 0）。
 	//   モードは hud.css と同じ：short（高さ 520 以下かつ横長）／ narrow（幅 720 以下）／ medium（721〜1023。M）／ wide（L）。
 	// 仰角：40° / 48° / 55° を、56 年分（5.6 周）と 37 年分（3.7 周）で見比べて決めた。
@@ -295,8 +303,8 @@ export const SCENE = {
 			hudSelectors: [ '#hud-readout', '#hud-readout .ro-badge', '#hud-legend', '#hud-controls', '#hud-chart', '#hud-map' ],
 			captionSelector: '#hud-caption',
 			captionReservePx: 100,
-			// DOM が無いときの HUD の矩形（CSS の配置と同じ書き方）。common はどのデータでも、sample はサンプルのバッジと凡例、
-			// real は実データの凡例、caption は実データのキャプション（高さ captionReservePx。width・height の関数でもよい）
+			// DOM が無いときの HUD の矩形（CSS の配置と同じ書き方）。common はどのデータでも、legend は凡例、
+			// caption は出来事のキャプション（注釈があるデータだけ。高さ captionReservePx。width・height の関数でもよい）
 			hudFallback: {
 				wide: {
 					common: [
@@ -305,8 +313,7 @@ export const SCENE = {
 						{ left: 24, bottom: 24, width: 320, height: 188 }, // ミニグラフ
 						{ right: 24, bottom: 24, width: 224, height: 280 } // 螺旋の図（正方形の図 192 を含むパネルの見込み）
 					],
-					sample: [ { left: 24, top: 116, width: 300, height: 24 }, { left: 24, top: 148, width: 240, height: 28 } ],
-					real: [ { left: 24, top: 116, width: 240, height: 28 } ],
+					legend: [ { left: 24, top: 116, width: 240, height: 28 } ],
 					caption: ( w ) => {
 
 						const cw = Math.min( 560, Math.max( 320, w - 736 ) );
@@ -321,8 +328,7 @@ export const SCENE = {
 						{ left: 24, bottom: 24, width: 280, height: 168 },
 						{ right: 24, bottom: 24, width: 200, height: 244 }
 					],
-					sample: [ { left: 24, top: 116, width: 300, height: 24 }, { left: 24, top: 148, width: 240, height: 28 } ],
-					real: [ { left: 24, top: 116, width: 240, height: 28 } ],
+					legend: [ { left: 24, top: 116, width: 240, height: 28 } ],
 					// 俯瞰のあいだは凡例の下（annotations.css）
 					caption: ( w ) => ( { left: 24, top: 152, width: Math.min( 560, w - 48 ), height: 100 } )
 				},
@@ -333,8 +339,7 @@ export const SCENE = {
 						{ left: 12, right: 140, bottom: 68, height: 128 },
 						{ right: 12, bottom: 68, width: 120, height: 128 }
 					],
-					sample: [ { left: 12, top: 90, width: 230, height: 22 }, { left: 12, top: 118, width: 215, height: 20 } ],
-					real: [ { left: 12, top: 90, width: 215, height: 20 } ],
+					legend: [ { left: 12, top: 90, width: 215, height: 20 } ],
 					caption: { left: 12, right: 12, bottom: 204, height: 100 }
 				},
 				short: {
@@ -344,8 +349,7 @@ export const SCENE = {
 						{ left: 24, bottom: 24, width: 220, height: 112 },
 						{ right: 24, bottom: 24, width: 104, height: 112 }
 					],
-					sample: [ { left: 391, top: 40, width: 110, height: 24 }, { left: 24, top: 88, width: 240, height: 28 } ],
-					real: [ { left: 24, top: 88, width: 240, height: 28 } ],
+					legend: [ { left: 24, top: 88, width: 240, height: 28 } ],
 					// 俯瞰のあいだは左の列（凡例の下）
 					caption: { left: 24, top: 124, width: 220, height: 100 }
 				}
@@ -397,11 +401,20 @@ export const RAIL = {
 // 刻みはデータの書式（ctx.dataset.format.ticks）が決める。色は PALETTE（contour、decadeSpoke）と
 // HUD_COLORS（contourLabel、contourLabelBg、decadeLabelBg）。
 export const CONTOUR = {
-	// 一人称の等高線：螺旋の中心線を外側（半径が増える向き）へ offset ずらした線を、各刻みの高さに全長 1 本ずつ。
-	// 弧長 segment ごとの折れ線。strong の線（日経平均の 5 万円など。書式の strongEvery）だけ少し強くする
+	// 一人称の等高線：螺旋の中心線を外側（半径が増える向き）へ offset ずらした線を、各刻みの高さに引く。
+	// 弧長 segment ごとの折れ線。strong の線（書式の strongEvery の倍数。ドル円 100 円ごと、日経平均 5 万円ごと）と
+	// 0 の線（範囲にあるとき。金利）だけ少し強くする
 	offset: 1.5,
 	segment: 1.5,
-	line: { opacity: 0.55, strongOpacity: 0.85 },
+	// 近くの線だけを出すので、全長に引いていたとき（0.55・0.85）より濃くする
+	line: { opacity: 0.8, strongOpacity: 1 },
+	// 等高線は、いまの位置の近くだけに出す（隣の周・その先の周の線は出さない）：弧長で前方 ahead、後方 behind。
+	// 前方は、その位置の 1 周の長さ（2πr）の lapFraction までに縮める（内側の小さな周で、線が回り込んで視界を横切らないように）。
+	// 前方の fadeFrom（ahead に対する割合）から先と、後方は、端に向かって薄くする。前方の値ラベルは ahead の labelReach まで。
+	// 毎フレーム、範囲の分の頂点の alpha だけを書き換え、描画範囲（drawRange）を動かす（移動が minStep 未満なら書き換えない）
+	// 刻みの向き：いまの値から levelFull 刻みより離れた線は、1 刻みごとに levelPer ずつ薄くする（levelMin まで）。
+	// 頭上の高い線や足元の低い線が、空や床を何本も横切らないように（いまの値を挟む線と、その隣がはっきり見える）
+	window: { ahead: 60, behind: 6, lapFraction: 0.4, fadeFrom: 0.45, labelReach: 0.7, minStep: 0.05, levelFull: 1.2, levelPer: 0.35, levelMin: 0.25 },
 	// 等高線は一人称だけ：視点の補間 blend が hideFrom..hideTo で 1 → 0 に薄くなる
 	rideFade: { hideFrom: 0, hideTo: 0.5 },
 	// 値ラベル（Sprite）：テクスチャは値ごとに 1 枚。fontPx は pillHeight に対する文字の大きさ（画面上の文字の高さの基準）
@@ -420,12 +433,12 @@ export const CONTOUR = {
 	compactMaxWidth: 720,
 	compactMaxHeight: 520,
 	// 一人称の値ラベル：いまの値を挟む上下の等高線に 1 つずつ。置き場所の候補は、ラベルの線（等高線のさらに外）の上を
-	// 弧長 sampleSpacing ごとに取った点のうち、いまの位置から前方 aheadMax まで（後ろは behind まで）。
+	// 弧長 sampleSpacing ごとに取った点のうち、いまの位置から前方、等高線を出す範囲（window）の labelReach まで。
 	// カメラから minDistance より近い場所、maxDistance より遠い場所、画面の端から insetPx 以内は使わない。
 	// 文字の高さは、距離によらず minTextPx〜maxTextPx に収める。奥行き idealDepth に近く、画面の中央に近い（centerWeight）ほど良い
 	ride: {
 		minTextPx: 10, maxTextPx: 18, minDistance: 7, maxDistance: 70, idealDepth: 24, centerWeight: 10, insetPx: 8,
-		sampleSpacing: 2, aheadMax: 110, behind: 10
+		sampleSpacing: 2
 	},
 	// 俯瞰の目盛りの壁：西（angleDeg 270。上から見て時計回りの角度、北 = 0）のスポーク上に、
 	// 半径 innerRadius − innerInset から 外径 + outerInset まで。高さは横線のいちばん下から上まで。
@@ -454,7 +467,12 @@ export const CONTOUR = {
 		shiftPx: 12, shiftSteps: 20,
 		leaderOpacity: 0.9,
 		// 俯瞰の構図（view.setOverviewExtras）に足す、ラベルの列の外側の余白（px）
-		extraPadPx: 10
+		extraPadPx: 10,
+		// 縦長の狭い画面（幅 compactMaxWidth 以下で縦長）：列を螺旋の左の外に置くと、その分だけ螺旋が小さくなるので、
+		// 列を壁の外側の端の上（螺旋の外周より上の、空いている左上）に置き、下から上へ並べる。列の左端は壁の端から fanPx 右。
+		// 引き出し線は、壁の端から斜めに上がり、ラベルの手前 stubPx を横に入る。列の下端は、その幅の範囲の螺旋（レールの上端）
+		// より clearPx 上、かつ壁の最上段より liftPx 上
+		above: { fanPx: 16, stubPx: 6, clearPx: 10, liftPx: 6 }
 	},
 	// 年代のスポーク（北へ延びる床の上の細い線）：中心から 外径 + spokeExtra まで、床の上 y
 	spoke: { y: 0.06, extra: 6, opacity: 0.7 },

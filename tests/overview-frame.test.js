@@ -12,7 +12,7 @@ import { Scene, PerspectiveCamera, Object3D, Vector3 } from '../assets/js/three.
 import { SCENE } from '../assets/js/config.js';
 import { readJson, series1990 } from './helpers.js';
 
-// 5.6 周（ドル円 1971 年〜）、4 周（10 年国債 1986 年〜）、3.6 周（サンプル）、手元にあれば日経平均（3.7 周）
+// 5.6 周（ドル円 1971 年〜）、4 周（10 年国債 1986 年〜）、3.6 周（1990 年始まり）、手元にあれば日経平均（3.7 周）
 const DATA = [
 	[ 'ドル円', readJson( 'data/usdjpy.json' ) ],
 	[ '国債10年', readJson( 'data/jgb10.json' ) ],
@@ -67,12 +67,12 @@ function boxOf( pts ) {
 
 }
 
-function fitFor( points, width, height, kind ) {
+function fitFor( points, width, height, caption ) {
 
 	const mode = overviewMode( width, height );
 	const frame = overviewFrame( mode );
 	const fovDeg = overviewFov( width / height );
-	const obstacles = overviewHudRects( mode, width, height, kind );
+	const obstacles = overviewHudRects( mode, width, height, { caption } );
 	const fit = fitOverview( points, { width, height, fovDeg, ...frame, obstacles } );
 	return { fit, frame, fovDeg, obstacles, mode };
 
@@ -95,15 +95,17 @@ test( '俯瞰の枠：モードごとの余白・上限・仰角', () => {
 
 } );
 
-test( 'HUD の既定の矩形：画面の中に収まり、実データではキャプションの分が増える', () => {
+test( 'HUD の既定の矩形：画面の中に収まり、出来事の注釈があるデータではキャプションの分（soft）が増える', () => {
 
 	for ( const [ w, h ] of SIZES ) {
 
 		const mode = overviewMode( w, h );
-		const sample = overviewHudRects( mode, w, h, 'sample' );
-		const real = overviewHudRects( mode, w, h, 'real' );
-		assert.equal( real.length, sample.length, mode ); // サンプルはバッジ + 凡例、実データは凡例 + キャプション
-		for ( const r of [ ...sample, ...real ] ) {
+		const plain = overviewHudRects( mode, w, h );
+		const withCaption = overviewHudRects( mode, w, h, { caption: true } );
+		assert.equal( withCaption.length, plain.length + 1, mode );
+		assert.ok( plain.every( ( r ) => ! r.soft ), mode );
+		assert.equal( withCaption[ withCaption.length - 1 ].soft, true, mode );
+		for ( const r of [ ...plain, ...withCaption ] ) {
 
 			assert.ok( r.left >= 0 && r.top >= 0 && r.right <= w && r.bottom <= h && r.right > r.left && r.bottom > r.top, `${mode} ${JSON.stringify( r )}` );
 
@@ -147,17 +149,57 @@ test( 'fitOverview：避ける矩形を渡すと、点の投影がどの矩形�
 
 } );
 
-test( '俯瞰の構図（4 つのモード × サンプル・実データ × 3〜4 データ）：螺旋と目盛りの壁が HUD と重ならず、画面の中に収まり、小さすぎない', () => {
+test( 'fitOverview：soft の矩形（キャプション）は避けるが、縦の位置は soft を除いた空きの中央に寄せる', () => {
+
+	const { points } = SPIRALS[ 1 ];
+	// 縦長の画面：上の帯、下のパネル、その上のキャプションの場所（soft）
+	const width = 390, height = 844, fovDeg = overviewFov( width / height );
+	const frame = overviewFrame( 'narrow' );
+	const hard = [ { left: 12, top: 12, right: 378, bottom: 110 }, { left: 12, top: 648, right: 378, bottom: 832 } ];
+	const caption = { left: 12, top: 540, right: 378, bottom: 640 };
+	const opts = { width, height, fovDeg, ...frame, gapPx: 10 };
+	const onlyHard = fitOverview( points, { ...opts, obstacles: hard } );
+	const asHard = fitOverview( points, { ...opts, obstacles: [ ...hard, caption ] } );
+	const asSoft = fitOverview( points, { ...opts, obstacles: [ ...hard, { ...caption, soft: true } ] } );
+	const center = ( f ) => ( f.screen.top + f.screen.bottom ) / 2;
+	// キャプションを避ける（下端はキャプションの上）
+	for ( const f of [ asHard, asSoft ] ) assert.ok( f.screen.bottom <= caption.top - 9, JSON.stringify( f.screen ) );
+	// soft なら、hard として扱うより、キャプションを除いた空き（110〜648）の中央（379）に近い
+	assert.ok( Math.abs( center( asSoft ) - 379 ) < Math.abs( center( asHard ) - 379 ) - 5, `${center( asSoft )} / ${center( asHard )}` );
+	assert.ok( Math.abs( center( onlyHard ) - 379 ) < 15, `${center( onlyHard )}` );
+	// 大きさは変わらない
+	assert.ok( Math.abs( asSoft.pxPerUnit / asHard.pxPerUnit - 1 ) < 0.02 );
+
+} );
+
+test( 'view：出来事の注釈の有無（eventsready の件数）で、キャプションの場所を避けるかが決まる', () => {
+
+	const handlers = {};
+	const events = { on: ( name, fn ) => ( handlers[ name ] = fn ), emit: () => {} };
+	const scene = new Scene();
+	const camera = new PerspectiveCamera( 50, 1440 / 900, 0.1, 2000 );
+	const view = createView( { scene, camera, train: new Object3D(), events } );
+	const base = view.overviewObstacles.length;
+	assert.ok( view.overviewObstacles.every( ( r ) => ! r.soft ), '届くまでは避けない' );
+	handlers.eventsready( { events: [] } );
+	assert.equal( view.overviewObstacles.length, base, '0 件なら避けない' );
+	handlers.eventsready( { events: [ { progress: 0.5 } ] } );
+	assert.equal( view.overviewObstacles.length, base + 1 );
+	assert.equal( view.overviewObstacles[ base ].soft, true );
+
+} );
+
+test( '俯瞰の構図（4 つのモード × キャプションの有無 × 3〜4 データ）：螺旋と目盛りの壁が HUD と重ならず、画面の中に収まり、小さすぎない', () => {
 
 	for ( const { name, points, outer, turns } of SPIRALS ) {
 
 		const extras = scaleWall( outer );
-		for ( const kind of [ 'real' ] ) {
+		for ( const caption of [ false, true ] ) {
 
 			for ( const [ w, h ] of SIZES ) {
 
-				const { fit, frame, fovDeg, obstacles, mode } = fitFor( points.concat( extras ), w, h, kind );
-				const label = `${name}（${turns.toFixed( 1 )} 周）${kind} ${w}x${h}（${mode}）`;
+				const { fit, frame, fovDeg, obstacles, mode } = fitFor( points.concat( extras ), w, h, caption );
+				const label = `${name}（${turns.toFixed( 1 )} 周）キャプション${caption ? 'あり' : 'なし'} ${w}x${h}（${mode}）`;
 				const project = projector( fit, w, h, fovDeg );
 				const all = points.concat( extras ).map( project );
 				for ( const q of all ) {
@@ -175,10 +217,10 @@ test( '俯瞰の構図（4 つのモード × サンプル・実データ × 3�
 				}
 
 				// 大きさの下限：螺旋（追加の点を除く）の外接矩形の長い辺が、画面の短い辺の 65% 以上。
-				// M の実データだけは、俯瞰のあいだキャプションが凡例の下（上から 152、幅 560 まで）に出て上の空きが狭いので 55%
+				// M のキャプションありだけは、俯瞰のあいだキャプションが凡例の下（上から 152、幅 560 まで）に出て上の空きが狭いので 55%
 				const box = boxOf( points.map( project ) );
 				const size = Math.max( box.right - box.left, box.bottom - box.top );
-				const minRatio = mode === 'medium' && kind === 'real' ? 0.55 : 0.65;
+				const minRatio = mode === 'medium' && caption ? 0.55 : 0.65;
 				assert.ok( size >= minRatio * Math.min( w, h ), `${label}: 螺旋 ${size.toFixed( 0 )}px` );
 				// 1 単位あたりの大きさ（構図の中心の奥行き）：デスクトップは 4.5 px 以上、縦長のスマートフォンでも 1.8 px 以上
 				const minPx = mode === 'wide' && w >= 1440 ? 4.5 : 1.8;
@@ -197,7 +239,7 @@ function makeView() {
 	const scene = new Scene();
 	const camera = new PerspectiveCamera( 50, 1440 / 900, 0.1, 2000 );
 	const train = new Object3D();
-	return createView( { scene, camera, train, kind: 'real' } );
+	return createView( { scene, camera, train } );
 
 }
 

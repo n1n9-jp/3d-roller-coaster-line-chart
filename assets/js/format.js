@@ -10,6 +10,7 @@
 //   format.change( 151.2, 150 )  → { text: '前週比 ▲1.20円安（+0.8%）', compactText: '▲1.20円安', direction: 'up' }
 //   format.overall( last, first ) → { text: '▼199.50円の円高（−55.8%）', direction: 'down' }（終了画面の「最初の週と比べて …」）
 //   format.ticks( min, max )     → { step, axisMin, axisMax, values, labelEvery, labelValues }
+//   format.strongEvery           → 100（3D の等高線で強く描く線の間隔。日経平均 50000、金利は null = 0 の線だけ）
 //
 // マイナスは U+2212「−」（ハイフンより幅が数字に近い）。四捨五入は表示の桁で行う。
 
@@ -91,7 +92,7 @@ function signed( value, decimals, group ) {
 
 /**
  * 書式の関数一式を作る。
- * def：{ unit, decimals, group, step, stepCompact?, changeMode }（config.js の DATASETS の 1 件）。
+ * def：{ unit, decimals, group, step, stepCompact?, strongEvery?, changeMode }（config.js の DATASETS の 1 件）。
  */
 export function createFormatter( def ) {
 
@@ -272,6 +273,7 @@ export function createFormatter( def ) {
 		changeMode,
 		step,
 		stepCompact,
+		strongEvery: def.strongEvery ?? null,
 		number,
 		value,
 		tick,
