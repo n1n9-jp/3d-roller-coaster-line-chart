@@ -177,11 +177,13 @@ test( '国債金利：最高、8%台、0.4%台と翌々月の急上昇、2%台�
 
 // ---- 日経平均のファイルに、指数の値を書かない ----
 
-test( 'data/events/nikkei.json：指数の値と思われる数値（4 桁以上の数字 + 円、カンマ区切り、終値の数値）を含まない', () => {
+test( 'data/events/nikkei.json：指数の水準を示す数値（4 桁以上の数字 + 円、カンマ区切り、「5万円台」のような数字 + 万円、終値の数値）を含まない', () => {
 
 	const text = JSON.stringify( readJson( 'data/events/nikkei.json' ) );
 	assert.doesNotMatch( text, /\d{4,}(?:\.\d+)?円/, '4 桁以上の数字に「円」が続く' );
 	assert.doesNotMatch( text, /\d{1,3},\d{3}/, 'カンマ区切りの数' );
+	assert.doesNotMatch( text, /[0-9０-９一二三四五六七八九十百千]+(?:\.\d+)?万/, '「5万円」「7万円台」のような、数字 + 万（指数の水準）' );
+	assert.doesNotMatch( text, /[0-9０-９]+(?:\.\d+)?億/, '数字 + 億' );
 	assert.doesNotMatch( text, /"(?:close|closeDate|value)"/, 'close / closeDate / value の項目' );
 	assert.doesNotMatch( text, /\d+(?:\.\d+)?%/, '日経平均の値動きの割合は書かない' );
 
@@ -190,6 +192,15 @@ test( 'data/events/nikkei.json：指数の値と思われる数値（4 桁以上
 		assert.doesNotMatch( e.title + e.note, /\d{5,}|\d{4}\.\d+/, e.date );
 
 	}
+
+} );
+
+test( '水準の検出：「5万円」「7万円台」の形（数字 + 万円）と、直す前の日経平均のファイルを見つける', () => {
+
+	// 上のテストと同じ正規表現。4 桁以上の数字 + 円、カンマ区切りだけでは、これらがすり抜けていた
+	const level = /[0-9０-９一二三四五六七八九十百千]+(?:\.\d+)?万/;
+	for ( const text of [ '初の5万円台', '終値が初めて5万円を超えた', '7万円台で終値の最高値', '6月18日に初の7万円台', '３万円台', '2.5万円', '五万円台' ] ) assert.match( text, level, text );
+	for ( const text of [ '節目の水準を初めて超える', '終値の最高値を更新', '万一の備え' ] ) assert.doesNotMatch( text, level, text );
 
 } );
 
@@ -202,3 +213,192 @@ test( 'data/events/*.json：ドル円と国債金利のファイルにも、日�
 	}
 
 } );
+
+// ---- 見出しと補足の主張（最安値・最高値・初めて・○年ぶり・○円台・○%台・○万円台など）が、そのデータの週の値で成り立つ ----
+//
+// キャプションの「当時 ○○」は、出来事の日付を含む週の、週の最終営業日の値。日次の最高値・最安値は、週の値では成り立たない。
+// 主張の言葉を含む出来事は、下の表に検証（check）か、データでは確かめられない理由（external）を書くまで、テストが落ちる。
+
+const CLAIM_WORDS = /最安値|最高値|最低|最高|最も|最大|初めて|初の|ぶり|以来|当時の|圏|\d+(?:\.\d+)?(?:〜\d+(?:\.\d+)?)?(?:円|%|万円)台/;
+
+const minRow = ( rows ) => rows.reduce( ( a, b ) => ( b.close < a.close ? b : a ) );
+const maxRow = ( rows ) => rows.reduce( ( a, b ) => ( b.close > a.close ? b : a ) );
+const inYear = ( series, year ) => series.filter( ( r ) => r.date.slice( 0, 4 ) === year );
+const upTo = ( series, row ) => series.slice( 0, row + 1 );
+/** 週の値が、その値より前の全部の週より（厳密に）高い（最高値の更新）。 */
+const isRecordHigh = ( series, row ) => series.slice( 0, row ).every( ( r ) => r.close < series[ row ].close );
+const isRecordLow = ( series, row ) => series.slice( 0, row ).every( ( r ) => r.close > series[ row ].close );
+const inRange = ( value, low, high ) => value >= low && value < high;
+
+const CLAIMS = {
+	usdjpy: {
+		'1994-06-29': { check: ( s, row ) => {
+
+			assert.equal( s.findIndex( ( r ) => r.close < 100 ), row, '週の値が初めて 100 円を割る週' );
+
+		} },
+		'1995-04-19': { check: ( s, row ) => {
+
+			assert.ok( inRange( s[ row ].close, 82, 85 ), '82〜84 円台' );
+			assert.equal( minRow( upTo( s, row ) ).close, s[ row ].close, 'それまででいちばん円高の週' );
+			const nineties = minRow( s.filter( ( r ) => r.date >= '1990' && r.date < '2000' ) );
+			assert.equal( nineties.date, '1995-05-22', '5 月の週が 1990 年代で最も円高' );
+
+		} },
+		'2011-10-28': { check: ( s, row ) => {
+
+			assert.equal( minRow( s ).date, s[ row ].date, 'この統計で最も円高な週' );
+			assert.ok( inRange( s[ row ].close, 75, 76 ), '75 円台' );
+
+		} },
+		'2022-09-22': { external: '介入の額と「1998年以来」は財務省の公表。週次データでは確かめられない' },
+		'2024-06-28': { check: ( s, row ) => {
+
+			assert.ok( inRange( s[ row ].close, 160, 161 ), '160 円台' );
+			assert.equal( s.filter( ( r ) => r.date < '2024-01-01' && r.close >= s[ row ].close ).at( - 1 ).date.slice( 0, 4 ), '1986', '1986 年以来' );
+
+		} },
+		'2026-07-24': { check: ( s, row ) => {
+
+			assert.ok( inRange( s[ row ].close, 163, 164 ), '163 円台' );
+			assert.equal( s.filter( ( r ) => r.date < '2024-01-01' && r.close >= s[ row ].close ).at( - 1 ).date.slice( 0, 4 ), '1986', '1986 年以来' );
+
+		} }
+	},
+	jgb10: {
+		'1990-09-28': { check: ( s, row ) => {
+
+			assert.equal( maxRow( s ).date, s[ row ].date, 'この統計の最高の週' );
+			assert.ok( inRange( s[ row ].close, 8, 9 ), '8% 台' );
+
+		} },
+		'2003-06-12': { check: ( s, row ) => {
+
+			assert.ok( inRange( s[ row ].close, 0.4, 0.5 ), '0.4% 台' );
+			assert.equal( minRow( upTo( s, row ) ).close, s[ row ].close, 'それまででいちばん低い週（当時の最低水準）' );
+			assert.ok( s.slice( row + 1 ).filter( ( r ) => r.date < '2003-11-01' ).some( ( r ) => inRange( r.close, 1.5, 1.6 ) ), '9 月ごろに 1.5% 台' );
+
+		} },
+		'2025-12-19': { check: ( s, row ) => {
+
+			assert.ok( inRange( s[ row ].close, 2, 3 ), '2% 台' );
+			assert.equal( s.filter( ( r, i ) => i < row && r.close >= 2 ).at( - 1 ).date.slice( 0, 4 ), '1999', '1999 年以来' );
+
+		} },
+		'2026-09-25': { check: ( s, row ) => {
+
+			assert.ok( inRange( s[ row ].close, 3, 4 ), '3% 台' );
+			assert.ok( s[ row - 1 ].close < 3, '3% 以上になった最初の週' );
+			assert.equal( s.filter( ( r, i ) => i < row && r.close >= 3 ).at( - 1 ).date.slice( 0, 4 ), '1996', '約 30 年ぶり（最後に 3% 以上だったのは 1996 年）' );
+
+		} }
+	},
+	nikkei: {
+		'1990-01-04': { external: '前年末（1989 年）の最高値は、データの期間（1990 年〜）の前で、確かめられない', check: ( s, row ) => {
+
+			assert.equal( row, 0, 'データの最初の週（前年末の直後）' );
+			assert.ok( minRow( inYear( s, '1990' ) ).close < s[ row ].close * 0.8, '1990 年は大きく下落した' );
+
+		} },
+		'1992-08-14': { external: '日次の終値の最安値（8月18日）は、週次データでは確かめられない', check: ( s, row ) => {
+
+			assert.equal( minRow( inYear( s, '1992' ) ).date, s[ row ].date, '週の終値で 1992 年の最安値の週' );
+
+		} },
+		'2000-04-12': { check: ( s, row ) => {
+
+			assert.equal( maxRow( inYear( s, '2000' ) ).date, s[ row ].date, '週の終値で 2000 年の最高値の週' );
+			assert.ok( minRow( s.filter( ( r ) => r.date > s[ row ].date && r.date < '2001' ) ).close < s[ row ].close, '年末にかけて下落' );
+
+		} },
+		'2003-04-25': { external: '日次の終値の最安値（4月28日）は、週次データでは確かめられない', check: ( s, row ) => {
+
+			assert.ok( isRecordLow( s, row ), '週の終値で、それまででいちばん低い（バブル後の最安値）' );
+			assert.ok( minRow( s.slice( row + 1 ) ).close < s[ row ].close, '当時の最安値（のちに更新される）' );
+
+		} },
+		'2009-03-04': { external: '日次の終値の最安値（3月10日）は、週次データでは確かめられない', check: ( s, row ) => {
+
+			assert.equal( minRow( s ).date, s[ row ].date, '週の終値で、バブル後の最安値の週（終了画面の最安値と同じ週）' );
+
+		} },
+		'2020-03-19': { check: ( s, row ) => {
+
+			assert.equal( minRow( inYear( s, '2020' ) ).date, s[ row ].date, '週の終値で 2020 年の最安値の週' );
+			assert.ok( s[ row + 1 ].close > s[ row ].close, '以後は反発' );
+
+		} },
+		'2024-02-22': { external: '1989年12月29日の終値（データの期間の前）を上回った、は確かめられない', check: ( s, row ) => {
+
+			assert.ok( isRecordHigh( s, row ), '週の終値が、データの最初からの最高値' );
+			assert.equal( Number( s[ row ].date.slice( 0, 4 ) ) - 1990, 34, '34 年ぶり' );
+
+		} },
+		'2024-08-05': { external: '1 日の下落幅は日次のデータ。週の値は反発後なので、値は出さない', check: ( s, row, e ) => {
+
+			assert.equal( e.showValue, false, '日次の主張は、週の値を出さない' );
+
+		} },
+		'2025-10-27': { check: ( s, row ) => {
+
+			assert.ok( isRecordHigh( s, row ), '最高値を更新' );
+			const before = maxRow( s.slice( 0, row ) ).close;
+			assert.ok( Math.floor( s[ row ].close / 10000 ) > Math.floor( before / 10000 ), '1 万円刻みの節目を初めて超えた' );
+
+		} },
+		'2026-06-18': { check: ( s, row ) => {
+
+			assert.ok( isRecordHigh( s, row ), '最高値を更新' );
+			assert.equal( maxRow( s ).date, s[ row ].date, '2026 年 11 月時点で最高値（終了画面の最高値と同じ週）' );
+			const before = maxRow( s.slice( 0, row ) ).close;
+			assert.ok( Math.floor( s[ row ].close / 10000 ) > Math.floor( before / 10000 ), '1 万円刻みの節目を初めて超えた' );
+
+		} }
+	}
+};
+
+for ( const [ id, spec ] of Object.entries( FILES ) ) {
+
+	test( `data/events/${id}.json：主張の言葉（最安値・最高値・初めて・○年ぶり・○円台…）を含む出来事は、すべて検証の表にある`, () => {
+
+		const claims = CLAIMS[ id ];
+		const dates = spec.list.map( ( e ) => e.date );
+		for ( const date of Object.keys( claims ) ) assert.ok( dates.includes( date ), `表の ${date} は、ファイルにない出来事（日付を直したら、表も直す）` );
+
+		for ( const e of spec.list ) {
+
+			const hit = `${e.title}${e.note}`.match( CLAIM_WORDS );
+			if ( hit ) assert.ok( claims[ e.date ], `${e.date}「${e.title}」の主張（${hit[ 0 ]}）を、検証していない` );
+
+		}
+
+		for ( const [ date, claim ] of Object.entries( claims ) ) assert.ok( claim.check || claim.external, `${date}：check か external が必要` );
+
+	} );
+
+	test( `data/events/${id}.json：見出しと補足の主張が、そのデータの週の値で成り立つ`, { skip: spec.skip }, () => {
+
+		const series = spec.series();
+		for ( const e of spec.list ) {
+
+			const claim = CLAIMS[ id ][ e.date ];
+			if ( ! claim?.check ) continue;
+			const row = weekRowIndex( series, e.date );
+			assert.notEqual( row, null, `${e.date} を含む週の行がない` );
+
+			try {
+
+				claim.check( series, row, e );
+
+			} catch ( error ) {
+
+				error.message = `${e.date}「${e.title}」：${error.message}`;
+				throw error;
+
+			}
+
+		}
+
+	} );
+
+}

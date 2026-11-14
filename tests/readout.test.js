@@ -113,3 +113,73 @@ test( '現在値の帯（日経平均）：3桁区切りの整数、単位は円
 	} );
 
 } );
+
+// ---- 値のない週の行がない箇所：前の行との間隔を書く ----
+
+/** 前の行との間隔が 7 日を超える行の位置（最初の行を除く）。 */
+function gapRows( series ) {
+
+	const rows = [];
+	for ( let i = 1; i < series.length; i ++ ) {
+
+		const days = ( Date.parse( series[ i ].date ) - Date.parse( series[ i - 1 ].date ) ) / 86400000;
+		if ( days > 7 ) rows.push( { i, weeks: Math.round( days / 7 ) } );
+
+	}
+
+	return rows;
+
+}
+
+test( '現在値の帯（ドル円）：1971-08-30 の前の行は 3 週前なので、「前週比」ではなく「3週前比」', () => {
+
+	const { usdjpy } = loadFixtures();
+	const i = usdjpy.findIndex( ( d ) => d.date === '1971-08-30' );
+	assert.equal( usdjpy[ i - 1 ].date, '1971-08-09' );
+	withDom( ( el ) => {
+
+		const r = readoutFor( 'usdjpy', usdjpy, el );
+		r.show( i );
+		assert.equal( r.text( 'ro-change-full' ), '3週前比 ▼17.21円高（−4.8%）' );
+		assert.equal( r.text( 'ro-change-short' ), '3週前比 ▼17.21円高' );
+		assert.equal( el[ 'ro-change' ].dataset.direction, 'down' );
+
+		// 前の週は、1 週前（08-09 の前の行は 08-02）、後の週は 1 週前
+		r.show( i - 1 );
+		assert.match( r.text( 'ro-change-full' ), /^前週比 / );
+		r.show( i + 1 );
+		assert.match( r.text( 'ro-change-full' ), /^前週比 / );
+		assert.equal( r.text( 'ro-change-short' ).startsWith( '前週比' ), false, '前週比のときは短い形で略す' );
+
+	} );
+
+} );
+
+test( '現在値の帯（金利）：2 週あく箇所（1987-01-05、2019-05-06）は「2週前比」。ほかの週は「前週比」', () => {
+
+	const { jgb10 } = loadFixtures();
+	const gaps = gapRows( jgb10 );
+	assert.deepEqual( gaps.map( ( g ) => jgb10[ g.i ].date ), [ '1987-01-05', '2019-05-06' ] );
+	withDom( ( el ) => {
+
+		const r = readoutFor( 'jgb10', jgb10, el );
+		for ( const { i, weeks } of gaps ) {
+
+			r.show( i );
+			assert.match( r.text( 'ro-change-full' ), new RegExp( `^${weeks}週前比 [▲▼]\\d\\.\\d{3}ポイント$` ), jgb10[ i ].date );
+			assert.match( r.text( 'ro-change-short' ), new RegExp( `^${weeks}週前比 ` ), jgb10[ i ].date );
+
+		}
+
+		// 全週：間隔が 7 日を超える行だけが「N週前比」
+		const gapIndexes = new Set( gaps.map( ( g ) => g.i ) );
+		for ( let i = 1; i < jgb10.length; i ++ ) {
+
+			r.show( i );
+			assert.equal( /^前週比 /.test( r.text( 'ro-change-full' ) ), ! gapIndexes.has( i ), jgb10[ i ].date );
+
+		}
+
+	} );
+
+} );

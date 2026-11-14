@@ -412,18 +412,69 @@ test( 'scheduler：最初から（reset）で、表示も待ちも位置の記�
 
 } );
 
-test( 'scheduler：一周して止まったら（finished）表示を消し、待ちも捨てる', () => {
+test( 'scheduler：終点に着いて止まった（finished）あとも、表示中のキャプションを消さない（時間が来ても、フレームが続いても）', () => {
 
-	const scheduler = createCaptionScheduler( { events: [ ev( 'A', 0.1 ), ev( 'B', 0.1005 ) ], ...options } );
+	// 最後の出来事 B は終点（progress 1）の 0.6 秒手前にある。終点に着いても、最低の表示時間（3 秒）を待たずに消さない
+	const scheduler = createCaptionScheduler( { events: [ ev( 'A', 0.5 ), ev( 'B', 0.9996 ) ], ...options } );
+	scheduler.update( { timeMs: 0, progress: 0.9995 } );
+	assert.equal( names( scheduler.update( { timeMs: 16, progress: 0.9997 } ) ), 'B' );
+	assert.equal( scheduler.update( { timeMs: 600, progress: 1, finished: true } ), null, '終点に着いたフレームでは消さない' );
+	assert.equal( scheduler.current.name, 'B' );
+
+	// 終点のあとは、ride の時間が止まる。止まらなくても（時間が showMs を過ぎても）消さない
+	assert.equal( scheduler.update( { timeMs: 600, progress: 1, finished: true } ), null );
+	assert.equal( scheduler.update( { timeMs: 60000, progress: 1, finished: true } ), null );
+	assert.equal( scheduler.current.name, 'B' );
+
+} );
+
+test( 'scheduler：終点に着いたフレームで通過した出来事も、取りこぼさない（表示中のものがあれば、いちばん新しい 1 件に入れ替える）', () => {
+
+	// 終点のフレームで通過
+	const scheduler = createCaptionScheduler( { events: [ ev( 'A', 0.5 ), ev( 'Z', 0.99995 ) ], ...options } );
+	scheduler.update( { timeMs: 0, progress: 0.9999 } );
+	assert.equal( names( scheduler.update( { timeMs: 16, progress: 1, finished: true } ) ), 'Z' );
+	assert.equal( scheduler.current.name, 'Z' );
+
+	// 表示中の A が 3 秒に満たなくても、終点のフレームで通過した B と C のうち、いちばん新しい C に入れ替える（HUD は終了画面で隠れる）
+	const crowded = createCaptionScheduler( { events: [ ev( 'A', 0.9990 ), ev( 'B', 0.99995 ), ev( 'C', 0.99999 ) ], ...options } );
+	crowded.update( { timeMs: 0, progress: 0.9989 } );
+	assert.equal( names( crowded.update( { timeMs: 16, progress: 0.9991 } ) ), 'A' );
+	crowded.update( { timeMs: 500, progress: 0.9999 } );
+	assert.equal( names( crowded.update( { timeMs: 516, progress: 1, finished: true } ) ), 'C' );
+	assert.equal( crowded.current.name, 'C' );
+	assert.equal( crowded.pending, 0 );
+	assert.equal( crowded.update( { timeMs: 532, progress: 1, finished: true } ), null );
+
+} );
+
+test( 'scheduler：位置が飛んだ（finished でも）ときは、飛び越えた出来事は出さず、表示中のものは消す', () => {
+
+	const scheduler = createCaptionScheduler( { events: [ ev( 'A', 0.1 ), ev( 'B', 0.1005 ), ev( 'Z', 0.9 ) ], ...options } );
 	scheduler.update( { timeMs: 0, progress: 0.0999 } );
 	scheduler.update( { timeMs: 16, progress: 0.1006 } );
 	assert.equal( scheduler.current.name, 'A' );
 	assert.equal( scheduler.pending, 1 );
 
-	assert.equal( names( scheduler.update( { timeMs: 100, progress: 0.97, finished: true } ) ), 'hide' );
+	assert.equal( names( scheduler.update( { timeMs: 100, progress: 1, finished: true } ) ), 'hide' );
 	assert.equal( scheduler.current, null );
 	assert.equal( scheduler.pending, 0 );
-	assert.equal( scheduler.update( { timeMs: 200, progress: 0.97, finished: true } ), null );
+	assert.equal( scheduler.update( { timeMs: 200, progress: 1, finished: true } ), null );
+
+} );
+
+test( 'scheduler：終点で残したキャプションは、最初から（reset）で消える。もう一度走ると、また出る', () => {
+
+	const scheduler = createCaptionScheduler( { events: [ ev( 'B', 0.9996 ) ], ...options } );
+	scheduler.update( { timeMs: 0, progress: 0.9995 } );
+	scheduler.update( { timeMs: 16, progress: 0.9997 } );
+	scheduler.update( { timeMs: 600, progress: 1, finished: true } );
+	assert.equal( scheduler.current.name, 'B' );
+
+	scheduler.reset();
+	assert.equal( scheduler.current, null );
+	scheduler.update( { timeMs: 0, progress: 0.9995 } );
+	assert.equal( names( scheduler.update( { timeMs: 16, progress: 0.9997 } ) ), 'B' );
 
 } );
 

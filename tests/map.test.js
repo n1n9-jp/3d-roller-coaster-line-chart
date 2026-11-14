@@ -8,13 +8,15 @@ import { TrackCurve } from '../assets/js/track.js';
 import { SPIRAL } from '../assets/js/config.js';
 import { loadFixtures, readJson, stretchedSeries } from './helpers.js';
 
-const { usdjpy: nikkei } = loadFixtures();
+// 日経平均の形（1990 年 1 月始まり）の仮の系列の土台：同梱のドル円の値を引き伸ばして使う（手元のデータは、リポジトリにない）
+const { usdjpy: fxValues } = loadFixtures();
 
 // 周の数の違う 3 通り（約 5.6 周 = 1971 年〜、約 4 周 = 1986 年〜、約 3.7 周 = 1990 年〜）と、手元の日経平均と同じ形
 const CASES = {
 	'ドル円 5.6周': new TrackCurve( readJson( 'data/usdjpy.json' ) ),
-	'金利 4周': new TrackCurve( stretchedSeries( nikkei, '1986-07-07', '2026-11-09' ) ),
-	'日経平均 3.7周': new TrackCurve( stretchedSeries( nikkei, '1990-01-01', '2026-11-09' ) )
+	// 同梱の10年国債の金利の実データ（1986-06-30 始まり、マイナスの値と週の抜けがある）
+	'金利 4周': new TrackCurve( readJson( 'data/jgb10.json' ) ),
+	'日経平均 3.7周': new TrackCurve( stretchedSeries( fxValues, '1990-01-01', '2026-11-09' ) )
 };
 
 // パネルの canvas の大きさ（CSS px）：L 190、M 158、S 106、短い横長 94（hud.css の幅 - 枠 - 余白）

@@ -5,9 +5,11 @@ import { DATASETS, DEFAULT_DATASET } from '../assets/js/config.js';
 import {
 	parseYMD, formatYearMonth, formatDate, periodOf, titleParts, documentTitle, kickerText, descriptionText, descriptionParts,
 	chipTexts, loadingText, creditLine, metaDescription, BASE_DESCRIPTION, canvasLabel, datasetHref, dataSwitchItems,
-	stepLabel, mechanismParagraphs, linkify, dataSourceItems, eventsSourceItem, ERROR_TEXTS
+	stepLabel, mechanismParagraphs, decadeExamples, linkify, dataSourceItems, eventsSourceItem, ERROR_TEXTS
 } from '../assets/js/ui/texts.js';
-import { readJson, loadFixtures } from './helpers.js';
+import { readJson, loadFixtures, series1990 } from './helpers.js';
+import { buildDataset } from '../assets/js/data.js';
+import { TrackCurve } from '../assets/js/track.js';
 
 const fixtures = loadFixtures();
 const METAS = {
@@ -270,6 +272,33 @@ test( '情報パネルのデータ出典：日経平均は、手元で取得し�
 
 } );
 
+test( '情報パネルのしくみ：年代の境目の例は、そのデータの最初の 2 つの境目の年から作る（1980 年の境目がないデータに 1980 年と書かない）', () => {
+
+	assert.equal( decadeExamples( [ 1980, 1990, 2000 ] ), '（1980年1月、1990年1月…）' );
+	assert.equal( decadeExamples( [ { year: 1990, progress: 0 }, { year: 2000, progress: 0.3 }, { year: 2010, progress: 0.6 } ] ), '（1990年1月、2000年1月…）' );
+	assert.equal( decadeExamples( [ 1990 ] ), '（1990年1月）' );
+	assert.equal( decadeExamples( [] ), '' );
+	assert.equal( decadeExamples( undefined ), '' );
+
+	// 実際の螺旋（TrackCurve）の境目から。ドル円は 1971 年始まり、10年国債の金利は 1986 年始まり、日経平均は 1990 年始まり
+	const { usdjpy, jgb10 } = loadFixtures();
+	const sets = { usdjpy, jgb10, nikkei: series1990() };
+	const expected = { usdjpy: '（1980年1月、1990年1月…）', jgb10: '（1990年1月、2000年1月…）', nikkei: '（1990年1月、2000年1月…）' };
+	for ( const [ id, raw ] of Object.entries( sets ) ) {
+
+		const dataset = buildDataset( raw, 4, undefined, DATASETS[ id ] );
+		const boundaries = new TrackCurve( dataset.smoothed ).decadeBoundaries();
+		const text = mechanismParagraphs( DATASETS[ id ], 4, boundaries )[ 1 ];
+		assert.ok( text.includes( `北を向く線が年代の境目${expected[ id ]}で、俯瞰すると` ), `${id}：${text}` );
+		if ( id !== 'usdjpy' ) assert.ok( ! text.includes( '1980' ), `${id} に 1980 年の境目はない` );
+
+	}
+
+	// 境目を渡さないとき（古い呼び方）も文が崩れない
+	assert.ok( mechanismParagraphs( DATASETS.usdjpy, 4 )[ 1 ].includes( '北を向く線が年代の境目で、俯瞰すると' ) );
+
+} );
+
 test( '出来事の出典の段落：件数が 1 以上のときだけ。sources があればその一覧、なければ source の URL のホスト名', () => {
 
 	const events = [
@@ -282,11 +311,11 @@ test( '出来事の出典の段落：件数が 1 以上のときだけ。sources
 	assert.equal( eventsSourceItem( undefined, undefined ), null );
 
 	const hosts = eventsSourceItem( events );
-	assert.equal( hosts.text, '出来事の日付と値：www.boj.or.jp、www.fsa.go.jp' );
+	assert.equal( hosts.text, '出来事の日付と内容：www.boj.or.jp、www.fsa.go.jp' );
 	assert.deepEqual( hosts.parts.filter( ( part ) => part.href ).map( ( part ) => part.href ), [ 'https://www.boj.or.jp/a.pdf', 'https://www.fsa.go.jp/b.html' ] );
 
 	const named = eventsSourceItem( events, [ 'FRB H.10', { name: '財務省「国債金利情報」', url: 'https://www.mof.go.jp/' }, '日本銀行の公表資料' ] );
-	assert.equal( named.text, '出来事の日付と値：FRB H.10、財務省「国債金利情報」、日本銀行の公表資料' );
+	assert.equal( named.text, '出来事の日付と内容：FRB H.10、財務省「国債金利情報」、日本銀行の公表資料' );
 	assert.deepEqual( named.parts.filter( ( part ) => part.href ).map( ( part ) => part.href ), [ 'https://www.mof.go.jp/' ] );
 
 	// source が読めない出来事だけのときは、段落を出さない
