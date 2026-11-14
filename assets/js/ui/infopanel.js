@@ -1,6 +1,6 @@
 // 情報パネル（#info-panel）：開閉、フォーカスの閉じ込め、走行の一時停止と復帰、データ出典の差し込み。担当：情報パネル。
 // 操作の表などの固定の文面は index.html の #info-panel の中にある。ここでは、データで変わる部分（しくみの説明、データの出典、
-// 出来事の出典）を入れる。
+// 出来事の出典）を入れる。しくみの年代の境目の例は、そのデータの最初の境目（ctx.curve.decadeBoundaries()）から作る。
 //
 // 開く：スタート画面の「操作方法と出典」、キー I、'infopanel:open'（payload は { trigger?: Element }。trigger があれば、閉じたときそこへフォーカスを戻す）、
 //       'infopanel:toggle'。
@@ -41,7 +41,7 @@ export function createInfoPanel( ctx ) {
 
 	// しくみ（データの名前、移動平均の週数、目盛りの刻み）
 	const mechanism = panel.querySelector( '#info-mechanism' );
-	mechanism.replaceChildren( ...mechanismParagraphs( def, config.MOVING_AVERAGE_WINDOW ).map( ( text ) => {
+	mechanism.replaceChildren( ...mechanismParagraphs( def, config.MOVING_AVERAGE_WINDOW, ctx.curve?.decadeBoundaries?.() ?? [] ).map( ( text ) => {
 
 		const paragraph = document.createElement( 'p' );
 		paragraph.textContent = text;

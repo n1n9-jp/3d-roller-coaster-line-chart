@@ -1,7 +1,7 @@
 // 終了画面の要約（assets/js/summary.js）の確かめ。値の書式は format.js（tests/format.test.js）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { summarize, summaryTexts, WORD_JOINER } from '../assets/js/summary.js';
+import { summarize, summaryTexts, lastPassedEvent, lastEventTexts, WORD_JOINER } from '../assets/js/summary.js';
 import { buildDataset } from '../assets/js/data.js';
 import { DATASETS } from '../assets/js/config.js';
 import { loadFixtures } from './helpers.js';
@@ -58,7 +58,7 @@ test( '文言（ドル円）：見出し・リード・統計・変化の一行�
 	const t = summaryTexts( summarize( usdjpy ), datasetOf( 'usdjpy', usdjpy ) );
 
 	assert.equal( t.title, '2026年11月に到着しました' );
-	assert.equal( t.lead, `1971年1月から、らせんを約5.6周、2,912${J}週分のドル円の為替レートを走りました。` );
+	assert.equal( t.lead, `1971年1月から、らせんを約5.6周、2,912${J}週${J}分のドル円の為替レートを走りました。` );
 	assert.deepEqual( t.stats.first, { label: '最初の週', value: '357.82', unit: '円', date: '1971年1月4日の週' } );
 	assert.deepEqual( t.stats.last, { label: '最後の週', value: '158.23', unit: '円', date: '2026年11月2日の週' } );
 	assert.deepEqual( t.stats.max, { label: '最高値（最も円安）', value: '358.40', unit: '円', date: '1971年1月11日の週' } );
@@ -75,7 +75,7 @@ test( '文言（金利）：マイナスの最安値は U+2212、変化はポイ
 	const t = summaryTexts( summarize( jgb10 ), datasetOf( 'jgb10', jgb10 ) );
 
 	assert.equal( t.title, '2026年11月に到着しました' );
-	assert.equal( t.lead, `1986年6月から、らせんを約4.0周、2,105${J}週分の10年国債の金利を走りました。` );
+	assert.equal( t.lead, `1986年6月から、らせんを約4.0周、2,105${J}週${J}分の10年国債の金利を走りました。` );
 	assert.deepEqual( t.stats.max, { label: '最も高い金利', value: '8.105', unit: '%', date: '1990年9月24日の週' } );
 	assert.deepEqual( t.stats.min, { label: '最も低い金利', value: '−0.293', unit: '%', date: '2016年7月4日の週' } );
 	assert.equal( t.stats.first.value, '5.103' );
@@ -91,7 +91,7 @@ test( '文言（日経平均）：3桁区切りの整数、変化は％（今ま
 	const t = summaryTexts( summarize( raw ), datasetOf( 'nikkei', raw ) );
 
 	assert.equal( t.title, '2026年11月に到着しました' );
-	assert.equal( t.lead, `1990年1月から、らせんを約3.7周、4${J}週分の日経平均株価を走りました。` );
+	assert.equal( t.lead, `1990年1月から、らせんを約3.7周、4${J}週${J}分の日経平均株価を走りました。` );
 	assert.deepEqual( t.stats.max, { label: '最高値', value: '71,300', unit: '円', date: '1990年1月8日の週' } );
 	assert.deepEqual( t.stats.min, { label: '最安値', value: '7,082', unit: '円', date: '2009年3月9日の週' } );
 	assert.equal( t.stats.last.date, '2026年11月9日の週' );
@@ -107,5 +107,39 @@ test( '文言：合成データの注記は無い（どのデータでも、出�
 	const b = summaryTexts( summarize( jgb10 ), datasetOf( 'jgb10', jgb10 ) );
 	assert.deepEqual( Object.keys( a ), Object.keys( b ) );
 	assert.ok( ! JSON.stringify( a ).includes( 'サンプル' ) );
+
+} );
+
+test( 'リード文：「2,912週分」の途中で折り返さない（数と「週」、「週」と「分」の間に WORD JOINER）', () => {
+
+	const { usdjpy } = loadFixtures();
+	const { lead } = summaryTexts( summarize( usdjpy ), datasetOf( 'usdjpy', usdjpy ) );
+	assert.ok( lead.includes( `2,912${J}週${J}分の` ), lead );
+	assert.equal( J, '⁠' );
+
+} );
+
+// ---- 終了画面の「最後に通った出来事」 ----
+
+const passed = ( date, progress, valueText = null ) => ( { date, index: 0, progress, title: `${date} の出来事`, note: 'n', value: valueText === null ? null : 1, valueText } );
+
+test( '最後に通った出来事：位置が終点の progress 以下のうち、いちばん後ろ。最後のフレームで通過したものも含む', () => {
+
+	const list = [ passed( '2013-04-04', 0.5, '12,000円' ), passed( '2026-09-25', 0.999, '3.134%' ), passed( '2026-10-02', 1 ) ];
+	assert.equal( lastPassedEvent( list, 1 ).date, '2026-10-02', '終点（1）と同じ位置の出来事も通過した' );
+	assert.equal( lastPassedEvent( list, 0.9995 ).date, '2026-09-25' );
+	assert.equal( lastPassedEvent( list, 0.6 ).date, '2013-04-04' );
+	assert.equal( lastPassedEvent( list ).date, '2026-10-02', '省略時は終点' );
+	assert.equal( lastPassedEvent( list, 0.1 ), null, '1 件も通過していない' );
+	assert.equal( lastPassedEvent( [], 1 ), null, '出来事の注釈がないデータ' );
+	assert.equal( lastPassedEvent( undefined, 1 ), null );
+
+} );
+
+test( '最後に通った出来事の文言：見出し（年月と見出し）と「当時 ○○」。値を出さない出来事は値がない。なければ null', () => {
+
+	assert.deepEqual( lastEventTexts( passed( '2026-09-25', 1, '3.134%' ) ), { label: '最後に通った出来事', heading: '2026年9月　2026-09-25 の出来事', value: '当時 3.134%' } );
+	assert.equal( lastEventTexts( passed( '2024-08-05', 1 ) ).value, null );
+	assert.equal( lastEventTexts( null ), null );
 
 } );

@@ -8,6 +8,7 @@
 //   format.label( 150 )          → '150円'       （金利 '2%'、日経平均 '20,000円'。目盛りの値ラベル）
 //   format.tick( 20000 )         → '2万'         （単位なし。ミニグラフの Y 軸。ドル円 '100'、金利 '−1'）
 //   format.change( 151.2, 150 )  → { text: '前週比 ▲1.20円安（+0.8%）', compactText: '▲1.20円安', direction: 'up' }
+//   format.change( 151.2, 150, 3 ) → { text: '3週前比 ▲1.20円安（+0.8%）', compactText: '3週前比 ▲1.20円安', direction: 'up' }（前の行が 3 週前のとき）
 //   format.overall( last, first ) → { text: '▼199.50円の円高（−55.8%）', direction: 'down' }（終了画面の「最初の週と比べて …」）
 //   format.ticks( min, max )     → { step, axisMin, axisMax, values, labelEvery, labelValues }
 //   format.strongEvery           → 100（3D の等高線で強く描く線の間隔。日経平均 50000、金利は null = 0 の線だけ）
@@ -35,6 +36,19 @@ export function formatWeek( date ) {
 
 	const { year, month, day } = parseDate( date );
 	return `${year}年${month}月${day}日の週`;
+
+}
+
+/**
+ * 2 つの日付の間隔を、週の数で返す（7 日 = 1 週。端数は四捨五入。1 以上）。
+ * 週次データで、値のない週の行がないとき、前の行が何週前かを知るのに使う（1971-08-09 → 1971-08-30 は 3）。
+ */
+export function weeksBetween( earlier, later ) {
+
+	const a = parseDate( earlier );
+	const b = parseDate( later );
+	const days = ( Date.UTC( b.year, b.month - 1, b.day ) - Date.UTC( a.year, a.month - 1, a.day ) ) / 86400000;
+	return Math.max( 1, Math.round( days / 7 ) );
 
 }
 
@@ -150,11 +164,17 @@ export function createFormatter( def ) {
 	 * 前週比。previous が無い（最初の週）か、変化率が計算できないときは direction 'none'。
 	 * 表示の桁で差が 0 になるときは 'flat'。戻り値：
 	 *   { text: '前週比 ▲1.20円安（+0.8%）', compactText: '▲1.20円安', direction: 'up' | 'down' | 'flat' | 'none' }
+	 * weeks：previous が何週前の値か（既定 1）。2 以上（データに値のない週があるとき）は、「前週比」ではなく
+	 *   「3週前比」と書く（compactText にも付ける。1 週前と読み違えないため）。
 	 * ドル円の「円安・円高」は、値が上がれば円安、下がれば円高（1 方向だけ）。
 	 */
-	function change( current, previous ) {
+	function change( current, previous, weeks = 1 ) {
 
-		const none = { text: '前週比 —', compactText: '—', direction: 'none' };
+		const gap = Number.isFinite( weeks ) && weeks >= 2 ? Math.round( weeks ) : 1;
+		const name = gap === 1 ? '前週比' : `${gap}週前比`;
+		// 短い形は、前週比のときは「前週比」を略す。何週前かが違うときは略さない
+		const short = ( body ) => ( gap === 1 ? body : `${name} ${body}` );
+		const none = { text: `${name} —`, compactText: short( '—' ), direction: 'none' };
 		if ( ! Number.isFinite( current ) || ! Number.isFinite( previous ) ) return none;
 		const usesPercent = changeMode !== 'point';
 		if ( usesPercent && previous === 0 ) return none;
@@ -168,8 +188,8 @@ export function createFormatter( def ) {
 
 			const zero = `±${amount.text}${changeMode === 'point' ? 'ポイント' : unit}`;
 			return {
-				text: `前週比 ${zero}`,
-				compactText: changeMode === 'percent' ? '±0%' : zero,
+				text: `${name} ${zero}`,
+				compactText: short( changeMode === 'percent' ? '±0%' : zero ),
 				direction: 'flat'
 			};
 
@@ -200,8 +220,8 @@ export function createFormatter( def ) {
 		}
 
 		return {
-			text: `前週比 ${mark}${body}${percentText}`,
-			compactText: `${mark}${compactBody}`,
+			text: `${name} ${mark}${body}${percentText}`,
+			compactText: short( `${mark}${compactBody}` ),
 			direction: up ? 'up' : 'down'
 		};
 

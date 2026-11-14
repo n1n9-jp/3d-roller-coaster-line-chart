@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createFormatter, parseDate, formatWeek, formatYearMonth, MINUS } from '../assets/js/format.js';
+import { createFormatter, parseDate, formatWeek, formatYearMonth, weeksBetween, MINUS } from '../assets/js/format.js';
 import { DATASETS } from '../assets/js/config.js';
 import { loadFixtures } from './helpers.js';
 
@@ -107,6 +107,43 @@ test( '前週比（ドル円）：上がれば円安、下がれば円高（150 
 	assert.equal( down.compactText, '▼0.85円高' );
 
 	assert.equal( usd.change( 358.4, 357.82 ).text, '前週比 ▲0.58円安（+0.2%）' );
+
+} );
+
+test( '前週比：前の行が 2 週以上前のときは、何週前との比較かを書く（短い形にも付ける）', () => {
+
+	// ドル円の 1971-08-30：前の行は 3 週前の 08-09（値のない週の行はない）
+	const gap = usd.change( 340.99, 358.2, 3 );
+	assert.equal( gap.text, '3週前比 ▼17.21円高（−4.8%）' );
+	assert.equal( gap.compactText, '3週前比 ▼17.21円高' );
+	assert.equal( gap.direction, 'down' );
+
+	assert.equal( usd.change( 151.2, 150, 2 ).text, '2週前比 ▲1.20円安（+0.8%）' );
+	assert.equal( jgb.change( 1.2, 1.1, 2 ).text, '2週前比 ▲0.100ポイント' );
+	assert.equal( jgb.change( 1.2, 1.1, 2 ).compactText, '2週前比 ▲0.100ポイント' );
+	assert.equal( nik.change( 20380, 20000, 2 ).text, '2週前比 ▲380円（+1.9%）' );
+	assert.equal( nik.change( 20380, 20000, 2 ).compactText, '2週前比 ▲1.9%' );
+	assert.equal( usd.change( 150, 150, 2 ).text, '2週前比 ±0.00円' );
+	assert.equal( nik.change( 20000, 20000, 2 ).compactText, '2週前比 ±0%' );
+	assert.deepEqual( usd.change( 100, NaN, 2 ), { text: '2週前比 —', compactText: '2週前比 —', direction: 'none' } );
+
+	// 1 週前（省略、1、不正な値）は、今までどおり「前週比」
+	for ( const weeks of [ undefined, 1, 0, NaN, null ] ) {
+
+		assert.equal( usd.change( 151.2, 150, weeks ).text, '前週比 ▲1.20円安（+0.8%）', String( weeks ) );
+		assert.equal( usd.change( 151.2, 150, weeks ).compactText, '▲1.20円安', String( weeks ) );
+
+	}
+
+} );
+
+test( '週の間隔：日付の差を 7 日 = 1 週で数える（1 以上）', () => {
+
+	assert.equal( weeksBetween( '1971-08-09', '1971-08-30' ), 3 );
+	assert.equal( weeksBetween( '1971-08-23', '1971-08-30' ), 1 );
+	assert.equal( weeksBetween( '2019-04-22', '2019-05-06' ), 2 );
+	assert.equal( weeksBetween( '1987-01-05', '1987-01-05' ), 1 );
+	assert.equal( weeksBetween( '2019-12-30', '2020-01-06' ), 1, '年をまたぐ' );
 
 } );
 

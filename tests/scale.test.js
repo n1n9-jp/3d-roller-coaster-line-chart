@@ -13,11 +13,11 @@ import { overlappingPairs, collidesAny } from '../assets/js/labels.js';
 import { TrackCurve } from '../assets/js/track.js';
 import { buildDataset } from '../assets/js/data.js';
 import { CONTOUR, SPIRAL, Y_MIN, Y_MAX } from '../assets/js/config.js';
-import { readJson, stretchedSeries } from './helpers.js';
+import { readJson, stretchedSeries, rescaleSeries } from './helpers.js';
 
 const usd = readJson( 'data/usdjpy.json' );
 const jgb = readJson( 'data/jgb10.json' );
-const nikkei = usd; // 1990 年始まりの系列の土台（同梱のドル円の値を引き伸ばして使う）
+const nikkei = usd; // 1990 年始まりの系列の土台（同梱のドル円の値を引き伸ばし、値を日経平均らしい範囲へ写して使う）
 
 function curveFor( raw ) {
 
@@ -28,7 +28,8 @@ function curveFor( raw ) {
 
 const usdC = curveFor( usd ); // 1971〜2026（約 5.6 周）
 const jgbC = curveFor( jgb ); // 1986 年 7 月〜2026（約 4 周）
-const nk37 = curveFor( stretchedSeries( nikkei, '1990-01-01', '2026-11-09' ) ); // 1990 年 1 月〜2026（約 3.7 周）
+// 1990 年 1 月〜2026（約 3.7 周）。値は 7,000〜72,000（元の値のままだと 75〜358 で、1 万円刻みの目盛りが 1 本も入らない）
+const nk37 = curveFor( rescaleSeries( stretchedSeries( nikkei, '1990-01-01', '2026-11-09' ), 7000, 72000 ) );
 
 // 書式の仮のもの（データの担当が ctx.dataset.format に入れるものと同じ形）
 const fmt = ( step, compactStep, unit ) => ( {
@@ -96,12 +97,16 @@ test( '線の高さ：目盛りの値 → valueToY。値の順に高く、Y_MIN.
 	for ( const [ { ds, curve }, format ] of [ [ usdC, USD_FORMAT ], [ jgbC, JGB_FORMAT ], [ nk37, FALLBACK_FORMAT ] ] ) {
 
 		const { values } = contourTicks( format, ds.rawRange );
+		// 目盛りが範囲の中に何本もあること（0 本だと、下のループが何も確かめない）：ドル円 6 本、金利 9 本、日経平均 7 本
+		assert.ok( values.length >= 5, `目盛りが ${values.length} 本` );
 		const ys = values.map( ( v ) => curve.valueToY( v ) );
 		for ( let i = 1; i < ys.length; i ++ ) assert.ok( ys[ i ] > ys[ i - 1 ] );
 		// 生データの範囲は移動平均の範囲より少し広いので、線は Y_MIN..Y_MAX を少しはみ出しうる（端の 1 刻みぶん以内）
 		for ( const y of ys ) assert.ok( y > Y_MIN - ( Y_MAX - Y_MIN ) * 0.2 && y < Y_MAX + ( Y_MAX - Y_MIN ) * 0.2 );
+		let checked = 0;
 		for ( const p of ds.raw.filter( ( _, i ) => i % 97 === 0 ) ) {
 
+			checked ++;
 			const below = values.filter( ( v ) => v <= p.close ).pop();
 			const above = values.find( ( v ) => v > p.close );
 			const y = curve.valueToY( p.close );
@@ -110,7 +115,11 @@ test( '線の高さ：目盛りの値 → valueToY。値の順に高く、Y_MIN.
 
 		}
 
+		assert.ok( checked >= 15, `確かめた週が ${checked} 件` );
+
 	}
+
+	assert.deepEqual( contourTicks( FALLBACK_FORMAT, nk37.ds.rawRange ).values, [ 10000, 20000, 30000, 40000, 50000, 60000, 70000 ] );
 
 } );
 

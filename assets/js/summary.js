@@ -4,8 +4,9 @@
 
 import { SPIRAL } from './config.js';
 import { formatWeek, formatYearMonth, parseDate } from './format.js';
+import { formatCaption } from './events-data.js';
 
-// 数と「週」の間で行を折り返さない（「1,923」と「週分…」が別の行に分かれるのを防ぐ。幅のない文字）
+// 「1,923週分」の途中（数と「週」の間、「週」と「分」の間）で行を折り返さない（幅のない文字）
 export const WORD_JOINER = '\u2060';
 
 const DAY_MS = 86400000;
@@ -48,6 +49,32 @@ export function summarize( raw ) {
 }
 
 /**
+ * 走行で最後に通った出来事（位置が progress 以下の出来事のうち、いちばん後ろのもの）。なければ null。
+ * events は 'eventsready' の payload の events（progress と valueText を持つ）。終点（progress 1）では、一覧の最後の出来事。
+ */
+export function lastPassedEvent( events, progress = 1 ) {
+
+	let found = null;
+	for ( const event of Array.isArray( events ) ? events : [] ) {
+
+		if ( event.progress <= progress + 1e-9 && ( found === null || event.progress >= found.progress ) ) found = event;
+
+	}
+
+	return found;
+
+}
+
+/** 終了画面の「最後に通った出来事」の文言：{ label, heading, value }。出来事がなければ null。value は値を出さない出来事で null。 */
+export function lastEventTexts( event ) {
+
+	if ( ! event ) return null;
+	const caption = formatCaption( event );
+	return { label: '最後に通った出来事', heading: caption.heading, value: caption.value };
+
+}
+
+/**
  * 要約から、終了画面に出す文言をまとめる（文言は仕様 5-4）。
  * dataset：{ def, format }（data.js の buildDataset の戻り値）。
  */
@@ -59,7 +86,7 @@ export function summaryTexts( summary, dataset ) {
 
 	return {
 		title: `${summary.endLabel}に到着しました`,
-		lead: `${summary.startLabel}から、らせんを約${summary.turns.toFixed( 1 )}周、${summary.weeks.toLocaleString( 'en-US' )}${WORD_JOINER}週分の${def.name}を走りました。`,
+		lead: `${summary.startLabel}から、らせんを約${summary.turns.toFixed( 1 )}周、${summary.weeks.toLocaleString( 'en-US' )}${WORD_JOINER}週${WORD_JOINER}分の${def.name}を走りました。`,
 		stats: {
 			first: stat( '最初の週', summary.first ),
 			last: stat( '最後の週', summary.last ),

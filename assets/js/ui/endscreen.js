@@ -2,7 +2,7 @@
 // 要約の計算は ../summary.js（DOM に依存しない）。ここは表示・フォーカス・キー操作だけ。
 // 契約は specs/contract.md。createEndScreen( ctx ) は { update?, onViewChange?, onReset?, dispose? } を返す。
 
-import { summarize, summaryTexts } from '../summary.js';
+import { summarize, summaryTexts, lastPassedEvent, lastEventTexts } from '../summary.js';
 
 const CLOSE_MS = 200; // 閉じる動き（仕様 5）。css の閉じる遷移（--dur-fast、reduced-motion でも 150ms）以上にしておく
 
@@ -34,11 +34,37 @@ export function createEndScreen( ctx ) {
 	const overviewButton = root.querySelector( '#end-overview' );
 	const infoPanel = document.getElementById( 'info-panel' );
 
+	// 最後に通った出来事の 1 行（リード文の下。HTML には置かず、ここで作る。見た目はリード文と同じ）。出来事の注釈がないデータでは出さない
+	const lastEventLine = document.createElement( 'p' );
+	lastEventLine.id = 'end-last-event';
+	lastEventLine.className = 'end-lead';
+	lastEventLine.hidden = true;
+	lastEventLine.style.wordBreak = 'auto-phrase'; // 日本語を文節で折り返す（「163円」と「台」の間で折れない）。非対応のブラウザでは通常の折り返し
+	root.querySelector( '#end-lead' ).after( lastEventLine );
+
+	let eventList = [];
 	let open = false;
 	let hideTimer = 0;
 	let frame = 0;
 
-	function render() {
+	function renderLastEvent( finishProgress ) {
+
+		const texts = lastEventTexts( lastPassedEvent( eventList, finishProgress ) );
+		lastEventLine.hidden = texts === null;
+		if ( texts === null ) {
+
+			lastEventLine.replaceChildren();
+			return;
+
+		}
+
+		const heading = document.createElement( 'strong' );
+		heading.textContent = texts.heading;
+		lastEventLine.replaceChildren( `${texts.label}：`, heading, texts.value ? `（${texts.value}）` : '' );
+
+	}
+
+	function render( finishProgress ) {
 
 		const summary = summarize( dataset.raw );
 		if ( ! summary ) return false;
@@ -49,6 +75,7 @@ export function createEndScreen( ctx ) {
 		root.querySelector( '#end-lead' ).textContent = texts.lead;
 		root.querySelector( '#end-change' ).textContent = texts.change;
 		restartButton.setAttribute( 'aria-label', texts.restartLabel );
+		renderLastEvent( finishProgress );
 
 		for ( const [ key, stat ] of Object.entries( texts.stats ) ) {
 
@@ -64,10 +91,11 @@ export function createEndScreen( ctx ) {
 
 	}
 
-	function show() {
+	function show( payload ) {
 
 		if ( open ) return;
-		if ( ! render() ) return;
+		// 終点に着いたときの progress（最後のフレームで通過した出来事も含める）。分からなければ終点（1）
+		if ( ! render( Number.isFinite( payload?.progress ) ? payload.progress : 1 ) ) return;
 
 		open = true;
 		clearTimeout( hideTimer );
@@ -159,13 +187,26 @@ export function createEndScreen( ctx ) {
 	document.addEventListener( 'keydown', onKeyDown );
 
 	const offFinish = events.on( 'finish', show );
-	const offRestart = events.on( 'restart', () => close( 'restart' ) );
+	const offRestart = events.on( 'restart', () => {
+
+		close( 'restart' );
+		// 次に終点に着くまで、最後に通った出来事の行は出さない
+		lastEventLine.hidden = true;
+		lastEventLine.replaceChildren();
+
+	} );
+	const offEventsReady = events.on( 'eventsready', ( payload ) => {
+
+		eventList = Array.isArray( payload?.events ) ? payload.events : [];
+
+	} );
 
 	return {
 		dispose() {
 
 			offFinish?.();
 			offRestart?.();
+			offEventsReady?.();
 			document.removeEventListener( 'keydown', onKeyDown );
 			clearTimeout( hideTimer );
 			cancelAnimationFrame( frame );

@@ -1,8 +1,9 @@
 // 現在値の帯（#hud-readout）。年月・ラベル・値・前週比。
 // 機能モジュール（createReadout( ctx )）。
 // 値・単位・前週比の文字列は dataset.format（format.js）で作る。値は生データ（state.point、dataset.raw）。
+// データには値のない週の行がない。前の行が 7 日より前のとき（ドル円の 1971-08-30 など）は「前週比」ではなく「3週前比」と書く。
 
-import { parseDate } from '../format.js';
+import { parseDate, weeksBetween } from '../format.js';
 
 /** dataIndex（小数）から系列上の週の位置（整数）を決める。 */
 export function weekIndex( dataIndex, length ) {
@@ -45,7 +46,9 @@ export function createReadout( ctx ) {
 
 		const point = raw[ index ];
 		const { year, month, day } = parseDate( point.date );
-		const change = format.change( point.close, index > 0 ? raw[ index - 1 ].close : NaN );
+		const before = index > 0 ? raw[ index - 1 ] : null;
+		const weeks = before ? weeksBetween( before.date, point.date ) : 1;
+		const change = before ? format.change( point.close, before.close, weeks ) : format.change( point.close, NaN );
 
 		setText( yearEl, String( year ) );
 		setText( monthEl, `年${month}月` );
@@ -54,6 +57,8 @@ export function createReadout( ctx ) {
 		setText( changeFullEl, change.text );
 		setText( changeShortEl, change.compactText );
 		if ( changeEl.dataset.direction !== change.direction ) changeEl.dataset.direction = change.direction;
+		const span = weeks > 1 ? 'multi' : 'week';
+		if ( changeEl.dataset.span !== span ) changeEl.dataset.span = span;
 
 	}
 

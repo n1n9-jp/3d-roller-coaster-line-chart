@@ -249,7 +249,8 @@ export function ensureEvents( ctx, { fetchImpl = globalThis.fetch, warn = consol
  * startProgress：走行の開始位置。最初の update の前に、ここから進んだものとして扱う（開始のすぐ後ろにある出来事を、最初のフレームが飛び越えて見逃さないため。省略時は最初の update の位置から）。
  * update( { timeMs, progress, finished } ) は動作を返す：
  *   { type: 'show', event }（すでに表示中なら入れ替え）／ { type: 'hide' } ／ null（変化なし）
- * 最後の週で止まった（finished）ときは、表示を消して待ちも捨てる。reset() は最初から（onReset）用。
+ * 終点に着いて止まった（finished）ときは、表示中のキャプションを消さずに残す（そのフレームで通った出来事があれば、いちばん新しい 1 件に入れ替える）。
+ * 位置が飛んだときは消す。reset() は最初から（onReset）用。
  */
 export function createCaptionScheduler( { events, showMs = 6000, minShowMs = 3000, maxWaitMs = 3000, maxStepProgress = 0.0036, startProgress = null } ) {
 
@@ -264,21 +265,12 @@ export function createCaptionScheduler( { events, showMs = 6000, minShowMs = 300
 	return {
 		update( { timeMs, progress, finished = false } ) {
 
-			if ( finished ) {
-
-				previous = progress;
-				queue = [];
-				if ( current === null ) return null;
-				current = null;
-				return { type: 'hide' };
-
-			}
-
 			if ( previous === null ) previous = progress;
 			const step = progress - previous;
 
 			if ( step > 0 && step <= maxStepProgress ) {
 
+				// 終点に着いたフレーム（finished）も含めて、通過した出来事を数える（最後のフレームで通った出来事を取りこぼさない）
 				for ( const event of events ) {
 
 					if ( event.progress > previous && event.progress <= progress ) queue.push( { event, passedAt: timeMs } );
@@ -297,6 +289,18 @@ export function createCaptionScheduler( { events, showMs = 6000, minShowMs = 300
 			}
 
 			previous = progress;
+
+			if ( finished ) {
+
+				// 終点に着いた：表示中のものは消さずに残す（最新の出来事は終点のすぐ手前にあり、時間で消すと読めない。終了画面が出て HUD が隠れるだけ）。
+				// ride の時間は止まるので、待っていた出来事は待たずに、いちばん新しい 1 件へ入れ替える
+				if ( queue.length === 0 ) return null;
+				current = queue.at( - 1 ).event;
+				queue = [];
+				shownAt = timeMs;
+				return { type: 'show', event: current };
+
+			}
 
 			let expired = false;
 			if ( current !== null && timeMs - shownAt >= showTime() ) {

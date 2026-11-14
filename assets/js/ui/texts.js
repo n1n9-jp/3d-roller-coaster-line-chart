@@ -232,13 +232,29 @@ export function stepLabel( def ) {
 
 }
 
-/** 「しくみ」の段落（3つ）。windowWeeks は移動平均の週数。 */
-export function mechanismParagraphs( def, windowWeeks ) {
+/**
+ * 年代の境目の例：そのデータの最初の 2 つの境目の年から「（1980年1月、1990年1月…）」を作る。
+ * boundaries：年の配列（ctx.curve.decadeBoundaries() の year）。境目がないときは空文字、1 つだけのときは「（1990年1月）」。
+ */
+export function decadeExamples( boundaries ) {
+
+	const years = ( Array.isArray( boundaries ) ? boundaries : [] ).slice( 0, 2 ).map( ( b ) => `${typeof b === 'number' ? b : b?.year}年1月` );
+	if ( years.length === 0 ) return '';
+	return `（${years.join( '、' )}${years.length === 2 ? '…' : ''}）`;
+
+}
+
+/**
+ * 「しくみ」の段落（3つ）。windowWeeks は移動平均の週数。
+ * boundaries：年代の境目（ctx.curve.decadeBoundaries() の戻り値、または年の配列）。データごとに最初の境目の年が違う
+ * （ドル円は 1980 年、10年国債の金利は 1990 年、日経平均は 1990 年）ので、ここから文言を作る。
+ */
+export function mechanismParagraphs( def, windowWeeks, boundaries = [] ) {
 
 	const t = textsOf( def );
 	return [
 		`レールの高さは${def.name}の週次の値です。${t.reading}乗り心地をなめらかにするため、レールの形には${windowWeeks}週の移動平均を使っています（画面の数値は実際の値です）。`,
-		'コースは、上から見て時計回りに、内側から外側へ広がるらせんです。10年で1周するので、どの周でも同じ向きが同じ時期を表します。北を向く線が年代の境目（1980年1月、1990年1月…）で、俯瞰すると年代が同心の輪として並びます。右下の「年代の輪」は、上から見たらせんと現在位置の図で、北の線の上の数字が年代の境目です。',
+		`コースは、上から見て時計回りに、内側から外側へ広がるらせんです。10年で1周するので、どの周でも同じ向きが同じ時期を表します。北を向く線が年代の境目${decadeExamples( boundaries )}で、俯瞰すると年代が同心の輪として並びます。右下の「年代の輪」は、上から見たらせんと現在位置の図で、北の線の上の数字が年代の境目です。`,
 		`高さの目盛りは、一人称ではレールの脇の線、俯瞰では西側に立つ目盛りの壁で、${stepLabel( def )}ごとに引いています。`
 	];
 
@@ -337,7 +353,7 @@ function hostOf( url ) {
 }
 
 /**
- * 出来事の日付と値の出典の段落。出来事が 1 件も無いとき、出典が分からないときは null。
+ * 出来事の日付と内容の出典の段落（キャプションの値は同梱データから引くので、値の出典ではない）。出来事が 1 件も無いとき、出典が分からないときは null。
  * sources：'eventsready' の payload の sources（文字列、または { name, url }）。なければ、各出来事の source（URL）のホスト名を、
  * 重複なく並べる。戻り値は dataSourceItems の要素と同じ形。
  */
@@ -380,7 +396,7 @@ export function eventsSourceItem( events, sources ) {
 
 	if ( entries.length === 0 ) return null;
 
-	const parts = [ { text: '出来事の日付と値：' } ];
+	const parts = [ { text: '出来事の日付と内容：' } ];
 	entries.forEach( ( entry, i ) => {
 
 		if ( i > 0 ) parts.push( { text: '、' } );

@@ -50,3 +50,33 @@ export function series1990() {
 	return stretchedSeries( loadFixtures().usdjpy, '1990-01-01', '2025-12-29' );
 
 }
+
+/**
+ * 値を [ lo, hi ] へ線形に写した系列（日付はそのまま）。最小の週が lo、最大の週が hi になる。
+ * ドル円の値（75〜358）を日経平均らしい範囲（7,000〜72,000。1 万円刻みの目盛りが何本も入る）に写すのに使う。
+ */
+export function rescaleSeries( series, lo, hi ) {
+
+	let min = Infinity;
+	let max = - Infinity;
+	for ( const { close } of series ) {
+
+		if ( close < min ) min = close;
+		if ( close > max ) max = close;
+
+	}
+
+	const span = max - min || 1;
+	return series.map( ( { date, close } ) => ( { date, close: lo + ( close - min ) / span * ( hi - lo ) } ) );
+
+}
+
+/**
+ * 日経平均らしい値の系列：1990 年 1 月始まり、2025 年 12 月まで（series1990 の形）で、値は 7,000〜72,000 円
+ * （1 万円刻みの目盛りが 7 本入る）。同梱データだけで、日経平均の定義（万円の目盛り・3 桁区切り）の振る舞いを確かめるのに使う。
+ */
+export function seriesNikkeiLike() {
+
+	return rescaleSeries( series1990(), 7000, 72000 );
+
+}

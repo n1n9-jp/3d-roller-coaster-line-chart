@@ -87,6 +87,11 @@
 	display: none;
 }
 
+/* 前の行が 2 週以上前のとき（「3週前比 ▼17.21円高（−4.8%）」）は、1 文字ぶん長いので少し小さくして、大きな値（340.14円）と重ならないようにする */
+#hud-readout .ro-change[data-span="multi"] {
+	font-size: var(--fs-12);
+}
+
 /* ---- S：720px 以下（仕様 3：1 行目に年月と前週比の％、2 行目に値） ---- */
 @media (max-width: 720px) {
 	#hud-readout {
