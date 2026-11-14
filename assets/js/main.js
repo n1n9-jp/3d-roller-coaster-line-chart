@@ -1,6 +1,7 @@
 // 起動処理：データ読み込み → 各モジュールの組み立て → ループ開始。
 
-import { loadData, buildDataset } from './data.js';
+import { loadData, buildDataset, LocalDataMissingError } from './data.js';
+import { MOVING_AVERAGE_WINDOW } from './config.js';
 import { TrackCurve } from './track.js';
 import { createScene } from './scene.js';
 import { createEnvironment } from './environment.js';
@@ -39,7 +40,9 @@ async function boot() {
 	} catch ( error ) {
 
 		console.error( error );
-		startScreen.showError( 'データの読み込みに失敗しました。時間をおいて再読み込みしてください。' );
+		startScreen.showError( error instanceof LocalDataMissingError
+			? '実データがまだありません。npm run fetch-data を実行してから、再読み込みしてください。（URL の ?data=local を外すとサンプルデータで動きます）'
+			: 'データの読み込みに失敗しました。時間をおいて再読み込みしてください。' );
 		return;
 
 	}
@@ -48,7 +51,7 @@ async function boot() {
 	const { stations } = loaded;
 
 	// 表示値・グラフは生データ（dataset.raw）、レールの形は移動平均後（dataset.smoothed）
-	const dataset = buildDataset( loaded.nikkei );
+	const dataset = buildDataset( loaded.nikkei, MOVING_AVERAGE_WINDOW, loaded.meta );
 	const curve = new TrackCurve( stations, dataset.smoothed );
 
 	const environment = createEnvironment( scene );

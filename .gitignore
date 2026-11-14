@@ -12,3 +12,6 @@ desktop.ini
 *.swp
 *.swo
 *~
+
+# 手元で取得した実データ（公開しない。npm run fetch-data で作られる）
+data/local/

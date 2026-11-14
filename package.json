@@ -6,6 +6,7 @@
   "description": "日経平均の週次終値をレールの高さに、山手線一周を水平の経路に割り当てた 3D ジェットコースター",
   "scripts": {
     "start": "python3 -m http.server 8000",
+    "fetch-data": "node scripts/fetch-nikkei.mjs",
     "test": "node --test \"tests/**/*.test.js\""
   }
 }

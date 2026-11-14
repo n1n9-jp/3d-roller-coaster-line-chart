@@ -8,7 +8,18 @@ export const FRAME_MS = 1000 / 60;
 export const MAX_DELTA_MS = 100;
 
 // ---- データ ----
-export const NIKKEI_URL = './data/nikkei225.json';
+// 既定は同梱のサンプルデータ（合成。実際の日経平均ではない）。
+// URL に ?data=local を付けると、npm run fetch-data で作った実データ（data/local/）を読む。
+export const DATA_SOURCES = {
+	sample: {
+		nikkei: './data/nikkei225.json',
+		meta: './data/nikkei225.meta.json'
+	},
+	local: {
+		nikkei: './data/local/nikkei225.json',
+		meta: './data/local/meta.json'
+	}
+};
 export const YAMANOTE_URL = './data/train-yamanote.json';
 // レール形状に使う移動平均の窓（週数）。HUD の表示値は移動平均をかけない生データ。
 export const MOVING_AVERAGE_WINDOW = 4;

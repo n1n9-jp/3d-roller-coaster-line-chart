@@ -1,0 +1,197 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { aggregateWeekly, mondayOf, parseCsv, buildMeta } from '../scripts/fetch-nikkei.mjs';
+import { buildDataset, dateToIndex, dataModeFromSearch } from '../assets/js/data.js';
+import { readJson } from './helpers.js';
+
+// ---- 取得スクリプトの週次集計 ----
+
+test( 'mondayOf：週は月曜始まり（日曜は前の月曜の週）', () => {
+
+	assert.equal( mondayOf( '2024-01-08' ), '2024-01-08' ); // 月
+	assert.equal( mondayOf( '2024-01-12' ), '2024-01-08' ); // 金
+	assert.equal( mondayOf( '2024-01-14' ), '2024-01-08' ); // 日
+	assert.equal( mondayOf( '2025-01-01' ), '2024-12-30' ); // 年をまたぐ
+	assert.equal( mondayOf( '2024-03-01' ), '2024-02-26' ); // うるう日をまたぐ
+
+} );
+
+test( 'parseCsv：ヘッダ、空欄、"." の休場日は除く', () => {
+
+	const csv = 'observation_date,NIKKEI225\n2024-01-04,33288.29\n2024-01-05,.\n2024-01-06,\n2024-01-09,33763.18\n';
+	assert.deepEqual( parseCsv( csv ), [
+		{ date: '2024-01-04', close: 33288.29 },
+		{ date: '2024-01-09', close: 33763.18 }
+	] );
+
+} );
+
+test( 'aggregateWeekly：週の最終営業日の終値を、週の月曜日付でとる', () => {
+
+	const daily = [
+		{ date: '2024-01-08', close: 100 },
+		{ date: '2024-01-09', close: 110 },
+		// 水曜は休場（行なし）
+		{ date: '2024-01-11', close: 120 },
+		{ date: '2024-01-12', close: 130.456 }
+	];
+	assert.deepEqual( aggregateWeekly( daily ), [ { date: '2024-01-08', close: 130.46 } ] );
+
+} );
+
+test( 'aggregateWeekly：金曜が休場なら木曜の終値、入力が逆順でも同じ', () => {
+
+	const daily = [
+		{ date: '2024-02-08', close: 20 },
+		{ date: '2024-02-05', close: 10 },
+		{ date: '2024-02-07', close: 15 }
+	];
+	assert.deepEqual( aggregateWeekly( daily ), [ { date: '2024-02-05', close: 20 } ] );
+
+} );
+
+test( 'aggregateWeekly：営業日のない週は行を作らない', () => {
+
+	const daily = [
+		{ date: '2024-01-05', close: 1 }, // 週 01-01
+		{ date: '2024-01-12', close: 2 }, // 週 01-08
+		// 01-15 の週は営業日なし
+		{ date: '2024-01-22', close: 3 } // 週 01-22
+	];
+	const weekly = aggregateWeekly( daily );
+	assert.deepEqual( weekly.map( w => w.date ), [ '2024-01-01', '2024-01-08', '2024-01-22' ] );
+
+} );
+
+test( 'aggregateWeekly：年をまたぐ週は、月曜日付の年に入り、翌年の営業日の終値をとる', () => {
+
+	const daily = [
+		{ date: '2024-12-27', close: 39000 }, // 週 12-23
+		{ date: '2024-12-30', close: 39100 }, // 週 12-30（月曜）
+		{ date: '2025-01-03', close: 39200 }, // 同じ週。年始の休場明け
+		{ date: '2025-01-06', close: 39300 } // 週 01-06
+	];
+	assert.deepEqual( aggregateWeekly( daily ), [
+		{ date: '2024-12-23', close: 39000 },
+		{ date: '2024-12-30', close: 39200 },
+		{ date: '2025-01-06', close: 39300 }
+	] );
+
+} );
+
+test( 'buildMeta：実データのメタ情報', () => {
+
+	const weekly = [ { date: '1990-01-01', close: 1 }, { date: '1990-01-08', close: 2 } ];
+	const meta = buildMeta( weekly, '2026-11-14' );
+	assert.equal( meta.kind, 'real' );
+	assert.equal( meta.fetchedAt, '2026-11-14' );
+	assert.equal( meta.start, '1990-01-01' );
+	assert.equal( meta.end, '1990-01-08' );
+	assert.equal( meta.count, 2 );
+	assert.equal( meta.sourceUrl, 'https://fred.stlouisfed.org/series/NIKKEI225' );
+
+} );
+
+// ---- dateToIndex ----
+
+const gappy = buildDataset( [
+	{ date: '2000-01-03', close: 1 },
+	{ date: '2000-01-10', close: 2 },
+	{ date: '2000-01-17', close: 3 },
+	// 01-24 と 01-31 の週が抜けている（14 日あく）
+	{ date: '2000-02-07', close: 4 },
+	{ date: '2000-02-14', close: 5 }
+] );
+
+test( 'dateToIndex：データ点の上では整数の添字', () => {
+
+	assert.equal( dateToIndex( gappy, '2000-01-03' ), 0 );
+	assert.equal( dateToIndex( gappy, '2000-01-10' ), 1 );
+	assert.equal( dateToIndex( gappy, '2000-01-17' ), 2 );
+	assert.equal( dateToIndex( gappy, '2000-02-07' ), 3 );
+	assert.equal( dateToIndex( gappy, '2000-02-14' ), 4 );
+
+} );
+
+test( 'dateToIndex：データ点の間は日数で線形補間', () => {
+
+	assert.ok( Math.abs( dateToIndex( gappy, '2000-01-13' ) - ( 1 + 3 / 7 ) ) < 1e-12 );
+	assert.ok( Math.abs( dateToIndex( gappy, '2000-01-16' ) - ( 1 + 6 / 7 ) ) < 1e-12 );
+
+} );
+
+test( 'dateToIndex：間隔が抜けている箇所は、その間隔の日数で補間する', () => {
+
+	// 01-17 → 02-07 は 21 日で添字 2 → 3
+	assert.equal( dateToIndex( gappy, '2000-01-24' ), 2 + 7 / 21 );
+	assert.equal( dateToIndex( gappy, '2000-01-31' ), 2 + 14 / 21 );
+
+} );
+
+test( 'dateToIndex：範囲外は両端に張り付く', () => {
+
+	assert.equal( dateToIndex( gappy, '1990-01-01' ), 0 );
+	assert.equal( dateToIndex( gappy, '2000-01-02' ), 0 );
+	assert.equal( dateToIndex( gappy, '2000-02-15' ), 4 );
+	assert.equal( dateToIndex( gappy, '2030-01-01' ), 4 );
+
+} );
+
+test( 'dateToIndex：同梱データでは日付の順序と添字が単調に対応する', () => {
+
+	const dataset = buildDataset( readJson( 'data/nikkei225.json' ) );
+	let prev = - 1;
+	for ( const date of [ '1990-01-01', '1995-06-15', '2000-01-01', '2012-12-26', '2020-03-19', '2025-12-29' ] ) {
+
+		const index = dateToIndex( dataset, date );
+		assert.ok( index > prev, date );
+		prev = index;
+
+	}
+
+	assert.equal( dateToIndex( dataset, '2025-12-29' ), dataset.raw.length - 1 );
+
+} );
+
+// ---- データの切り替え ----
+
+test( 'dataModeFromSearch：?data=local のときだけ local', () => {
+
+	assert.equal( dataModeFromSearch( '' ), 'sample' );
+	assert.equal( dataModeFromSearch( '?data=local' ), 'local' );
+	assert.equal( dataModeFromSearch( '?a=1&data=local' ), 'local' );
+	assert.equal( dataModeFromSearch( '?data=other' ), 'sample' );
+
+} );
+
+test( 'buildDataset：meta を dataset.meta に持つ（省略時はサンプル扱い）', () => {
+
+	const raw = [ { date: '2000-01-03', close: 1 }, { date: '2000-01-10', close: 2 } ];
+	const meta = { kind: 'real' };
+	assert.equal( buildDataset( raw, 4, meta ).meta, meta );
+	assert.equal( buildDataset( raw ).meta.kind, 'sample' );
+
+} );
+
+// ---- 同梱のサンプルデータ ----
+
+test( '同梱データ：{ date, close } だけの 1879 件で、meta（サンプル）と一致する', () => {
+
+	const nikkei = readJson( 'data/nikkei225.json' );
+	const meta = readJson( 'data/nikkei225.meta.json' );
+
+	assert.equal( nikkei.length, 1879 );
+	for ( const row of nikkei ) {
+
+		assert.deepEqual( Object.keys( row ).sort(), [ 'close', 'date' ] );
+		assert.equal( typeof row.close, 'number' );
+
+	}
+
+	assert.equal( meta.kind, 'sample' );
+	assert.match( meta.label, /サンプルデータ/ );
+	assert.equal( meta.start, nikkei[ 0 ].date );
+	assert.equal( meta.end, nikkei.at( - 1 ).date );
+	assert.equal( meta.count, nikkei.length );
+
+} );
