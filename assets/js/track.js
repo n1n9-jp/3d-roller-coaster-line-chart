@@ -8,7 +8,7 @@
 import { Vector3 } from './three.core.js';
 import { GEO_CENTER, GEO_SCALE, Y_MIN, Y_MAX, LOOP } from './config.js';
 import { closeRange, interpolateClose } from './data.js';
-import { progressToIndex, indexToProgress } from './loop.js';
+import { progressToIndex, indexToProgress, hermite, linkEndSlopes } from './loop.js';
 
 /** 経緯度 → ワールド座標の水平位置。 */
 export function geoToXZ( lon, lat ) {
@@ -117,6 +117,26 @@ export class TrackCurve {
 		this._point = new Vector3();
 		this._tangent = new Vector3();
 
+		/** 連絡区間の高さ（エルミート補間）の両端の値と勾配。連絡区間がなければ null。 */
+		this.link = linkFraction > 0 && series.length >= 2 ? this._buildLink() : null;
+
+	}
+
+	/** 最新の週の高さ → 1990 年 1 月の高さ。両端の勾配はデータ側の片側勾配に単調制限をかけたもの。 */
+	_buildLink() {
+
+		const n = this.series.length;
+		const y = ( i ) => this.valueToY( this.series[ i ].close );
+		const perIndex = ( n - 1 ) / this.dataEnd; // 添字 1 つ分の高さ変化を dy/dt に換算する係数
+		const y0 = y( n - 1 );
+		const y1 = y( 0 );
+		const m0Data = ( y( n - 1 ) - y( n - 2 ) ) * perIndex;
+		const m1Data = ( y( 1 ) - y( 0 ) ) * perIndex;
+		const h = this.linkFraction;
+		// 水平距離 1（周長に対する progress 1 分）あたりの高さの変化が tan( maxLinkPitchDeg ) になる勾配
+		const maxSlope = Math.tan( LOOP.maxLinkPitchDeg * Math.PI / 180 ) * this.seg.totalLength;
+		return { y0, y1, h, ...linkEndSlopes( { y0, y1, m0Data, m1Data, h, maxSlope } ) };
+
 	}
 
 	/** 終値 → レールの高さ（ワールド座標の y）。 */
@@ -155,13 +175,12 @@ export class TrackCurve {
 
 	getYAt( t ) {
 
-		if ( this.isLink( t ) ) {
+		if ( this.isLink( t ) && this.link ) {
 
-			// 連絡区間（担当が作り込む）。いまは最後の高さから最初の高さへ直線でつなぐだけ。
-			const k = ( t - this.dataEnd ) / this.linkFraction;
-			const last = this.series[ this.series.length - 1 ].close;
-			const first = this.series[ 0 ].close;
-			return this.valueToY( last + ( first - last ) * k );
+			// 連絡区間：最新の週の高さから 1990 年 1 月の高さへ、3 次エルミートで滑らかに戻る。
+			const { y0, m0, y1, m1, h } = this.link;
+			const s = Math.min( 1, ( t - this.dataEnd ) / h );
+			return hermite( y0, m0, y1, m1, h, s ).y;
 
 		}
 
@@ -190,12 +209,31 @@ export class TrackCurve {
 
 	}
 
-	/** 高さの勾配 dy/dt（速度の計算に使う）。 */
+	/**
+	 * 高さの勾配 dy/dt（速度の計算に使う）。
+	 * データ区間は ±DELTA の差分で、端（t = 0 と t = dataEnd）ではデータ区間の内側へ寄せた片側差分にする
+	 * （つなぎ目をまたぐと、反対側の高さが混ざって勾配が飛ぶため）。連絡区間は解析的な勾配。
+	 */
 	getHeightGradientAt( t ) {
 
-		const t1 = ( t - DELTA + 1 ) % 1;
-		const t2 = ( t + DELTA ) % 1;
-		return ( this.getYAt( t2 ) - this.getYAt( t1 ) ) / ( 2 * DELTA );
+		if ( t < 0 || t > 1 ) {
+
+			t = t % 1;
+			if ( t < 0 ) t += 1;
+
+		}
+
+		if ( this.link && t > this.dataEnd ) {
+
+			const { y0, m0, y1, m1, h } = this.link;
+			return hermite( y0, m0, y1, m1, h, ( t - this.dataEnd ) / h ).dy;
+
+		}
+
+		const t1 = Math.max( 0, t - DELTA );
+		const t2 = Math.min( this.dataEnd, t + DELTA );
+		if ( t2 <= t1 ) return 0;
+		return ( this.getYAt( t2 ) - this.getYAt( t1 ) ) / ( t2 - t1 );
 
 	}
 

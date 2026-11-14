@@ -29,17 +29,18 @@ test( '移動平均：定数列は変わらない', () => {
 
 } );
 
+// 第 3 引数の linkFraction は 0（連絡区間なし）で確かめる。
 test( 'closeRange / indexAt / interpolateClose', () => {
 
 	const s = series( [ 5, 1, 9, 3 ] );
 	assert.deepEqual( closeRange( s ), { min: 1, max: 9 } );
-	assert.equal( indexAt( s, 0 ), 0 );
-	assert.equal( indexAt( s, 1 ), 3 );
-	assert.equal( indexAt( s, 0.5 ), 1 );
-	assert.equal( interpolateClose( s, 0 ), 5 );
-	assert.equal( interpolateClose( s, 1 ), 3 );
-	assert.equal( interpolateClose( s, 1 / 6 ), 3 ); // 5 と 1 の中点
-	assert.equal( interpolateClose( s, 1 / 3 ), 1 );
+	assert.equal( indexAt( s, 0, 0 ), 0 );
+	assert.equal( indexAt( s, 1, 0 ), 3 );
+	assert.equal( indexAt( s, 0.5, 0 ), 1 );
+	assert.equal( interpolateClose( s, 0, 0 ), 5 );
+	assert.equal( interpolateClose( s, 1, 0 ), 3 );
+	assert.equal( interpolateClose( s, 1 / 6, 0 ), 3 ); // 5 と 1 の中点
+	assert.equal( interpolateClose( s, 1 / 3, 0 ), 1 );
 
 } );
 

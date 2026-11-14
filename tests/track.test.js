@@ -103,12 +103,15 @@ test( 'TrackCurve：接線は水平な単位ベクトル、t は周期 1', () =>
 
 // ---- 連絡区間の口：dataEnd / isLink / progressToIndex / indexToProgress ----
 
-test( 'LOOP.linkFraction の既定は 0（連絡区間なし）で、dataEnd は 1', () => {
+test( 'LOOP.linkFraction の既定は 0.03 で、dataEnd は 0.97。linkFraction: 0 なら連絡区間なしで dataEnd は 1', () => {
 
-	assert.equal( LOOP.linkFraction, 0 );
+	assert.equal( LOOP.linkFraction, 0.03 );
 	const curve = new TrackCurve( stations, nikkei );
-	assert.equal( curve.dataEnd, 1 );
-	assert.equal( curve.isLink( 1 ), false );
+	assert.ok( Math.abs( curve.dataEnd - 0.97 ) < 1e-12 );
+	assert.equal( curve.isLink( 0.98 ), true );
+	const none = new TrackCurve( stations, nikkei, { linkFraction: 0 } );
+	assert.equal( none.dataEnd, 1 );
+	assert.equal( none.isLink( 1 ), false );
 
 } );
 

@@ -13,9 +13,12 @@ import { loadFixtures } from './helpers.js';
 const { nikkei, stations } = loadFixtures();
 const dataset = buildDataset( nikkei );
 
+// 連絡区間なし（linkFraction: 0）の周回で確かめる。連絡区間ありの走行は tests/link.test.js と下の専用のテストで確かめる。
+const NO_LINK = { linkFraction: 0 };
+
 function newRide() {
 
-	const ride = createRide( new TrackCurve( stations, dataset.smoothed ) );
+	const ride = createRide( new TrackCurve( stations, dataset.smoothed, NO_LINK ) );
 	ride.started = true;
 	return ride;
 
@@ -115,7 +118,7 @@ test( '向きの補間も時間基準：60fps と 120fps で車体の向きが�
 
 // ---- 操作 API（pause / resume / togglePause / restart / finish）と events ----
 
-function newRideWithEvents( curveOptions ) {
+function newRideWithEvents( curveOptions = NO_LINK ) {
 
 	const events = createEvents();
 	const log = [];

@@ -147,7 +147,9 @@ export const HUD_COLORS = {
 // linkFraction：周回の最後に置く連絡区間（回送）が progress 全体に占める割合。
 // 0 のあいだは連絡区間なし。連絡区間の担当が 0.03 にする。
 // データ区間は progress 0 .. 1 - linkFraction（TrackCurve の dataEnd）。
-export const LOOP = { linkFraction: 0 };
+// maxLinkPitchDeg：連絡区間の最大の傾斜角（度）の目標。超えるときは、両端の勾配をデータ側の勾配から直線の勾配へ近づけて収める
+// （段差が大きすぎて直線でも超える場合は、直線にする）。
+export const LOOP = { linkFraction: 0.03, maxLinkPitchDeg: 45 };
 
 // ---- 以下は空の節。各担当が自分の節にだけ値を足す ----
 
