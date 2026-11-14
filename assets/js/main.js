@@ -4,7 +4,7 @@
 
 import * as config from './config.js';
 import { MAX_DELTA_MS, MOVING_AVERAGE_WINDOW } from './config.js';
-import { loadData, buildDataset, LocalDataMissingError, pointAtIndex } from './data.js';
+import { loadData, buildDataset, datasetIdFromSearch, LocalDataMissingError, pointAtIndex } from './data.js';
 import { TrackCurve } from './track.js';
 import { createEvents } from './events.js';
 import { createScene } from './scene.js';
@@ -55,6 +55,8 @@ let sceneParts = null;
 async function boot() {
 
 	startScreen = createStartScreen();
+	// どのデータか（<html data-dataset>）。読み込みの前に、URL から決めておく（読み込み中・エラーの表示にも使える）
+	document.documentElement.dataset.dataset = datasetIdFromSearch( window.location.search );
 	startScreen.showLoading();
 
 	try {
@@ -85,7 +87,8 @@ async function boot() {
 	const { renderer, scene, camera, train } = sceneParts;
 
 	// 表示値・グラフは生データ（dataset.raw）、レールの形は移動平均後（dataset.smoothed）
-	const dataset = buildDataset( loaded.nikkei, MOVING_AVERAGE_WINDOW, loaded.meta );
+	// dataset.id・def（config.js の DATASETS の 1 件）・meta・format（値の書式。format.js）も持つ
+	const dataset = buildDataset( loaded.series, MOVING_AVERAGE_WINDOW, loaded.meta, loaded.def );
 	// コースは螺旋（角度は日付、進行位置は時間に比例。track.js）
 	const curve = new TrackCurve( dataset.smoothed );
 
@@ -93,8 +96,8 @@ async function boot() {
 	const ride = createRide( curve, events );
 	const view = createView( { scene, camera, train, events, curve, ride, kind: dataset.meta.kind } );
 
-	// データの種類（'sample' | 'real'）。CSS が html[data-kind] を見る。meta は loadData が必ず返す
-	document.documentElement.dataset.kind = dataset.meta.kind;
+	// どのデータか（'usdjpy' | 'jgb10' | 'nikkei'）。CSS が html[data-dataset] を見る
+	document.documentElement.dataset.dataset = dataset.id;
 
 	const liveRegion = document.getElementById( 'live-region' );
 	const ui = {

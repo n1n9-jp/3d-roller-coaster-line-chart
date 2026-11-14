@@ -81,24 +81,32 @@ test( 'pointAtIndex：切り捨てて範囲に丸める', () => {
 
 } );
 
-test( 't = 0 は 1990 年 1 月 1 日のデータ点、t = 1 は最後のデータ点', () => {
+test( 't = 0 は最初のデータ点（ドル円は 1971 年 1 月、金利は 1986 年 6 月）、t = 1 は最後のデータ点', () => {
 
-	const { nikkei } = loadFixtures();
-	const dataset = buildDataset( nikkei );
-	assert.equal( dataset.rawAt( 0 ).date, '1990-01-01' );
-	assert.equal( dataset.rawAt( 1 ).date, nikkei.at( - 1 ).date );
-	assert.equal( dataset.raw, nikkei );
+	const { usdjpy, jgb10 } = loadFixtures();
+	for ( const [ data, first ] of [ [ usdjpy, '1971-01-04' ], [ jgb10, '1986-06-30' ] ] ) {
+
+		const dataset = buildDataset( data );
+		assert.equal( dataset.rawAt( 0 ).date, first );
+		assert.equal( dataset.rawAt( 1 ).date, data.at( - 1 ).date );
+		assert.equal( dataset.raw, data );
+
+	}
 
 } );
 
 test( '実データ：表示用は生データ、レール用は移動平均で、範囲は平均後の方が狭い', () => {
 
-	const { nikkei } = loadFixtures();
-	const dataset = buildDataset( nikkei );
-	assert.equal( dataset.smoothed.length, dataset.raw.length );
-	assert.ok( dataset.smoothedRange.min >= dataset.rawRange.min );
-	assert.ok( dataset.smoothedRange.max <= dataset.rawRange.max );
-	assert.ok( dataset.smoothedRange.max < dataset.rawRange.max || dataset.smoothedRange.min > dataset.rawRange.min );
+	const { usdjpy, jgb10 } = loadFixtures();
+	for ( const data of [ usdjpy, jgb10 ] ) {
+
+		const dataset = buildDataset( data );
+		assert.equal( dataset.smoothed.length, dataset.raw.length );
+		assert.ok( dataset.smoothedRange.min >= dataset.rawRange.min );
+		assert.ok( dataset.smoothedRange.max <= dataset.rawRange.max );
+		assert.ok( dataset.smoothedRange.max < dataset.rawRange.max || dataset.smoothedRange.min > dataset.rawRange.min );
+
+	}
 
 } );
 
@@ -115,9 +123,9 @@ test( 'buildDataset を既定の引数で呼ぶと、移動平均は窓 4（前 
 
 test( '実データ：buildDataset の既定の平滑化は、窓 4 の移動平均と一致する', () => {
 
-	const { nikkei } = loadFixtures();
-	const dataset = buildDataset( nikkei );
-	const expected = applyMovingAverage( nikkei, 4 );
+	const { jgb10: data } = loadFixtures(); // マイナスの値を含む
+	const dataset = buildDataset( data );
+	const expected = applyMovingAverage( data, 4 );
 	assert.equal( dataset.smoothed.length, expected.length );
 	for ( let i = 0; i < expected.length; i ++ ) {
 
@@ -126,6 +134,6 @@ test( '実データ：buildDataset の既定の平滑化は、窓 4 の移動平
 	}
 
 	// 先頭は [0,2) の平均
-	assert.ok( Math.abs( dataset.smoothed[ 0 ].close - ( nikkei[ 0 ].close + nikkei[ 1 ].close ) / 2 ) < 1e-9 );
+	assert.ok( Math.abs( dataset.smoothed[ 0 ].close - ( data[ 0 ].close + data[ 1 ].close ) / 2 ) < 1e-9 );
 
 } );

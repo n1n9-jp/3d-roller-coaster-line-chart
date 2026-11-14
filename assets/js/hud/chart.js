@@ -1,4 +1,4 @@
-// ミニグラフ：日経平均の週次終値（生データ）の全期間の折れ線と現在位置。
+// ミニグラフ：週次の値（生データ）の全期間の折れ線と現在位置。値の書式・軸の範囲・見出しは、選んだデータの定義（dataset.def、dataset.format）から作る。
 // 機能モジュール（createChart( ctx )）。canvas は #graphCanvas（#hud-chart の中）。見出しと単位は HTML。
 //
 // 静的な部分（グリッド・軸・年の目盛り・これからの線・イベントの目盛り）は、大きさが変わったときだけ描く（layer.js）。
@@ -6,7 +6,8 @@
 
 import { HUD_COLORS as COLORS, FONT_SANS } from '../config.js';
 import { createHudLayer, crisp, withAlpha } from './layer.js';
-import { yAxis, labelStep, labelIndices, formatYenTick, yearTicks, formatYearMonth, formatYen } from './scales.js';
+import { yAxis, labelStride, labelValues, yearTicks } from './scales.js';
+import { parseDate, formatYearMonth } from '../format.js';
 
 // 描画域の余白（CSS px）。仕様 3「ミニグラフ canvas の中身」と、モバイルの表（左 30、下 16）
 const MARGIN = { left: 40, right: 8, top: 8, bottom: 18 };
@@ -20,11 +21,27 @@ export function createChart( ctx ) {
 	const dataset = ctx.dataset;
 	const series = dataset.raw;
 	const last = series.length - 1;
-	const axis = yAxis( dataset.rawRange.max );
+	const format = dataset.format;
+	const axis = yAxis( format, dataset.rawRange );
 	const years = yearTicks( dataset );
-	const isSample = dataset.meta?.kind === 'sample';
 	const endLabel = formatYearMonth( series[ last ].date );
-	const baseLabel = `${isSample ? 'サンプルデータ。' : ''}1990年から${endLabel}までの日経平均株価の折れ線グラフ。`;
+	const baseLabel = `${parseDate( series[ 0 ].date ).year}年から${endLabel}までの${dataset.def.name}の折れ線グラフ。`;
+
+	// 見出しと単位（HTML 側は日経平均の初期値。S では見出しの「…の」を隠して「推移」だけを出す）
+	const titleFullEl = document.querySelector( '#hud-chart .chart-title__full' );
+	const titleTailEl = document.querySelector( '#hud-chart .chart-title__tail' );
+	const unitEl = document.querySelector( '#hud-chart .chart-unit' );
+	const chartTitle = dataset.def.chartTitle;
+	const titleTail = '推移';
+	if ( titleFullEl && titleTailEl ) {
+
+		const hasTail = chartTitle.endsWith( titleTail );
+		titleFullEl.textContent = hasTail ? chartTitle.slice( 0, - titleTail.length ) : chartTitle;
+		titleTailEl.textContent = hasTail ? titleTail : '';
+
+	}
+
+	if ( unitEl ) unitEl.textContent = format.unit;
 
 	let events = []; // [ { index } ]：系列上の位置
 	let plot = null; // 描画域（論理 px）と、座標の変換
@@ -51,7 +68,7 @@ export function createChart( ctx ) {
 			fontSize: compact ? 11 : 12,
 			left, right, top, bottom, plotW, plotH,
 			xAt: ( u ) => left + Math.min( last, Math.max( 0, u ) ) / last * plotW,
-			yAt: ( close ) => bottom - close / axis.top * plotH
+			yAt: ( close ) => bottom - ( close - axis.min ) / axis.span * plotH
 		};
 
 	}
@@ -66,13 +83,14 @@ export function createChart( ctx ) {
 		fillGradient.addColorStop( 0, withAlpha( COLORS.ridden, 0.14 ) );
 		fillGradient.addColorStop( 1, withAlpha( COLORS.ridden, 0 ) );
 
-		// グリッド：1 万円ごとに細い線（ラベルを間引いても線は全部引く）
+		// グリッド：刻みごとに細い線（ラベルを間引いても線は全部引く。下端の線は、基線が別にあるとき（金利の 0）も引く）
 		c.lineWidth = 1;
 		c.strokeStyle = COLORS.plotGrid;
 		c.beginPath();
-		for ( let k = 1; k <= axis.count; k ++ ) {
+		for ( const value of axis.values ) {
 
-			const y = crisp( bottom - k / axis.count * plotH, dpr );
+			if ( value === axis.baseValue ) continue;
+			const y = crisp( yAt( value ), dpr );
 			c.moveTo( left, y );
 			c.lineTo( right, y );
 
@@ -80,30 +98,31 @@ export function createChart( ctx ) {
 
 		c.stroke();
 
-		// 基線（0）
+		// 基線：0 が軸の範囲にあれば 0 の線（金利）、なければ下端の線。少し強く描く
 		c.strokeStyle = COLORS.plotAxis;
 		c.beginPath();
-		const baseY = crisp( bottom, dpr );
-		c.moveTo( left, baseY );
-		c.lineTo( right, baseY );
+		const zeroY = crisp( yAt( axis.baseValue ), dpr );
+		c.moveTo( left, zeroY );
+		c.lineTo( right, zeroY );
 		c.stroke();
 
-		// Y 軸のラベル：「1万」「2万」…。多いとき、または描画域が低いときは間引く
-		const step = labelStep( axis.count, plotH );
+		// Y 軸のラベル：値の書式の短い形（'100'、'2'、'2万'。単位は見出し行の右）。多いとき、または描画域が低いときは間引く
+		const stride = labelStride( axis, plotH );
 		c.font = `400 ${fontSize}px ${FONT_SANS}`;
 		c.fillStyle = COLORS.text3;
 		c.textAlign = 'right';
 		c.textBaseline = 'middle';
-		for ( const k of labelIndices( axis.count, step ) ) {
+		for ( const value of labelValues( axis, stride ) ) {
 
-			// 0 のラベルは、すぐ下の「1990」と近いので 2px 上げる
-			c.fillText( formatYenTick( axis.ticks[ k ] ), left - 6, bottom - k / axis.count * plotH - ( k === 0 ? 2 : 0 ) );
+			// 下端のラベルは、すぐ下の年の目盛りのラベルと近いので 2px 上げる
+			c.fillText( format.tick( value ), left - 6, yAt( value ) - ( value === axis.min ? 2 : 0 ) );
 
 		}
 
-		// X 軸：10 年ごとの年の目盛り（長さ 4px）とラベル
+		// X 軸：10 年ごとの年の目盛り（下端から長さ 4px）とラベル
 		c.strokeStyle = COLORS.plotAxis;
 		c.beginPath();
+		const baseY = crisp( bottom, dpr );
 		for ( const { index } of years ) {
 
 			const x = crisp( xAt( index ), dpr );
@@ -217,7 +236,7 @@ export function createChart( ctx ) {
 	const offYear = ctx.events?.on( 'yearchange', ( { point } ) => {
 
 		if ( ! point ) return;
-		canvas.setAttribute( 'aria-label', `${baseLabel}現在は${formatYearMonth( point.date )}、${formatYen( point.close )}円。` );
+		canvas.setAttribute( 'aria-label', `${baseLabel}現在は${formatYearMonth( point.date )}、${format.value( point.close )}。` );
 
 	} );
 

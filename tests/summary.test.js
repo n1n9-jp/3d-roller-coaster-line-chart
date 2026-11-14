@@ -1,46 +1,16 @@
-// 終了画面の要約（assets/js/summary.js）の確かめ。
+// 終了画面の要約（assets/js/summary.js）の確かめ。値の書式は format.js（tests/format.test.js）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatNumber, formatYen, formatWeek, formatYearMonth, parseDate, describeChange, summarize, summaryTexts } from '../assets/js/summary.js';
+import { summarize, summaryTexts, WORD_JOINER } from '../assets/js/summary.js';
+import { buildDataset } from '../assets/js/data.js';
+import { DATASETS } from '../assets/js/config.js';
 import { loadFixtures } from './helpers.js';
 
+const J = WORD_JOINER;
 const pt = ( date, close ) => ( { date, close } );
+const datasetOf = ( id, raw ) => buildDataset( raw, 4, undefined, DATASETS[ id ] );
 
-test( '数の書式：四捨五入してカンマ区切り', () => {
-
-	assert.equal( formatNumber( 41701.96 ), '41,702' );
-	assert.equal( formatNumber( 7081.55 ), '7,082' );
-	assert.equal( formatNumber( 999.4 ), '999' );
-	assert.equal( formatNumber( 71300.2 ), '71,300' );
-	assert.equal( formatNumber( 1000000 ), '1,000,000' );
-	assert.equal( formatYen( 7081.55 ), '7,082円' );
-
-} );
-
-test( '日付の書式：月日の 0 を付けない', () => {
-
-	assert.deepEqual( parseDate( '2009-03-09' ), { year: 2009, month: 3, day: 9 } );
-	assert.equal( formatWeek( '2009-03-09' ), '2009年3月9日の週' );
-	assert.equal( formatWeek( '2024-12-30' ), '2024年12月30日の週' );
-	assert.equal( formatYearMonth( '2025-12-29' ), '2025年12月' );
-	assert.equal( formatYearMonth( '1990-01-01' ), '1990年1月' );
-	assert.throws( () => parseDate( '2024/07/01' ) );
-
-} );
-
-test( '変化率：上げ・下げ・小数 1 桁', () => {
-
-	assert.deepEqual( describeChange( 100, 150 ), { direction: 'up', percent: '50.0', text: '▲50.0%' } );
-	assert.deepEqual( describeChange( 200, 150 ), { direction: 'down', percent: '25.0', text: '▼25.0%' } );
-	assert.equal( describeChange( 38852.92, 71300 ).text, '▲83.5%' );
-	assert.equal( describeChange( 100, 100.04 ).direction, 'flat' );
-	assert.equal( describeChange( 100, 100.04 ).text, '±0.0%' );
-	assert.equal( describeChange( 100, 99.96 ).text, '±0.0%' );
-	assert.equal( describeChange( 100, 100.06 ).text, '▲0.1%' );
-
-} );
-
-test( '要約：最初と最後の週、週数、期間', () => {
+test( '要約：最初と最後の週、週数、期間、終了年月', () => {
 
 	const s = summarize( [ pt( '1990-01-01', 100 ), pt( '1990-01-08', 120 ), pt( '1990-01-15', 90 ), pt( '1990-02-05', 110 ) ] );
 	assert.equal( s.weeks, 4 );
@@ -48,7 +18,7 @@ test( '要約：最初と最後の週、週数、期間', () => {
 	assert.deepEqual( s.last, pt( '1990-02-05', 110 ) );
 	assert.equal( s.startLabel, '1990年1月' );
 	assert.equal( s.endLabel, '1990年2月' );
-	assert.equal( s.change.text, '▲10.0%' );
+	assert.equal( s.endYear, 1990 );
 
 } );
 
@@ -68,40 +38,74 @@ test( '要約：最初や最後の週が最高値・最安値になる場合と�
 
 	const one = summarize( [ pt( '2000-01-03', 10 ) ] );
 	assert.equal( one.weeks, 1 );
-	assert.equal( one.change.direction, 'flat' );
+	assert.equal( one.turns, 0 );
 
 	assert.equal( summarize( [] ), null );
 	assert.equal( summarize( null ), null );
 
 } );
 
-test( '文言：仕様の書式どおり', () => {
+test( '要約：周数は、期間の年数 ÷ 10（10 年で 1 周）', () => {
 
-	const t = summaryTexts( summarize( [ pt( '1990-01-01', 38852.92 ), pt( '1990-01-08', 71300.4 ), pt( '2026-11-09', 50000 ) ] ) );
-	assert.equal( t.lead, '1990年1月から2026年11月まで、3週分の日経平均株価を走りました。' );
-	assert.deepEqual( t.stats.max, { label: '最高値', value: '71,300', unit: '円', date: '1990年1月8日の週' } );
-	assert.equal( t.stats.last.date, '2026年11月9日の週' );
-	assert.equal( t.change, '最初の週と比べて ▲28.7%' );
-	assert.equal( t.restartLabel, '1990年1月からもう一度乗る' );
+	assert.ok( Math.abs( summarize( [ pt( '1990-01-01', 1 ), pt( '2000-01-01', 1 ) ] ).turns - 1 ) < 0.001 );
+	assert.ok( Math.abs( summarize( [ pt( '1990-01-01', 1 ), pt( '1995-01-01', 1 ) ] ).turns - 0.5 ) < 0.001 );
 
 } );
 
-test( 'サンプルデータ（data/nikkei225.json）：最高値・最安値・週数・期間', () => {
+test( '文言（ドル円）：見出し・リード・統計・変化の一行が仕様どおり', () => {
 
-	const { nikkei } = loadFixtures();
-	const s = summarize( nikkei );
-	assert.equal( s.weeks, 1879 );
-	assert.deepEqual( s.max, pt( '2024-07-01', 41701.96 ) );
-	assert.deepEqual( s.min, pt( '2009-03-09', 7081.55 ) );
-	assert.equal( s.first.date, '1990-01-01' );
-	assert.equal( s.last.date, '2025-12-29' );
-	assert.equal( s.endLabel, '2025年12月' );
+	const { usdjpy } = loadFixtures();
+	const t = summaryTexts( summarize( usdjpy ), datasetOf( 'usdjpy', usdjpy ) );
 
-	const t = summaryTexts( s );
-	assert.equal( t.lead, '1990年1月から2025年12月まで、1879週分の日経平均株価を走りました。' );
-	assert.equal( t.stats.max.value, '41,702' );
-	assert.equal( t.stats.max.date, '2024年7月1日の週' );
-	assert.equal( t.stats.min.value, '7,082' );
-	assert.equal( t.stats.min.date, '2009年3月9日の週' );
+	assert.equal( t.title, '2026年11月に到着しました' );
+	assert.equal( t.lead, `1971年1月から、らせんを約5.6周、2,912${J}週分のドル円の為替レートを走りました。` );
+	assert.deepEqual( t.stats.first, { label: '最初の週', value: '357.82', unit: '円', date: '1971年1月4日の週' } );
+	assert.deepEqual( t.stats.last, { label: '最後の週', value: '158.23', unit: '円', date: '2026年11月2日の週' } );
+	assert.deepEqual( t.stats.max, { label: '最高値（最も円安）', value: '358.40', unit: '円', date: '1971年1月11日の週' } );
+	assert.deepEqual( t.stats.min, { label: '最安値（最も円高）', value: '75.72', unit: '円', date: '2011年10月24日の週' } );
+	assert.equal( t.change, '最初の週と比べて ▼199.59円の円高（−55.8%）' );
+	assert.equal( t.changeDirection, 'down' );
+	assert.equal( t.restartLabel, '1971年1月からもう一度乗る' );
+
+} );
+
+test( '文言（金利）：マイナスの最安値は U+2212、変化はポイント', () => {
+
+	const { jgb10 } = loadFixtures();
+	const t = summaryTexts( summarize( jgb10 ), datasetOf( 'jgb10', jgb10 ) );
+
+	assert.equal( t.title, '2026年11月に到着しました' );
+	assert.equal( t.lead, `1986年6月から、らせんを約4.0周、2,105${J}週分の10年国債の金利を走りました。` );
+	assert.deepEqual( t.stats.max, { label: '最も高い金利', value: '8.105', unit: '%', date: '1990年9月24日の週' } );
+	assert.deepEqual( t.stats.min, { label: '最も低い金利', value: '−0.293', unit: '%', date: '2016年7月4日の週' } );
+	assert.equal( t.stats.first.value, '5.103' );
+	assert.equal( t.stats.last.value, '2.841' );
+	assert.equal( t.change, '最初の週と比べて ▼2.262ポイント' );
+	assert.equal( t.restartLabel, '1986年6月からもう一度乗る' );
+
+} );
+
+test( '文言（日経平均）：3桁区切りの整数、変化は％（今までどおり）。手元のデータの形の系列で確かめる', () => {
+
+	const raw = [ pt( '1990-01-01', 38852.92 ), pt( '1990-01-08', 71300.4 ), pt( '2009-03-09', 7081.55 ), pt( '2026-11-09', 50000 ) ];
+	const t = summaryTexts( summarize( raw ), datasetOf( 'nikkei', raw ) );
+
+	assert.equal( t.title, '2026年11月に到着しました' );
+	assert.equal( t.lead, `1990年1月から、らせんを約3.7周、4${J}週分の日経平均株価を走りました。` );
+	assert.deepEqual( t.stats.max, { label: '最高値', value: '71,300', unit: '円', date: '1990年1月8日の週' } );
+	assert.deepEqual( t.stats.min, { label: '最安値', value: '7,082', unit: '円', date: '2009年3月9日の週' } );
+	assert.equal( t.stats.last.date, '2026年11月9日の週' );
+	assert.equal( t.change, '最初の週と比べて ▲28.7%' );
+	assert.equal( t.changeDirection, 'up' );
+
+} );
+
+test( '文言：サンプルデータの注記は無い（どのデータでも、出力の項目は同じ）', () => {
+
+	const { usdjpy, jgb10 } = loadFixtures();
+	const a = summaryTexts( summarize( usdjpy ), datasetOf( 'usdjpy', usdjpy ) );
+	const b = summaryTexts( summarize( jgb10 ), datasetOf( 'jgb10', jgb10 ) );
+	assert.deepEqual( Object.keys( a ), Object.keys( b ) );
+	assert.ok( ! JSON.stringify( a ).includes( 'サンプル' ) );
 
 } );

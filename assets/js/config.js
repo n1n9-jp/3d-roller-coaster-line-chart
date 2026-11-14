@@ -8,16 +8,71 @@ export const FRAME_MS = 1000 / 60;
 export const MAX_DELTA_MS = 100;
 
 // ---- データ ----
-// 既定は同梱のサンプルデータ（合成。実際の日経平均ではない）。
-// URL に ?data=local を付けると、npm run fetch-data で作った実データ（data/local/）を読む。
-export const DATA_SOURCES = {
-	sample: {
-		nikkei: './data/nikkei225.json',
-		meta: './data/nikkei225.meta.json'
+// 値の書式・目盛り・文言は、ここの定義だけから作る（assets/js/format.js の createFormatter( def )。直書きしない）。
+// 既定は同梱のドル円。URL の ?data=usdjpy | jgb10 | nikkei で選ぶ（知らない値は既定。旧 ?data=local は nikkei。data.js）。
+// nikkei は、npm run fetch-nikkei で作った data/local/ を読む（git に入らない。提供元の規約で値を同梱できない）。
+//   dataUrl / metaUrl：週次データ（[ { date, close } ]）とメタ情報のパス
+//   name：長い名前（タイトル・説明・aria）、short：短い名前、chartTitle：ミニグラフの見出し、readoutLabel：現在値の帯のラベル
+//   unit：単位、decimals：小数の桁数、group：3桁区切りにするか
+//   step：目盛りの刻み（ミニグラフ・3D 共通）、stepCompact：狭い画面用の粗い刻み
+//   statLabels：終了画面の最高値・最安値のラベル
+//   changeMode：前週比の書き方（'yen-fx'：円安・円高つきの円、'point'：ポイント、'percent'：円と％）
+export const DEFAULT_DATASET = 'usdjpy';
+export const DATASETS = {
+	usdjpy: {
+		id: 'usdjpy',
+		dataUrl: './data/usdjpy.json',
+		metaUrl: './data/usdjpy.meta.json',
+		name: 'ドル円の為替レート',
+		short: 'ドル円',
+		chartTitle: 'ドル円レートの推移',
+		readoutLabel: '週次・1ドルあたり',
+		unit: '円',
+		decimals: 2,
+		group: false,
+		step: 50,
+		stepCompact: 100,
+		statLabels: { max: '最高値（最も円安）', min: '最安値（最も円高）' },
+		changeMode: 'yen-fx',
+		chips: [ '高さ＝1ドルの円の値段', '高いほど円安' ],
+		creditShort: '米連邦準備制度理事会（FRB）「H.10」'
 	},
-	local: {
-		nikkei: './data/local/nikkei225.json',
-		meta: './data/local/meta.json'
+	jgb10: {
+		id: 'jgb10',
+		dataUrl: './data/jgb10.json',
+		metaUrl: './data/jgb10.meta.json',
+		name: '10年国債の金利',
+		short: '国債金利',
+		chartTitle: '10年国債の金利の推移',
+		readoutLabel: '週次・利回り',
+		unit: '%',
+		decimals: 3,
+		group: false,
+		step: 1,
+		stepCompact: 2,
+		statLabels: { max: '最も高い金利', min: '最も低い金利' },
+		changeMode: 'point',
+		chips: [ '高さ＝10年国債の金利', '長期金利の代表的な指標' ],
+		creditShort: '財務省「国債金利情報」を加工して作成'
+	},
+	nikkei: {
+		id: 'nikkei',
+		dataUrl: './data/local/nikkei225.json',
+		metaUrl: './data/local/meta.json',
+		name: '日経平均株価',
+		short: '日経平均',
+		chartTitle: '日経平均株価の推移',
+		readoutLabel: '週次終値',
+		unit: '円',
+		decimals: 0,
+		group: true,
+		step: 10000,
+		stepCompact: 20000,
+		statLabels: { max: '最高値', min: '最安値' },
+		changeMode: 'percent',
+		chips: [ '高さ＝株価（週次終値）', '手元で取得したデータ' ],
+		creditShort: '日本経済新聞社「日経平均株価」（手元で取得）',
+		localOnly: true
 	}
 };
 // レール形状に使う移動平均の窓（週数）。HUD の表示値は移動平均をかけない生データ。

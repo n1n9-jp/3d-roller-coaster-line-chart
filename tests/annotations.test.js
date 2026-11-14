@@ -121,8 +121,8 @@ test( 'data/events.json：close が、その日付（または closeDate）を�
 
 function sampleDataset() {
 
-	const { nikkei } = loadFixtures();
-	return buildDataset( nikkei, 4, { kind: 'real' } );
+	const { usdjpy } = loadFixtures();
+	return buildDataset( usdjpy, 4, { kind: 'real' } );
 
 }
 
@@ -140,7 +140,7 @@ test( 'resolveEvents：index と progress を付け、範囲外を除き、progr
 	const first = dataset.raw[ 0 ].date;
 	const last = dataset.raw.at( - 1 ).date;
 	const list = [
-		{ date: '1980-01-01', title: 'a', note: 'a', close: 1, source: 'https://example.com/a' },
+		{ date: '1960-01-01', title: 'a', note: 'a', close: 1, source: 'https://example.com/a' },
 		{ date: first, title: 'b', note: 'b', close: 1, source: 'https://example.com/b' },
 		{ date: '2008-09-15', title: 'c', note: 'c', close: 1, source: 'https://example.com/c' },
 		{ date: last, title: 'd', note: 'd', close: 1, source: 'https://example.com/d' },

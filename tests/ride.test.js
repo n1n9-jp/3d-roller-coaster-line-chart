@@ -8,10 +8,10 @@ import { buildDataset } from '../assets/js/data.js';
 import {
 	FRAME_MS, MAX_DELTA_MS, START_PROGRESS, SPEED, SPIRAL, ANNOT, maxProgressPerFrame
 } from '../assets/js/config.js';
-import { loadFixtures, stretchedSeries } from './helpers.js';
+import { series1990 as makeSeries1990, stretchedSeries } from './helpers.js';
 
-const { nikkei } = loadFixtures();
-const dataset = buildDataset( nikkei );
+const series1990 = makeSeries1990();
+const dataset = buildDataset( series1990 );
 
 
 function newRide() {
@@ -30,7 +30,7 @@ function run( ride, stepMs, totalMs ) {
 
 }
 
-test( '開始位置は progress = 0（最初の週。サンプルは 1990 年 1 月）、初速は下限', () => {
+test( '開始位置は progress = 0（最初の週。1990 年 1 月始まりのデータなら 1990 年 1 月）、初速は下限', () => {
 
 	const ride = newRide();
 	assert.equal( ride.progress, START_PROGRESS );
@@ -97,7 +97,7 @@ test( '速さのモデル：年/秒で持ち、データの期間で progress/ms
 
 test( 'データの期間が違っても、1 年あたりの秒数と勾配の効き方は同じ', () => {
 
-	const long = new TrackCurve( buildDataset( stretchedSeries( nikkei, '1971-01-04', '2026-11-09' ) ).smoothed );
+	const long = new TrackCurve( buildDataset( stretchedSeries( series1990, '1971-01-04', '2026-11-09' ) ).smoothed );
 	const short = new TrackCurve( dataset.smoothed );
 	// 同じ半径（始点はどちらも内側の半径）での巡航：progress/ms × 期間 が同じ
 	const a = createRide( long ).speedRange( 0 ).cruise * long.years;
@@ -109,7 +109,7 @@ test( 'データの期間が違っても、1 年あたりの秒数と勾配の�
 
 test( '1 フレームの進みは maxProgressPerFrame( 期間 ) 以下。出来事のキャプションの判定（ANNOT.caption.maxStepProgress）はその 2 倍以上', () => {
 
-	for ( const data of [ nikkei, stretchedSeries( nikkei, '1971-01-04', '2026-11-09' ) ] ) {
+	for ( const data of [ series1990, stretchedSeries( series1990, '1971-01-04', '2026-11-09' ) ] ) {
 
 		const curve = new TrackCurve( buildDataset( data ).smoothed );
 		const ride = createRide( curve );

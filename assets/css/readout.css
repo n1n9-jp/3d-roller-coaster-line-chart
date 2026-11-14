@@ -1,6 +1,5 @@
-/* 現在値の帯（#hud-readout）と凡例（#hud-legend）、サンプルデータのバッジ。担当：現在値の帯。
-   スロットの位置とサイズは hud.css。ここでは中の見た目だけを書く（凡例の見た目もここ）。
-   サンプルバッジは #hud-readout の中に置き、帯の直下に出す。 */
+/* 現在値の帯（#hud-readout）と凡例（#hud-legend）。担当：現在値の帯。
+   スロットの位置とサイズは hud.css。ここでは中の見た目だけを書く（凡例の見た目もここ）。 */
 
 /* ---- 現在値の帯 ---- */
 #hud-readout {
@@ -88,35 +87,6 @@
 	display: none;
 }
 
-/* ---- サンプルデータのバッジ（仕様 1-4）：帯の直下 8px、左端を帯にそろえる ---- */
-#hud-readout .ro-badge {
-	position: absolute;
-	top: calc(100% + 9px); /* 帯の枠（1px）の分 */
-	left: -1px;
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	height: 24px;
-	padding: 0 10px;
-	border: 1px solid var(--c-accent);
-	border-radius: 999px;
-	background: color-mix( in srgb, var(--c-accent) 14%, transparent );
-	color: var(--c-accent-text);
-	font-size: var(--fs-12);
-	line-height: 1;
-	font-weight: 600;
-	letter-spacing: var(--ls-ja);
-	white-space: nowrap;
-}
-
-#hud-readout .ro-badge-icon {
-	flex: none;
-}
-
-#hud-readout .ro-badge-short {
-	display: none;
-}
-
 /* ---- S：720px 以下（仕様 3：1 行目に年月と前週比の％、2 行目に値） ---- */
 @media (max-width: 720px) {
 	#hud-readout {
@@ -155,24 +125,9 @@
 	#hud-readout .ro-unit {
 		font-size: var(--fs-13);
 	}
-
-	#hud-readout .ro-badge {
-		top: calc(100% + 7px); /* 帯の直下 6px */
-		height: 22px;
-		padding: 0 10px;
-		font-size: var(--fs-11);
-	}
-
-	#hud-readout .ro-badge-full {
-		display: none;
-	}
-
-	#hud-readout .ro-badge-short {
-		display: inline;
-	}
 }
 
-/* ---- 短い横長：高さ 56 に詰める。デスクトップの項目（年月日・週次終値・前週比の額）は幅が許す限り出す ---- */
+/* ---- 短い横長：高さ 56 に詰める。デスクトップの項目（年月日・ラベル・前週比の額）は幅が許す限り出す ---- */
 @media (max-height: 520px) and (orientation: landscape) {
 	#hud-readout {
 		grid-template-columns: minmax(0, 1fr) auto;
@@ -204,37 +159,6 @@
 
 	#hud-readout .ro-change {
 		font-size: var(--fs-12);
-	}
-
-	/* 帯の右側に、縦方向の中央をそろえて並べる（右端から 8px）。短縮形 */
-	#hud-readout .ro-badge {
-		top: 50%;
-		left: calc(100% + 7px);
-		transform: translateY( -50% );
-		height: 22px;
-		font-size: var(--fs-11);
-	}
-
-	#hud-readout .ro-badge-full {
-		display: none;
-	}
-
-	#hud-readout .ro-badge-short {
-		display: inline;
-	}
-}
-
-/* 短い横長でも幅が狭い（帯の右に短縮バッジが入らない。操作ボタン 200px との間が足りない）ときは、
-   バッジを帯の直下に置き、サンプルのときだけ凡例をバッジの分（22 + 6）下げる */
-@media (max-height: 520px) and (orientation: landscape) and (max-width: 760px) {
-	#hud-readout .ro-badge {
-		top: calc(100% + 7px);
-		left: -1px;
-		transform: none;
-	}
-
-	html[data-kind="sample"] #hud-legend {
-		top: calc(var(--hud-legend-top) + 22px + 6px + var(--safe-t));
 	}
 }
 

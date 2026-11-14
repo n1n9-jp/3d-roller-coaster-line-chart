@@ -11,15 +11,15 @@ import { Scene, PerspectiveCamera, Object3D } from '../assets/js/three.core.js';
 import {
 	FRAME_MS, SPEED, SCENE, MOTION, TRAIN_RAIL_OFFSET
 } from '../assets/js/config.js';
-import { loadFixtures, stretchedSeries } from './helpers.js';
+import { readJson, series1990 as makeSeries1990 } from './helpers.js';
 
-const { nikkei } = loadFixtures();
+const series1990 = makeSeries1990();
 
-// サンプル（同梱、36 年）と、手元にあれば実データ（data/local/。git には入らない）、1971 年始まりの仮のデータ（56 年、約 5.6 周）
-const SERIES = [ [ 'サンプル', nikkei ] ];
+// 1990 年始まり（36 年）、手元にあれば日経平均の実データ（data/local/。git には入らない）、1971 年始まり（56 年、約 5.6 周。同梱のドル円の実データそのもの）
+const SERIES = [ [ '1990 年始まり', series1990 ] ];
 const localUrl = new URL( '../data/local/nikkei225.json', import.meta.url );
 if ( existsSync( localUrl ) ) SERIES.push( [ '実データ', JSON.parse( readFileSync( localUrl, 'utf8' ) ) ] );
-SERIES.push( [ '1971 年始まり', stretchedSeries( nikkei, '1971-01-04', '2026-11-09' ) ] );
+SERIES.push( [ 'ドル円（1971 年始まり）', readJson( 'data/usdjpy.json' ) ] );
 
 const curves = SERIES.map( ( [ name, data ] ) => [ name, new TrackCurve( buildDataset( data ).smoothed ) ] );
 const MOTIONS = [ [ '通常', {} ], [ 'reduced', MOTION.reducedRide ] ];

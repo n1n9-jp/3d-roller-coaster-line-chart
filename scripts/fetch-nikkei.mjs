@@ -5,12 +5,13 @@
 //
 // 出力（どちらも git の管理外）:
 //   data/local/nikkei225.json  [{ date: 週の月曜日, close: 週の最終営業日の終値 }]
-//   data/local/meta.json       出典などのメタ情報（kind: 'real'）
+//   data/local/meta.json       出典などのメタ情報（同梱の2つのデータと同じ項目。scripts/lib/output.mjs の buildRealMeta）
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { aggregateWeekly, mondayOf } from './lib/weekly.mjs';
+import { buildRealMeta } from './lib/output.mjs';
 
 // 週次集計は scripts/lib/weekly.mjs に移した。これまでの import 先のために再公開する。
 export { aggregateWeekly, mondayOf };
@@ -41,19 +42,24 @@ export function parseCsv( text ) {
 
 }
 
+// 日経平均の値は、提供元の規約でリポジトリに置けない。手元で取得したときだけ、data/local/（git の管理外）に作る。
+export const NIKKEI_SPEC = {
+	id: 'nikkei',
+	label: '日経平均株価',
+	valueLabel: '週の最終営業日の値',
+	unit: '円',
+	decimals: 0,
+	source: '日本経済新聞社「日経平均株価」（FRED の系列 NIKKEI225 経由）',
+	sourceUrl: 'https://fred.stlouisfed.org/series/NIKKEI225',
+	license: '提供元（日本経済新聞社）の利用規約による。値の再配布はできないため、このリポジトリには同梱していない',
+	licenseUrl: 'https://fred.stlouisfed.org/series/NIKKEI225',
+	attribution: '出典：日本経済新聞社「日経平均株価」（FRED の系列 NIKKEI225 経由、https://fred.stlouisfed.org/series/NIKKEI225）を加工して作成',
+	processing: '日次の終値のうち、値のある日を、月曜始まりの週ごとに、その週の最終営業日の値へまとめました（日付は週の月曜日、単位は円。表示は整数、データは小数2桁）。'
+};
+
 export function buildMeta( weekly, fetchedAt ) {
 
-	return {
-		kind: 'real',
-		label: '日経平均株価（週次終値）',
-		source: '日本経済新聞社「日経平均株価」',
-		via: 'FRED（系列 NIKKEI225）',
-		sourceUrl: 'https://fred.stlouisfed.org/series/NIKKEI225',
-		fetchedAt,
-		start: weekly[ 0 ].date,
-		end: weekly.at( - 1 ).date,
-		count: weekly.length
-	};
+	return buildRealMeta( NIKKEI_SPEC, weekly, fetchedAt );
 
 }
 
@@ -113,7 +119,7 @@ async function main() {
 	await writeFile( join( outDir, 'meta.json' ), JSON.stringify( meta, null, '\t' ) + '\n' );
 
 	console.log( `${weekly.length} 週（${meta.start} 〜 ${meta.end}）を data/local/ に書き出しました。` );
-	console.log( 'http://localhost:8000/?data=local で開けます（npm start でサーバを起動）。' );
+	console.log( 'http://localhost:8000/?data=nikkei で開けます（npm start でサーバを起動）。' );
 
 }
 

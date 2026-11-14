@@ -11,7 +11,7 @@ import {
 	segmentStartIndex, railVertexCount, riddenSegmentCount,
 	buildRailColorMap, createRailPainter, createRailColors
 } from '../assets/js/rail-colors.js';
-import { loadFixtures } from './helpers.js';
+import { series1990 as makeSeries1990 } from './helpers.js';
 
 // 同梱の RollerCoaster.js は bare の 'three' を import する（ブラウザでは importmap が解決する）。
 // Node では 'three' を three.core.js へ向ける（ジオメトリの生成に必要なクラスはすべて core にある）。
@@ -24,8 +24,8 @@ register( 'data:text/javascript,' + encodeURIComponent( `
 ` ) );
 const { RollerCoasterGeometry } = await import( '../assets/jsm/misc/RollerCoaster.js' );
 
-const { nikkei } = loadFixtures();
-const dataset = buildDataset( nikkei );
+const series1990 = makeSeries1990();
+const dataset = buildDataset( series1990 );
 
 const D = 40; // 小さな分割数（偶数）
 const D_ODD = 41;
