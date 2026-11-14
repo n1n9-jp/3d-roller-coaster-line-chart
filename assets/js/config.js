@@ -100,17 +100,20 @@ export const Y_MAX = 35;
 // 速度は「データの 1 年を何秒で走るか」の逆数（年/秒）で持ち、データの期間 T 年で progress/ms に換算する（ride.js）：
 //   基準の速さ base( r ) = yearsPerSecond × ( r / referenceRadius )^(−radiusExponent)   [年/秒]
 //   倍率       m        = clamp( exp( − gravityPerYear × 1 年あたりの高さの変化 dy/dτ ), minFactor, maxFactor )
+//                         dy/dτ は進行位置の前後 gradientWindowYears 年の弦の勾配
 //   目標の速さ          = base( r ) × m。速さはこれへ一次遅れ（SPEED_RESPONSE_MS）で近づき、base × minFactor .. base × maxFactor に収める
 //   progress / ms       = 年/秒 ÷ ( T × 1000 )
 // 平らなところで base、下り（勾配が負）で速く、上りで遅くなる。勾配は年あたりなので、期間の違うデータでも同じ効き方になる。
 // 半径による補正：螺旋は外側の周ほど 1 年あたりの距離が長く、補正なし（radiusExponent = 0。データの時間あたり一定）では
 // 外側の見た目の速さが内側の 4〜5 倍になる。0.25 で内側を速め・外側を抑える（試作の計測。scratchpad/specs/spiral-params.md）。
-// 所要時間の見込み：56 年分 約 265 秒、40 年分 約 177 秒、37 年分 約 163 秒。
+// 所要時間の見込み：56 年分 約 271 秒、40 年分 約 186 秒、37 年分 約 173 秒。
 export const SPEED = {
-	yearsPerSecond: 0.244,
+	yearsPerSecond: 0.26,
 	referenceRadius: 16,
 	radiusExponent: 0.25,
 	gravityPerYear: 0.08, // 1 年あたりの高さの変化（ワールドの y / 年）1 あたりの、倍率の対数の変化
+	// 倍率に使う勾配は、進行位置の前後この年数の弦の勾配（1 日の差分は、週ごとの細かい揺れが速さに乗って、起伏との対応が弱い）
+	gradientWindowYears: 0.25,
 	minFactor: 0.85,
 	maxFactor: 2.5,
 	// 年数を持たない曲線（テスト用）の期間

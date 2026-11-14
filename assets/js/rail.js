@@ -5,6 +5,12 @@
 // 同梱の RollerCoaster.js は getPointAt( i / 分割数 ) で標本化するので、曲線は弧長（水平）で引ける curve.arcCurve を渡す
 // （進行位置 t のまま渡すと、t は時間に比例するので、内側の周で点が詰まり、外側の周で粗くなる）。
 // 分割数は全長から決める（config.js の TRACK_SAMPLING と divisionsFor）。
+//
+// 始点のねじれ：RollerCoasterGeometry と RollerCoasterShadowGeometry は、最初の区間の始端の断面を、曲線の向きによらず
+// 固定の向き（東向き）で作る。螺旋の始点の向きはデータによって違う（北から 0〜360°）ので、最初の区間だけ、レールがねじれて交差し、
+// 足跡が捩れた四角形になる。そこで曲線を runUpCurve で包み、始点の手前に 1 区間分の助走を足して分割数を 1 増やし、
+// 助走の区間の頂点は setDrawRange で描かない（rail-colors.js の「助走の区間」）。
+// 支柱（RollerCoasterLiftersGeometry）は、点ごとに接線から向きを決め、前の点を使わないので、始点でも同じ問題はない。
 
 import * as THREE from 'three';
 import {
@@ -13,6 +19,10 @@ import {
 	RollerCoasterLiftersGeometry
 } from 'three/addons/misc/RollerCoaster.js';
 import { PALETTE, RAIL, TRACK_SAMPLING, divisionsFor } from './config.js';
+import { RUN_UP_SEGMENTS, runUpCurve, railDrawStart, railVertexCount } from './rail-colors.js';
+
+// 足跡は 1 区間 = 四角形 2 つ = 6 頂点
+const SHADOW_SEGMENT_VERTS = 6;
 
 export function createRail( ctx ) {
 
@@ -23,8 +33,10 @@ export function createRail( ctx ) {
 	const shadowDivisions = divisionsFor( curve.totalLength, TRACK_SAMPLING.shadowSegment );
 
 	// レール（頂点カラー。emissive をわずかに足して、影になる側面が背景に沈まないようにする）
+	const railGeometry = new RollerCoasterGeometry( runUpCurve( arc, railDivisions ), railDivisions + RUN_UP_SEGMENTS );
+	railGeometry.setDrawRange( railDrawStart(), railVertexCount( railDivisions + RUN_UP_SEGMENTS ) - railDrawStart() );
 	const rail = new THREE.Mesh(
-		new RollerCoasterGeometry( arc, railDivisions ),
+		railGeometry,
 		new THREE.MeshPhongMaterial( {
 			vertexColors: true,
 			shininess: RAIL.material.shininess,
@@ -33,7 +45,8 @@ export function createRail( ctx ) {
 		} )
 	);
 	rail.name = 'rail';
-	rail.userData.divisions = railDivisions; // rail-colors.js・curtain.js が頂点の並びと分割数に使う
+	rail.userData.divisions = railDivisions; // 助走を除く区間の数。rail-colors.js・curtain.js が頂点の並びと分割数に使う
+	rail.userData.runUpSegments = RUN_UP_SEGMENTS; // ジオメトリの先頭にある、描かない助走の区間の数
 	scene.add( rail );
 
 	// 支柱（高さ 10 を超える地点は門型、それ以下は 1 本柱。同梱ファイルの条件のまま）
@@ -46,8 +59,10 @@ export function createRail( ctx ) {
 	scene.add( lifters );
 
 	// 床の足跡（俯瞰で螺旋の形が床に見える）
+	const shadowGeometry = new RollerCoasterShadowGeometry( runUpCurve( arc, shadowDivisions ), shadowDivisions + RUN_UP_SEGMENTS );
+	shadowGeometry.setDrawRange( SHADOW_SEGMENT_VERTS * RUN_UP_SEGMENTS, SHADOW_SEGMENT_VERTS * shadowDivisions );
 	const shadow = new THREE.Mesh(
-		new RollerCoasterShadowGeometry( arc, shadowDivisions ),
+		shadowGeometry,
 		new THREE.MeshBasicMaterial( {
 			color: PALETTE.shadow,
 			transparent: true,
