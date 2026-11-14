@@ -49,12 +49,8 @@ export const START_PROGRESS = 0;
 export const RAIL_SLOPE_VISUAL_SCALE = 0.0009;
 
 // ---- カメラ ----
-export const CAMERA_FOV = 50;
-export const CAMERA_NEAR = 0.1;
-export const CAMERA_FAR = 500;
+// 画角・カメラの位置・俯瞰の視点は SCENE（下）にある
 export const TRAIN_RAIL_OFFSET = 0.3; // レール上面から車体の位置までの高さ
-export const CAMERA_HEIGHT = 0.3; // 車体からカメラまでの高さ
-export const OVERVIEW_POSITION = { x: 0, y: 200, z: 0 };
 
 // ---- ジオメトリの分割数 ----
 export const RAIL_DIVISIONS = 1500;
@@ -141,8 +137,54 @@ export const LOOP = { linkFraction: 0.03, maxLinkPitchDeg: 45 };
 
 // ---- 以下は空の節。各担当が自分の節にだけ値を足す ----
 
-// SCENE：3D シーンの定数（fog の near/far、背景グラデーション、ライトの強さ、一人称・俯瞰の画角と距離など）。担当：シーン。
-export const SCENE = {};
+// SCENE：3D シーンの定数（仕様 4）。担当：シーン。
+export const SCENE = {
+	clearColor: PALETTE.skyTop,
+	// 背景：縦グラデーション（0 = 画面の上端、1 = 下端）。地平線の色を fog と同じにして継ぎ目を消す
+	// horizonAt：地平線を置く位置（この色の位置を、画面に映る地平線の高さへ毎フレーム合わせる。view.js）
+	sky: {
+		width: 2,
+		horizonAt: 0.6,
+		height: 256,
+		stops: [
+			[ 0, PALETTE.skyTop ],
+			[ 0.45, 0x0d1d44 ],
+			[ 0.6, PALETTE.skyHorizon ],
+			[ 1, PALETTE.skyHorizon ]
+		]
+	},
+	// 一人称の fog。俯瞰では near / far をカメラ距離の倍数へ遠ざけ、レールを霞ませない（床の端だけ地平線の色へ溶かす）
+	fog: { color: PALETTE.skyHorizon, near: 30, far: 220 },
+	fogOverview: { nearPerDistance: 1.25, farPerDistance: 2.4 },
+	hemisphereIntensity: 2.4,
+	directional: { intensity: 1.0, position: { x: 80, y: 160, z: 60 } },
+	floor: { size: 800 },
+	// GridHelper を 2 枚：細 10 単位ごと、太 50 単位ごと
+	gridFine: { divisions: 80, y: 0.01 },
+	gridBold: { divisions: 16, y: 0.02 },
+	gridOpacity: 0.8,
+	camera: { near: 0.1, far: 1000 },
+	// 一人称：縦の画角 = min( fovMax, max( fovMin, 2·atan( tan( minHorizontalFov / 2 ) / aspect ) ) )
+	ride: {
+		fovMin: 55,
+		fovMax: 80,
+		minHorizontalFov: 60,
+		// 車体（レール上面 + TRAIN_RAIL_OFFSET）から見たカメラの位置。後ろへ下げて、中央の管が足元に来ないようにする
+		height: 1.1, // 上へ
+		back: 1.6, // 後ろへ
+		pitchDeg: - 6, // 下向きが負
+		// 縦長の画面では、HUD（上の帯と下のパネル・ボタン）に挟まれた見える範囲が画面の中央より上にあるので、もう少し下を向いて前方を持ち上げる
+		pitchDegPortrait: - 14
+	},
+	// 俯瞰：target から南（+z）へ仰角 elevationDeg、距離 radius / sin( min( vfov, hfov ) / 2 )
+	overview: {
+		target: { x: 0, y: 15, z: 0 },
+		elevationDeg: 55,
+		radius: 110,
+		fovLandscape: 50, // 横長の画面の縦画角（1440x900 で距離 260）
+		fovPortrait: 65 // 縦長の画面の縦画角
+	}
+};
 
 // RAIL：レールの定数（材質、色分けの設定、支柱・足跡の設定など）。担当：レールの色分け・シーン。
 // 色はすべて PALETTE（railAhead* / railRidden* / railDeadhead* / pillar / shadow / marker / markerRing / railEmissive）。
@@ -168,5 +210,15 @@ export const CONTOUR = {};
 // ANNOT：イベント注釈の定数（目印の大きさ、キャプションの表示時間、イベント一覧の置き場所など）。担当：イベント注釈。
 export const ANNOT = {};
 
-// MOTION：動きの定数（視点切り替えの補間時間、脈動の周期、reduced-motion 時の係数など）。担当：シーン・操作。
-export const MOTION = {};
+// MOTION：動きの定数（仕様 5）。担当：シーン・操作。
+export const MOTION = {
+	// 視点の切り替え：カメラを 500ms、ease-in-out（--ease-in-out と同じ cubic-bezier）で補間する。reduced では瞬時
+	viewTransitionMs: 500,
+	viewEase: [ 0.4, 0, 0.2, 1 ],
+	// prefers-reduced-motion: reduce のときの一人称の値（穏やかな設定）。ride.js が使う
+	reducedRide: {
+		railSlopeVisualScale: 0.0003, // RAIL_SLOPE_VISUAL_SCALE 0.0009 の代わり（傾きを 1/3 に）
+		orientationBlendPerFrame: 0.04, // ORIENTATION_BLEND_PER_FRAME 0.08 の代わり
+		speedMaxFactor: 0.5 // SPEED_MAX に掛ける
+	}
+};
