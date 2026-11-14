@@ -93,15 +93,21 @@
 	font-weight: 700;
 }
 
-.info-body p + p,
-.info-body #info-sources + p {
+.info-body p + p {
 	margin-top: 8px;
+}
+
+/* データ出典の段落の頭の、データの名前 */
+.info-source-name {
+	display: block;
+	color: var(--c-text-1);
+	font-weight: 600;
 }
 
 .info-body a {
 	text-decoration: underline;
 	text-underline-offset: 2px;
-	word-break: break-all;
+	overflow-wrap: anywhere;
 }
 
 /* ---- 操作の表（2 列。行の高さ 36） ---- */

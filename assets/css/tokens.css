@@ -14,6 +14,7 @@
 	--c-btn: #16264d;
 	--c-btn-hover: #1c2c55;
 	--c-btn-border: #5b6fa3;
+	--c-seg-border: #6276aa; /* スタート画面のデータ切り替えの外枠（面 #142650 に 3.3:1） */
 
 	/* 文字 */
 	--c-text-1: #eef2fb;
@@ -26,13 +27,13 @@
 	--c-on-accent: #0b1733;
 	--c-accent-text: #f2b84b;
 	--c-focus: #ffd479;
+	--c-seg-selected-bg: color-mix(in srgb, var(--c-accent) 16%, transparent); /* 選んでいる項目の面 */
 	--c-danger: #ff8f8f;
 	--c-danger-bg: rgba(255, 143, 143, 0.08); /* エラーのブロックの面 */
 
 	/* 2D グラフ（ミニグラフ・路線図・凡例） */
 	--c-ridden: #c98500;
 	--c-ahead: #7080a8;
-	--c-deadhead: #7080a8;
 	--c-marker: #d55181;
 	--c-marker-ring: #ffffff;
 	--c-event: #2f97d8;

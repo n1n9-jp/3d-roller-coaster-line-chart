@@ -51,11 +51,6 @@
 	height: 28px;
 }
 
-/* サンプルデータのときは、帯の下にバッジ（高さ 24 + 8）が入るので凡例を下げる（仕様 1-4） */
-html[data-kind="sample"] #hud {
-	--hud-legend-top: calc(var(--hud-m) + var(--hud-band-h) + 8px + 24px + 8px);
-}
-
 #hud-controls {
 	top: calc(var(--hud-m) + var(--safe-t));
 	right: calc(var(--hud-m) + var(--safe-r));
@@ -124,10 +119,6 @@ html[data-kind="sample"] #hud {
 		--hud-legend-top: calc(var(--hud-m) + var(--hud-band-h) + 6px);
 	}
 
-	html[data-kind="sample"] #hud {
-		--hud-legend-top: calc(var(--hud-m) + var(--hud-band-h) + 6px + 22px + 6px);
-	}
-
 	#hud-readout {
 		right: calc(var(--hud-m) + var(--safe-r));
 		width: auto;
@@ -174,11 +165,6 @@ html[data-kind="sample"] #hud {
 	#hud {
 		--hud-m: 24px;
 		--hud-band-h: 56px;
-		--hud-legend-top: calc(var(--hud-m) + var(--hud-band-h) + 8px);
-	}
-
-	/* バッジは帯の右側に並ぶので、凡例は下げない */
-	html[data-kind="sample"] #hud {
 		--hud-legend-top: calc(var(--hud-m) + var(--hud-band-h) + 8px);
 	}
 
