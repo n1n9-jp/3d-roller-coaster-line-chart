@@ -234,12 +234,17 @@ export const SCENE = {
 	fogOverview: { nearPerDistance: 1.25, farPerDistance: 2.4 },
 	hemisphereIntensity: 2.4,
 	directional: { intensity: 1.0, position: { x: 80, y: 160, z: 60 } },
-	floor: { size: 800 },
-	// GridHelper を 2 枚：細 10 単位ごと、太 50 単位ごと
-	gridFine: { divisions: 80, y: 0.01 },
-	gridBold: { divisions: 16, y: 0.02 },
+	// 床：螺旋の外側の半径は最大 約 89。俯瞰の縦長の画面（S）ではカメラが 約 350 離れるので、床の奥の端が fog に溶けきるよう広めに。
+	// polygonOffset：俯瞰の距離（200〜350）では深度の分解能がグリッドの浮き（0.01）より粗く、グリッドが床に負けて
+	// 横の線だけが途切れ途切れに残る（縦の線が消える）。床を深度で少し奥へずらす
+	floor: { size: 1600, polygonOffsetFactor: 1, polygonOffsetUnits: 4 },
+	// グリッドを 2 枚：細 10 単位ごと、太 50 単位ごと（divisions = size / 間隔）
+	gridFine: { divisions: 160, y: 0.01 },
+	gridBold: { divisions: 32, y: 0.02 },
 	gridOpacity: 0.8,
-	camera: { near: 0.1, far: 1000 },
+	// グリッドの線を区切る長さ（environment.js の createGridGeometry）
+	gridSegment: 50,
+	camera: { near: 0.1, far: 2000 },
 	// 一人称：縦の画角 = min( fovMax, max( fovMin, 2·atan( tan( minHorizontalFov / 2 ) / aspect ) ) )
 	ride: {
 		fovMin: 55,
@@ -253,43 +258,95 @@ export const SCENE = {
 		pitchDegPortrait: - 14
 	},
 	// 俯瞰：南（+z）から仰角 elevationDeg で見下ろす。
-	// 構図は view.js が、螺旋の点（curtain.js が view.setOverviewSubject で渡す、レールの上端と床の点）を画面に投影して決める：
-	//   画面から HUD を避けた余白（px）を引いた範囲に、螺旋の外接矩形を収める（中央に置く）。
-	//   ただし螺旋の幅・高さは画面の maxWidth・maxHeight（割合）まで。
+	// 構図は view.js の fitOverview が、螺旋の点（curtain.js が view.setOverviewSubject で渡す、レールの上端と床の点）と
+	// 追加の点（view.setOverviewExtras。目盛りの壁と値ラベルの軸など）を画面に投影して決める：
+	//   1. 画面の端から edge（px）内側の範囲に、点の外接矩形を、幅 maxWidth・高さ maxHeight（画面に対する割合）まで大きく収める。
+	//   2. 点の投影の凸包が、HUD のパネルの矩形（gapPx 広げたもの）と重ならない範囲で、最も大きくなる大きさと位置を探す。
+	//      螺旋はほぼ楕円に写るので、四隅のパネル（ミニグラフ・螺旋の図）の脇まで広げられる。
+	//   HUD の矩形は、実行時に DOM（hudSelectors の要素の getBoundingClientRect）から読む。キャプション（captionSelector）は
+	//   実データ（dataset.meta.kind === 'real'。出来事の注釈が出る）のときだけ、スロットの端から高さ captionReservePx を確保する。
+	//   DOM が無いとき（テスト）は hudFallback（hud.css・readout.css・annotations.css の値。safe-area は 0）。
 	//   モードは hud.css と同じ：short（高さ 520 以下かつ横長）／ narrow（幅 720 以下）／ medium（721〜1023。M）／ wide（L）。
-	//   余白は、サンプルデータでは frame.insets[ モード ]、実データ（dataset.meta.kind === 'real'）では
-	//   出来事のキャプションを避けた frame.captionInsets[ モード ]（キャプションは実データのときだけ出る）。
+	// 仰角：40° / 48° / 55° を、56 年分（5.6 周）と 37 年分（3.7 周）で見比べて決めた。
+	//   低いほど手前の周の壁が奥の周に重なり（40° では内側の高い壁が次の周の北側を隠す）、高いほど壁（= 値）が縦に潰れる。
+	//   横長の画面は高さで大きさが決まるので、48°（壁の高さ 35 が約 150px、周の間が南で 40px 前後）。
+	//   縦長の S は横幅で大きさが決まり、縦に余りがあるので、55°（大きさは変わらず、南北の周の間が広がって詰まりにくい）。
 	// 螺旋の点がまだ無いときは、従来の式（target から距離 radius / sin( min( vfov, hfov ) / 2 )）。
 	overview: {
 		target: { x: 0, y: 15, z: 0 },
 		elevationDeg: 48,
+		elevationByMode: { narrow: 55 },
 		radius: 110,
 		fovLandscape: 50, // 横長の画面の縦画角
 		fovPortrait: 65, // 縦長の画面の縦画角
 		frame: {
-			// サンプルデータ（キャプションなし。帯の下にバッジがある）
-			insets: {
-				// L/M：上は凡例（サンプルのバッジ込みで 176）の下、下は端から少しだけ（ミニグラフと路線図は左右の隅で、輪の下端は細い）
-				wide: { top: 184, right: 24, bottom: 40, left: 24 },
-				medium: { top: 184, right: 24, bottom: 40, left: 24 },
-				// S：上は帯 + バッジ + 凡例（138）、下はミニグラフ・路線図（下から 196）の上
-				narrow: { top: 148, right: 12, bottom: 206, left: 12 },
-				// 短い横長：上は帯（80）の下。左右のパネルは隅にあり、輪の上端の幅は中央の空きに収まる
-				short: { top: 88, right: 24, bottom: 12, left: 24 }
-			},
-			// 実データ（バッジなし。出来事のキャプションが出る。キャプションの位置は hud.css と annotations.css）
-			captionInsets: {
-				// L：上は凡例（144）の下。下は下中央のキャプション（下から 24 + 高さ最大 約 96）の上
-				wide: { top: 152, right: 24, bottom: 136, left: 24 },
-				// M：俯瞰のあいだ、キャプションは凡例の下（上から 152、高さ最大 約 92。annotations.css）へ移るので、上をその下に
-				medium: { top: 256, right: 24, bottom: 40, left: 24 },
-				// S：上は帯 + 凡例（110）の下。下はキャプション（下から 204 + 高さ最大 約 100）の上
-				narrow: { top: 118, right: 12, bottom: 312, left: 12 },
-				// 短い横長：俯瞰のあいだ、キャプションは左の列（凡例の下、ミニグラフの上。幅 220。annotations.css）へ移るので、左を空ける
-				short: { top: 88, right: 24, bottom: 12, left: 260 }
-			},
-			maxWidth: { wide: 0.9, medium: 0.9, narrow: 0.8, short: 0.9 },
-			maxHeight: { wide: 0.72, medium: 0.72, narrow: 0.9, short: 0.9 }
+			// 画面の端の余白（hud.css の --hud-m に合わせる）
+			edge: { wide: 24, medium: 24, narrow: 12, short: 12 },
+			// 螺旋と HUD のパネルの間
+			gapPx: 10,
+			// 大きさの上限（画面に対する割合）。縦長の S は横幅で決まるので、ほぼいっぱいまで
+			maxWidth: { wide: 0.9, medium: 0.94, narrow: 0.94, short: 0.9 },
+			maxHeight: { wide: 0.8, medium: 0.8, narrow: 0.9, short: 0.94 },
+			// どこにも置けない（極端に小さい画面）ときは、この割合まで縮めてあきらめ、HUD を無視する
+			minScale: 0.3,
+			hudSelectors: [ '#hud-readout', '#hud-readout .ro-badge', '#hud-legend', '#hud-controls', '#hud-chart', '#hud-map' ],
+			captionSelector: '#hud-caption',
+			captionReservePx: 100,
+			// DOM が無いときの HUD の矩形（CSS の配置と同じ書き方）。common はどのデータでも、sample はサンプルのバッジと凡例、
+			// real は実データの凡例、caption は実データのキャプション（高さ captionReservePx。width・height の関数でもよい）
+			hudFallback: {
+				wide: {
+					common: [
+						{ left: 24, top: 24, width: 360, height: 84 }, // 現在値の帯
+						{ right: 24, top: 24, width: 580, height: 44 }, // 操作ボタン
+						{ left: 24, bottom: 24, width: 320, height: 188 }, // ミニグラフ
+						{ right: 24, bottom: 24, width: 224, height: 280 } // 螺旋の図（正方形の図 192 を含むパネルの見込み）
+					],
+					sample: [ { left: 24, top: 116, width: 300, height: 24 }, { left: 24, top: 148, width: 240, height: 28 } ],
+					real: [ { left: 24, top: 116, width: 240, height: 28 } ],
+					caption: ( w ) => {
+
+						const cw = Math.min( 560, Math.max( 320, w - 736 ) );
+						return { left: ( w - cw ) / 2, width: cw, bottom: 24, height: 100 };
+
+					}
+				},
+				medium: {
+					common: [
+						{ left: 24, top: 24, width: 360, height: 84 },
+						{ right: 24, top: 24, width: 380, height: 44 },
+						{ left: 24, bottom: 24, width: 280, height: 168 },
+						{ right: 24, bottom: 24, width: 200, height: 244 }
+					],
+					sample: [ { left: 24, top: 116, width: 300, height: 24 }, { left: 24, top: 148, width: 240, height: 28 } ],
+					real: [ { left: 24, top: 116, width: 240, height: 28 } ],
+					// 俯瞰のあいだは凡例の下（annotations.css）
+					caption: ( w ) => ( { left: 24, top: 152, width: Math.min( 560, w - 48 ), height: 100 } )
+				},
+				narrow: {
+					common: [
+						{ left: 12, right: 12, top: 12, height: 72 },
+						{ left: 12, right: 12, bottom: 12, height: 48 },
+						{ left: 12, right: 140, bottom: 68, height: 128 },
+						{ right: 12, bottom: 68, width: 120, height: 128 }
+					],
+					sample: [ { left: 12, top: 90, width: 230, height: 22 }, { left: 12, top: 118, width: 215, height: 20 } ],
+					real: [ { left: 12, top: 90, width: 215, height: 20 } ],
+					caption: { left: 12, right: 12, bottom: 204, height: 100 }
+				},
+				short: {
+					common: [
+						{ left: 24, top: 24, width: 360, height: 56 },
+						{ right: 24, top: 24, width: 200, height: 44 },
+						{ left: 24, bottom: 24, width: 220, height: 112 },
+						{ right: 24, bottom: 24, width: 104, height: 112 }
+					],
+					sample: [ { left: 391, top: 40, width: 110, height: 24 }, { left: 24, top: 88, width: 240, height: 28 } ],
+					real: [ { left: 24, top: 88, width: 240, height: 28 } ],
+					// 俯瞰のあいだは左の列（凡例の下）
+					caption: { left: 24, top: 124, width: 220, height: 100 }
+				}
+			}
 		}
 	}
 };
