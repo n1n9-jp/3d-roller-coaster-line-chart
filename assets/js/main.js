@@ -12,6 +12,7 @@ import { createRide } from './ride.js';
 import { createView } from './view.js';
 import { createStartScreen } from './ui/start.js';
 import { createSoundPref } from './sound-pref.js';
+import { chooseDemoRange, demoStillProgress } from './demo.js';
 
 import { createEnvironment } from './environment.js';
 import { createRail } from './rail.js';
@@ -194,7 +195,22 @@ async function boot() {
 
 	}
 
-	// 開始前も、最初の週の位置に車体を置いておく
+	// 乗車前は、スタート画面の背景でデモ走行を見せる（一人称。値の動きが大きい約 6 年。demo.js）。
+	// 乗車すると ride.start() が最初の週へ戻してから始める。prefers-reduced-motion では、区間の途中の 1 コマで止めて見せる
+	const demoRange = chooseDemoRange( curve );
+	const reducedMotion = typeof window.matchMedia === 'function' && window.matchMedia( '(prefers-reduced-motion: reduce)' ).matches;
+	if ( reducedMotion ) {
+
+		const still = demoStillProgress( demoRange );
+		ride.startDemo( { from: still, to: still } );
+
+	} else {
+
+		ride.startDemo( demoRange );
+
+	}
+
+	// 開始前も、車体を走行の位置（デモの位置）に置いておく
 	train.position.copy( ride.position );
 	train.quaternion.copy( ride.quaternion );
 
@@ -275,6 +291,8 @@ async function boot() {
 			// 音（sound.js）：getState() と検証用の engine
 			sound: modules.find( ( entry ) => entry.name === 'createSound' )?.hooks.debug ?? null,
 			ride,
+			// デモ走行の区間（demo.js の chooseDemoRange の戻り値）
+			demo: demoRange,
 			ctx
 		};
 
