@@ -181,4 +181,11 @@ export const CONTOUR = {};
 export const ANNOT = {};
 
 // MOTION：動きの定数（視点切り替えの補間時間、脈動の周期、reduced-motion 時の係数など）。担当：シーン・操作。
-export const MOTION = {};
+export const MOTION = {
+	// prefers-reduced-motion: reduce のときの一人称の値（穏やかな設定）。ride.js が使う
+	reducedRide: {
+		railSlopeVisualScale: 0.0003, // RAIL_SLOPE_VISUAL_SCALE 0.0009 の代わり（傾きを 1/3 に）
+		orientationBlendPerFrame: 0.04, // ORIENTATION_BLEND_PER_FRAME 0.08 の代わり
+		speedMaxFactor: 0.5 // SPEED_MAX に掛ける
+	}
+};

@@ -33,7 +33,28 @@
 			<!-- [hud-legend] 凡例（俯瞰中だけ）  CSS: readout.css / JS: hud/legend.js -->
 			<div id="hud-legend" role="group" aria-label="凡例"></div>
 			<!-- [hud-controls] 操作ボタン  CSS: controls.css / JS: ui/buttons.js -->
-			<div id="hud-controls" role="group" aria-label="操作"></div>
+			<div id="hud-controls" role="group" aria-label="操作">
+				<button type="button" id="pause-btn" class="btn ctl-btn" data-action="toggle-pause" aria-label="一時停止（Space）" aria-keyshortcuts="Space">
+					<svg class="ctl-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"></svg>
+					<span class="ctl-label">一時停止</span>
+					<kbd class="kbd" aria-hidden="true">Space</kbd>
+				</button>
+				<button type="button" id="view-btn" class="btn ctl-btn" data-action="view" aria-label="俯瞰で見る（W）" aria-keyshortcuts="W">
+					<svg class="ctl-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"></svg>
+					<span class="ctl-label">俯瞰</span>
+					<kbd class="kbd" aria-hidden="true">W</kbd>
+				</button>
+				<button type="button" id="restart-btn" class="btn ctl-btn" data-action="restart" aria-label="最初から乗り直す（R）" aria-keyshortcuts="R">
+					<svg class="ctl-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"></svg>
+					<span class="ctl-label">最初から</span>
+					<kbd class="kbd" aria-hidden="true">R</kbd>
+				</button>
+				<button type="button" id="info-btn" class="btn ctl-btn" data-action="info" aria-label="情報パネルを開く（I）" aria-keyshortcuts="I" aria-expanded="false" aria-controls="info-panel">
+					<svg class="ctl-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"></svg>
+					<span class="ctl-label">情報</span>
+					<kbd class="kbd" aria-hidden="true">I</kbd>
+				</button>
+			</div>
 			<!-- [hud-chart] ミニグラフ  CSS: chart.css / JS: hud/chart.js -->
 			<div id="hud-chart" class="hud-panel">
 				<canvas id="graphCanvas" width="296" height="140" role="img" aria-label="日経平均株価の折れ線グラフ"></canvas>
