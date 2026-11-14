@@ -336,3 +336,13 @@ test( '日付：年月・週の文言。Date を通さない', () => {
 	assert.throws( () => parseDate( '2024-1-1' ) );
 
 } );
+
+test( '強く描く線の間隔（3D の等高線）：ドル円 100 円、金利は無し（0 の線だけ。scale.js）、日経平均 5 万円', () => {
+
+	assert.equal( usd.strongEvery, 100 );
+	assert.equal( jgb.strongEvery, null );
+	assert.equal( nik.strongEvery, 50000 );
+	// 定義に無ければ null
+	assert.equal( createFormatter( { unit: '円', decimals: 0, step: 10, changeMode: 'percent' } ).strongEvery, null );
+
+} );

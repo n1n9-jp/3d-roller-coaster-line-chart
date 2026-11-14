@@ -94,7 +94,7 @@ async function boot() {
 
 	const events = createEvents();
 	const ride = createRide( curve, events );
-	const view = createView( { scene, camera, train, events, curve, ride, kind: dataset.meta.kind } );
+	const view = createView( { scene, camera, train, events, curve, ride } );
 
 	// どのデータか（'usdjpy' | 'jgb10' | 'nikkei'）。CSS が html[data-dataset] を見る
 	document.documentElement.dataset.dataset = dataset.id;
