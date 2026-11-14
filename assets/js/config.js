@@ -208,7 +208,43 @@ export const RAIL = {
 export const CONTOUR = {};
 
 // ANNOT：イベント注釈の定数（目印の大きさ、キャプションの表示時間、イベント一覧の置き場所など）。担当：イベント注釈。
-export const ANNOT = {};
+export const ANNOT = {
+	// 出来事の一覧（data/events.json）。実データ（dataset.meta.kind === 'real'）のときだけ読む
+	eventsUrl: './data/events.json',
+	// キャプション（時間はすべて ride の時間 state.timeMs。一時停止中は進まない）
+	caption: {
+		showMs: 6000, // 表示時間
+		showMsReduced: 8000, // prefers-reduced-motion: reduce のとき
+		minShowMs: 3000, // 表示中に次の出来事が来たとき、入れ替えるまでに最低限見せる時間
+		maxWaitMs: 3000, // 通過してからこれ以上待たされた出来事は、画面の位置と合わなくなるので出さない
+		outMs: 180, // 出（入れ替えるとき、次を出す前にフェードアウトを待つ時間。実時間）
+		// 1 フレームで進みうる progress の最大（MAX_DELTA_MS × SPEED_MAX）の 2 倍。これより大きい変化は「位置が飛んだ」とみなし、飛び越えた出来事を出さない
+		maxStepProgress: 2 * MAX_DELTA_MS * SPEED_MAX
+	},
+	// 3D の目印（長さはワールド座標の単位。レールの高さは 3〜35）
+	marker: {
+		// アーチ：レール（中心線）をまたぐ半円。カメラは中心線の 0〜2.6 上を通るので、その内側に収まる半径にする
+		archRadius: 3.2,
+		archTube: 0.1,
+		archSegments: 48,
+		archTubeSegments: 8,
+		// ひし形：アーチの頂点の上 diamondGap に置き、毎秒 diamondSpin rad で回す（reduced-motion では回さない）
+		diamondRadius: 0.7,
+		diamondGap: 1.6,
+		diamondSpin: 0.6,
+		lineOpacity: 0.5, // 床からレールまでの縦線
+		archLineOpacity: 0.9, // 俯瞰で使う細い線のアーチ
+		// 俯瞰：カメラの距離と画角に依らず、画面上でこの大きさ（CSS px）になるように毎フレーム決める
+		overview: {
+			diamondPx: 10, // ひし形の高さ
+			labelTextPx: 14, // 年ラベルの文字の高さ
+			archMinPx: 9, // アーチの半径の下限
+			labelGapPx: 8, // ひし形の上端と年ラベルの下端の間
+			labelPad: 4 // 年ラベルどうしの重なりを判定するときの余白（px）
+		},
+		label: { fontPx: 56, padX: 22, padY: 14, border: 3 } // 年ラベルの canvas（文字の高さ fontPx に対する余白）
+	}
+};
 
 // MOTION：動きの定数（仕様 5）。担当：シーン・操作。
 export const MOTION = {
