@@ -1,14 +1,17 @@
-// 周囲の景色：地形・木・空と、回転する円柱（遊園地）。
+// 周囲の景色：地形・木・空と、回転する円柱（遊園地）。機能モジュール（createEnvironment( ctx )）。担当：シーン。
 
 import * as THREE from 'three';
 import { TreesGeometry, SkyGeometry } from 'three/addons/misc/RollerCoaster.js';
 import { COLORS } from './config.js';
 
 /**
+ * @param ctx    共有コンテキスト（ctx.scene を使う）
  * @param random 地形の起伏に使う乱数（0..1）。テストで固定したいときに差し替える。
  *               木（TreesGeometry）は同梱ファイル内の Math.random を使う。
  */
-export function createEnvironment( scene, { random = Math.random } = {} ) {
+export function createEnvironment( ctx, { random = Math.random } = {} ) {
+
+	const { scene } = ctx;
 
 	// 地形
 	const terrainGeometry = new THREE.PlaneGeometry( 500, 500, 15, 15 );
@@ -76,10 +79,10 @@ export function createEnvironment( scene, { random = Math.random } = {} ) {
 		trees,
 		sky,
 		funfairs,
-		/** time はミリ秒の経過時間（requestAnimationFrame のタイムスタンプ）。 */
-		update( time ) {
+		/** state.nowMs は requestAnimationFrame のタイムスタンプ（一時停止中も進む）。 */
+		update( state ) {
 
-			for ( const funfair of funfairs ) funfair.rotation.y = time * 0.0004;
+			for ( const funfair of funfairs ) funfair.rotation.y = state.nowMs * 0.0004;
 
 		}
 	};

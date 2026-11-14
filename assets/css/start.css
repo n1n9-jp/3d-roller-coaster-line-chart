@@ -1,0 +1,82 @@
+/* スタート画面（#start-screen）。担当：スタート画面。
+   現状のスタイルを移しただけの骨組み。仕様 3「スタート画面」と仕様 5 の動きで作り直す。
+   使えるもの：tokens.css の変数、base.css の .btn / .btn--primary。 */
+
+#start-screen {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 17, 51, 0.95);
+	pointer-events: all;
+	z-index: var(--z-start);
+	transition: opacity 0.3s;
+}
+
+#start-screen h1 {
+	color: #fff;
+	font-size: 2.5rem;
+	text-align: center;
+	line-height: 1.4;
+	margin: 0 0 0.5rem;
+	letter-spacing: 0.05em;
+}
+
+#start-screen p {
+	color: rgba(255, 255, 255, 0.6);
+	font-size: 1rem;
+	margin-bottom: 2rem;
+}
+
+#start-btn {
+	padding: 16px 48px;
+	font-size: 1.2rem;
+	font-weight: bold;
+	color: #001133;
+	background: #fff;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	letter-spacing: 0.1em;
+	transition: transform 0.2s, box-shadow 0.2s;
+}
+
+#start-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+#start-btn:hover:not(:disabled) {
+	transform: scale(1.05);
+	box-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
+}
+
+#start-screen #start-message {
+	margin: 1.5rem 0 0;
+}
+
+#start-screen #start-message.error {
+	color: #ff9a9a;
+}
+
+/* 出典の一行（下端中央） */
+#start-credits {
+	position: absolute;
+	left: 24px;
+	right: 24px;
+	bottom: calc(24px + var(--safe-b));
+	margin: 0;
+	text-align: center;
+	font-size: var(--fs-12);
+	line-height: var(--lh-12);
+	color: var(--c-text-3);
+}
+
+#start-credits:empty {
+	display: none;
+}

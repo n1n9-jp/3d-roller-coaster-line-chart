@@ -1,0 +1,195 @@
+/* 共通スタイル：リセット、body、3D の canvas、視覚的に隠すユーティリティ、
+   パネル共通、操作ボタン共通、prefers-reduced-motion の共通処理。
+   機能固有のスタイルは書かない（各機能の CSS ファイルへ）。 */
+
+*, *::before, *::after {
+	box-sizing: border-box;
+}
+
+html {
+	-webkit-text-size-adjust: 100%;
+}
+
+body {
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+	background: var(--c-bg-1);
+	color: var(--c-text-1);
+	font-family: var(--font-sans);
+	font-size: var(--fs-14);
+	line-height: var(--lh-14);
+	letter-spacing: var(--ls-ja);
+	overscroll-behavior: none;
+}
+
+h1, h2, h3, h4, p, ul, ol, dl, dd, figure {
+	margin: 0;
+}
+
+a {
+	color: var(--c-accent-text);
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+button {
+	font: inherit;
+	letter-spacing: inherit;
+	cursor: pointer;
+}
+
+[hidden] {
+	display: none !important;
+}
+
+/* three.js の renderer.domElement（body 直下） */
+body > canvas {
+	display: block;
+}
+
+/* 視覚的に隠す（スクリーンリーダーには読まれる） */
+.visually-hidden {
+	position: absolute !important;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* フォーカスリング（背景の上に offset 3px で描く） */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+	outline: 2px solid var(--c-focus);
+	outline-offset: 3px;
+}
+
+/* ---- パネル共通 ---- */
+.hud-panel {
+	--panel-pad: 12px;
+	padding: var(--panel-pad);
+	background: var(--c-panel);
+	border: 1px solid var(--c-panel-border);
+	border-radius: var(--radius-panel);
+}
+
+@supports (backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px)) {
+	.hud-panel {
+		-webkit-backdrop-filter: blur(8px);
+		backdrop-filter: blur(8px);
+	}
+}
+
+@media (max-width: 720px) {
+	.hud-panel {
+		--panel-pad: 10px;
+	}
+}
+
+/* ---- 操作ボタン共通 ---- */
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	min-width: 44px;
+	min-height: 44px;
+	padding: 0 14px;
+	background: var(--c-btn);
+	color: var(--c-text-1);
+	border: 1px solid var(--c-btn-border);
+	border-radius: var(--radius-btn);
+	font-family: inherit;
+	font-size: var(--fs-14);
+	font-weight: 600;
+	line-height: var(--lh-14);
+	white-space: nowrap;
+	pointer-events: auto;
+	transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.btn:hover {
+	background: var(--c-btn-hover);
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.btn svg {
+	width: 20px;
+	height: 20px;
+	flex: none;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+@media (max-width: 720px) {
+	.btn {
+		min-height: 48px;
+		font-size: var(--fs-13);
+	}
+}
+
+/* 主ボタン（スタート画面・終了画面） */
+.btn--primary {
+	background: var(--c-accent);
+	color: var(--c-on-accent);
+	border-color: transparent;
+	font-weight: 700;
+}
+
+.btn--primary:hover {
+	background: var(--c-accent-hover);
+}
+
+/* キーボードショートカットのチップ */
+.kbd {
+	display: inline-flex;
+	align-items: center;
+	height: 20px;
+	padding: 0 6px;
+	background: var(--c-btn-hover);
+	color: var(--c-text-2);
+	border-radius: 4px;
+	font-family: var(--font-mono);
+	font-size: var(--fs-12);
+	font-weight: 600;
+	letter-spacing: 0;
+}
+
+/* 数値（毎フレーム変わる値・日付・目盛り）は等幅数字にする */
+.tabular {
+	font-variant-numeric: tabular-nums;
+}
+
+/* ---- prefers-reduced-motion の共通処理 ----
+   translate と scale は使わず、opacity だけを 150ms で変える。
+   各機能の CSS はトークン（--dur-* と --shift-* と --scale-in）を使えば自動的に従う。 */
+@media (prefers-reduced-motion: reduce) {
+	:root {
+		--dur-fast: 150ms;
+		--dur-base: 150ms;
+		--dur-slow: 150ms;
+		--shift-sm: 0px;
+		--shift-md: 0px;
+		--shift-lg: 0px;
+		--scale-in: 1;
+	}
+
+	*, *::before, *::after {
+		scroll-behavior: auto !important;
+	}
+}

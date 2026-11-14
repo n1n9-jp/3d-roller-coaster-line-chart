@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { geoToXZ, xzToGeo, buildStationSegments, getXZAt, TrackCurve } from '../assets/js/track.js';
-import { Y_MIN, Y_MAX } from '../assets/js/config.js';
+import { Y_MIN, Y_MAX, LOOP } from '../assets/js/config.js';
 import { loadFixtures } from './helpers.js';
 
 const { nikkei, stations } = loadFixtures();
@@ -98,5 +98,75 @@ test( 'TrackCurve：接線は水平な単位ベクトル、t は周期 1', () =>
 	const a = curve.getPointAt( 0.25 ).clone();
 	const b = curve.getPointAt( 1.25 ).clone();
 	assert.ok( a.distanceTo( b ) < 1e-9 );
+
+} );
+
+// ---- 連絡区間の口：dataEnd / isLink / progressToIndex / indexToProgress ----
+
+test( 'LOOP.linkFraction の既定は 0（連絡区間なし）で、dataEnd は 1', () => {
+
+	assert.equal( LOOP.linkFraction, 0 );
+	const curve = new TrackCurve( stations, nikkei );
+	assert.equal( curve.dataEnd, 1 );
+	assert.equal( curve.isLink( 1 ), false );
+
+} );
+
+test( 'linkFraction が 0 のとき：progressToIndex は t * ( n - 1 )、indexToProgress と往復で一致する', () => {
+
+	const curve = new TrackCurve( stations, nikkei, { linkFraction: 0 } );
+	const n = nikkei.length;
+	assert.equal( curve.progressToIndex( 0 ), 0 );
+	assert.equal( curve.progressToIndex( 1 ), n - 1 );
+	for ( const t of [ 0, 0.1, 0.25, 0.5, 0.731, 0.999, 1 ] ) {
+
+		assert.ok( Math.abs( curve.progressToIndex( t ) - t * ( n - 1 ) ) < 1e-9 );
+		assert.ok( Math.abs( curve.indexToProgress( curve.progressToIndex( t ) ) - t ) < 1e-12 );
+
+	}
+
+	for ( const u of [ 0, 1, 100.5, n - 2, n - 1 ] ) {
+
+		assert.ok( Math.abs( curve.progressToIndex( curve.indexToProgress( u ) ) - u ) < 1e-9 );
+
+	}
+
+} );
+
+test( 'linkFraction が 0.03 のとき：データ区間は 0..0.97、往復で一致し、連絡区間では null', () => {
+
+	const curve = new TrackCurve( stations, nikkei, { linkFraction: 0.03 } );
+	const n = nikkei.length;
+	assert.ok( Math.abs( curve.dataEnd - 0.97 ) < 1e-12 );
+
+	assert.equal( curve.progressToIndex( 0 ), 0 );
+	assert.ok( Math.abs( curve.progressToIndex( curve.dataEnd ) - ( n - 1 ) ) < 1e-9 );
+	assert.equal( curve.isLink( curve.dataEnd ), false );
+	assert.equal( curve.isLink( 0.9701 ), true );
+	assert.equal( curve.progressToIndex( 0.9701 ), null );
+	assert.equal( curve.progressToIndex( 1 ), null );
+
+	for ( const t of [ 0, 0.1, 0.5, 0.9, 0.97 ] ) {
+
+		const u = curve.progressToIndex( t );
+		assert.ok( Math.abs( u - t / 0.97 * ( n - 1 ) ) < 1e-9 );
+		assert.ok( Math.abs( curve.indexToProgress( u ) - t ) < 1e-12, `t=${t}` );
+
+	}
+
+	for ( const u of [ 0, 1, 100.5, n - 2, n - 1 ] ) {
+
+		assert.ok( Math.abs( curve.progressToIndex( curve.indexToProgress( u ) ) - u ) < 1e-9, `u=${u}` );
+
+	}
+
+} );
+
+test( '連絡区間があっても、データ区間の端の高さは系列の端（t = dataEnd で最後の点）', () => {
+
+	const curve = new TrackCurve( stations, nikkei, { linkFraction: 0.03 } );
+	assert.ok( Math.abs( curve.getYAt( 0 ) - curve.valueToY( nikkei[ 0 ].close ) ) < 1e-9 );
+	assert.ok( Math.abs( curve.getYAt( curve.dataEnd ) - curve.valueToY( nikkei.at( - 1 ).close ) ) < 1e-9 );
+	assert.ok( Number.isFinite( curve.getYAt( 0.985 ) ) );
 
 } );

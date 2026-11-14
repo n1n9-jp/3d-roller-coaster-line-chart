@@ -1,4 +1,5 @@
 // 路線図：山手線の駅と現在位置。
+// 機能モジュール（createMap( ctx )）。担当：路線図。canvas は #mapCanvas（#hud-map の中）。
 
 import { HUD } from '../config.js';
 import { getXZAt, xzToGeo } from '../track.js';
@@ -6,10 +7,11 @@ import { createHudLayer } from './layer.js';
 
 const PADDING = 8;
 
-/** @param seg buildStationSegments の結果（現在位置を求めるのに使う） */
-export function createMap( canvas, stations, seg ) {
+export function createMap( ctx ) {
 
-	const size = HUD.size;
+	const canvas = document.getElementById( 'mapCanvas' );
+	const { stations } = ctx;
+	const seg = ctx.curve.seg;
 
 	const lons = stations.map( s => s.lon );
 	const lats = stations.map( s => s.lat );
@@ -18,67 +20,78 @@ export function createMap( canvas, stations, seg ) {
 	const lonRange = Math.max( ...lons ) - lonMin;
 	const latRange = Math.max( ...lats ) - latMin;
 
-	// 縦横比を保って canvas の中央に収める
-	const maxSize = size - PADDING * 2;
-	const aspect = latRange / lonRange;
-	const mapW = aspect > 1 ? maxSize / aspect : maxSize;
-	const mapH = aspect > 1 ? maxSize : maxSize * aspect;
-	const offsetX = ( size - mapW ) / 2;
-	const offsetY = ( size - mapH ) / 2;
+	// 縦横比を保って canvas の中央に収める（サイズが変わるたびに計算し直す）
+	let offsetX = 0;
+	let offsetY = 0;
+	let mapW = 0;
+	let mapH = 0;
+
+	function layout( w, h ) {
+
+		const scale = Math.min( ( w - PADDING * 2 ) / lonRange, ( h - PADDING * 2 ) / latRange );
+		mapW = lonRange * scale;
+		mapH = latRange * scale;
+		offsetX = ( w - mapW ) / 2;
+		offsetY = ( h - mapH ) / 2;
+
+	}
 
 	const toCanvas = ( lon, lat ) => ( {
 		x: offsetX + ( lon - lonMin ) / lonRange * mapW,
 		y: offsetY + ( 1 - ( lat - latMin ) / latRange ) * mapH
 	} );
 
-	const stationPoints = stations.map( s => toCanvas( s.lon, s.lat ) );
+	const layer = createHudLayer( canvas, ( c, w, h ) => {
 
-	const layer = createHudLayer( canvas, size, ( ctx ) => {
+		layout( w, h );
+		const stationPoints = stations.map( s => toCanvas( s.lon, s.lat ) );
 
-		ctx.fillStyle = HUD.panelBackground;
-		ctx.fillRect( 0, 0, size, size );
+		c.fillStyle = HUD.panelBackground;
+		c.fillRect( 0, 0, w, h );
 
-		ctx.strokeStyle = HUD.mapLine;
-		ctx.lineWidth = 1.5;
-		ctx.beginPath();
+		c.strokeStyle = HUD.mapLine;
+		c.lineWidth = 1.5;
+		c.beginPath();
 		stationPoints.forEach( ( p, i ) => {
 
-			if ( i === 0 ) ctx.moveTo( p.x, p.y );
-			else ctx.lineTo( p.x, p.y );
+			if ( i === 0 ) c.moveTo( p.x, p.y );
+			else c.lineTo( p.x, p.y );
 
 		} );
-		ctx.closePath();
-		ctx.stroke();
+		c.closePath();
+		c.stroke();
 
-		ctx.fillStyle = HUD.mapLine;
+		c.fillStyle = HUD.mapLine;
 		for ( const p of stationPoints ) {
 
-			ctx.beginPath();
-			ctx.arc( p.x, p.y, 2, 0, Math.PI * 2 );
-			ctx.fill();
+			c.beginPath();
+			c.arc( p.x, p.y, 2, 0, Math.PI * 2 );
+			c.fill();
 
 		}
 
-		ctx.fillStyle = HUD.text;
-		ctx.font = HUD.font;
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'middle';
-		ctx.fillText( 'Yamanote Line', size / 2, size / 2 );
+		c.fillStyle = HUD.text;
+		c.font = HUD.font;
+		c.textAlign = 'center';
+		c.textBaseline = 'middle';
+		c.fillText( 'Yamanote Line', w / 2, h / 2 );
 
 	} );
 
 	return {
-		draw( progress ) {
+		update( state ) {
 
-			const ctx = layer.begin();
-			const { x, z } = getXZAt( progress, seg );
+			if ( ! state.started || ! layer.width ) return;
+
+			const c = layer.begin();
+			const { x, z } = getXZAt( Math.min( state.progress, 1 ), seg );
 			const { lon, lat } = xzToGeo( x, z );
 			const p = toCanvas( lon, lat );
 
-			ctx.fillStyle = HUD.marker;
-			ctx.beginPath();
-			ctx.arc( p.x, p.y, 4, 0, Math.PI * 2 );
-			ctx.fill();
+			c.fillStyle = HUD.marker;
+			c.beginPath();
+			c.arc( p.x, p.y, 4, 0, Math.PI * 2 );
+			c.fill();
 
 		}
 	};
