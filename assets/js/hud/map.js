@@ -8,6 +8,18 @@ import { HUD_COLORS as COLORS, FONT_SANS } from '../config.js';
 import { createHudLayer } from './layer.js';
 import { nearestStationIndex } from './scales.js';
 
+/**
+ * 走行済みの弧の終わりの位置（progress）。DOM に依存しない（tests/hud-scales.test.js）。
+ * 一周して止まったときは、3D のレールやミニグラフと同じく、データ区間の終わり（dataEnd）まで。
+ * それより先の連絡区間（品川→大崎）は、走っていないので「これから」の色のままにする。
+ */
+export function riddenEnd( progress, finished, dataEnd = 1 ) {
+
+	const t = finished ? dataEnd : progress;
+	return Math.min( 1, Math.max( 0, t ) );
+
+}
+
 // 駅名を出す駅と、駅名を置く側（l：駅の左、r：右、b：下）。大きい画面と、モバイル・短い横長
 const LABELS_FULL = { 池袋: 'l', 上野: 'r', 東京: 'r', 品川: 'r', 渋谷: 'l', 新宿: 'l', 大崎: 'b' };
 const LABELS_COMPACT = { 新宿: 'l', 池袋: 'l', 東京: 'r', 品川: 'r' };
@@ -224,13 +236,14 @@ export function createMap( ctx ) {
 		if ( ! layout ) return;
 		const { toCanvas } = layout;
 
-		// 走行済みの弧：駅の折れ線を、現在位置まで（一周して止まったときは全周）
+		// 走行済みの弧：駅の折れ線を、現在位置まで（一周して止まったときはデータ区間の終わりまで。連絡区間は含めない）
 		const here = ctx.curve.getXZAt( Math.min( 1, Math.max( 0, progress ) ) );
-		const t = finished ? 1 : Math.min( 1, Math.max( 0, progress ) );
+		const t = riddenEnd( progress, finished, ctx.curve.dataEnd );
 		const { segTStart } = seg;
 		const pts = [];
 		for ( let i = 0; i < n && segTStart[ i ] < t; i ++ ) pts.push( toCanvas( ring[ i ].x, ring[ i ].z ) );
-		pts.push( t >= 1 ? toCanvas( ring[ 0 ].x, ring[ 0 ].z ) : toCanvas( here.x, here.z ) );
+		const tip = t >= 1 ? ring[ 0 ] : ctx.curve.getXZAt( t );
+		pts.push( toCanvas( tip.x, tip.z ) );
 
 		if ( pts.length > 1 ) {
 

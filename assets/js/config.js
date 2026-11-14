@@ -57,19 +57,6 @@ export const RAIL_DIVISIONS = 1500;
 export const LIFTER_DIVISIONS = 100;
 export const SHADOW_DIVISIONS = 500;
 
-// ---- 配色 ----
-export const COLORS = {
-	background: 0xf0f0ff,
-	hemisphereSky: 0xfff0f0,
-	hemisphereGround: 0x60606,
-	ground: 0x407000,
-	sky: 0xffffff,
-	shadow: 0x305000,
-	marker: 0xff3333,
-	funfairA: 0xff8080,
-	funfairB: 0x8080ff
-};
-
 // =====================================================================
 // ステージ2：デザインの共有定数。各節は機能担当が中身を足す場所。
 // CSS 側の同じ値は assets/css/tokens.css（値を変えるときは両方そろえる）。
@@ -107,22 +94,18 @@ export const FONT_SANS = 'system-ui, -apple-system, "Hiragino Sans", "Hiragino K
 // ---- canvas に描く 2D の色（tokens.css の同名の変数と同じ値）----
 export const HUD_COLORS = {
 	bg1: '#0b1733',
-	bg2: '#142650',
 	panel: 'rgba(11, 23, 51, 0.90)',
 	panelBorder: 'rgba(150, 170, 220, 0.22)',
 	text1: '#eef2fb',
 	text2: '#b4bfd9',
 	text3: '#96a3c4', // 軸目盛り・脚注（これより暗い文字色は作らない）
-	accentText: '#f2b84b',
 	ridden: '#c98500', // 走行済み
 	ahead: '#7080a8', // これから（文脈線）
-	deadhead: '#7080a8', // 回送（破線 4/3 で区別）
 	marker: '#d55181', // 現在位置（白い輪 1.5px を必ず付ける）
 	markerRing: '#ffffff',
 	event: '#2f97d8', // イベント注釈の目印
 	plotGrid: '#24365f', // グラフのグリッド（細線）
 	plotAxis: '#3a4b75', // 基線
-	contour: '#6d8ccf', // 等高線
 	contourLabel: '#dbe4f7',
 	contourLabelBg: 'rgba(11, 23, 51, 0.72)'
 };

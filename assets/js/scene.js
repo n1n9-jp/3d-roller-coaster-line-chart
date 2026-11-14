@@ -6,6 +6,9 @@
 import * as THREE from 'three';
 import { SCENE, PALETTE } from './config.js';
 
+/** devicePixelRatio の上限（hud/layer.js の MAX_DPR と同じ）。DPR 3 の端末で、DPR 2 の 2.25 倍の画素を描かないようにする。 */
+const MAX_PIXEL_RATIO = 2;
+
 /** 縦グラデーションの CanvasTexture（scene.background 用。画面全体に引き伸ばされる）。 */
 function createSkyTexture() {
 
@@ -25,12 +28,19 @@ function createSkyTexture() {
 
 }
 
+/** 描画の解像度。HUD の canvas（hud/layer.js の MAX_DPR）と同じく、devicePixelRatio の上限は 2。 */
+export function pixelRatio( dpr = typeof window !== 'undefined' ? window.devicePixelRatio : 1 ) {
+
+	return Math.min( MAX_PIXEL_RATIO, dpr || 1 );
+
+}
+
 /** WebGL が使えない環境では例外を投げる。 */
 export function createScene( container = document.body ) {
 
 	const renderer = new THREE.WebGLRenderer( { antialias: true } );
 	renderer.setClearColor( SCENE.clearColor );
-	renderer.setPixelRatio( window.devicePixelRatio );
+	renderer.setPixelRatio( pixelRatio() );
 	renderer.setSize( window.innerWidth, window.innerHeight );
 	container.appendChild( renderer.domElement );
 
@@ -60,7 +70,7 @@ export function createScene( container = document.body ) {
 		camera.aspect = window.innerWidth / window.innerHeight;
 		camera.updateProjectionMatrix();
 
-		renderer.setPixelRatio( window.devicePixelRatio );
+		renderer.setPixelRatio( pixelRatio() );
 		renderer.setSize( window.innerWidth, window.innerHeight );
 
 	}

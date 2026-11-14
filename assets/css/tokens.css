@@ -27,6 +27,7 @@
 	--c-accent-text: #f2b84b;
 	--c-focus: #ffd479;
 	--c-danger: #ff8f8f;
+	--c-danger-bg: rgba(255, 143, 143, 0.08); /* エラーのブロックの面 */
 
 	/* 2D グラフ（ミニグラフ・路線図・凡例） */
 	--c-ridden: #c98500;

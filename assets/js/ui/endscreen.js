@@ -6,6 +6,25 @@ import { summarize, summaryTexts } from '../summary.js';
 
 const CLOSE_MS = 200; // 閉じる動き（仕様 5）。css の閉じる遷移（--dur-fast、reduced-motion でも 150ms）以上にしておく
 
+/**
+ * 終了画面を閉じたあと、フォーカスを移す先を決める（DOM に依存しない）。
+ * 「もう一度乗る」（'restart'）は一時停止のボタン、「俯瞰で全体を見る」と Esc（'overview'）は視点のボタン。
+ * 一周して止まったあとは一時停止のボタンが disabled なので、俯瞰では視点のボタンへ移す。
+ * 移す先が無効や非表示のときは、操作ボタンの中で最初の有効なボタン。
+ * @param {'restart'|'overview'} reason 閉じ方
+ * @param {Array<{ id: string, disabled?: boolean, hidden?: boolean }>} controls #hud-controls のボタン（並び順）
+ * @returns {string|null} 移す先のボタンの id（移せるボタンがなければ null）
+ */
+export function focusTargetAfterClose( reason, controls ) {
+
+	const usable = ( b ) => b && ! b.disabled && ! b.hidden;
+	const preferredId = reason === 'restart' ? 'pause-btn' : 'view-btn';
+	const preferred = controls.find( ( b ) => b.id === preferredId );
+	if ( usable( preferred ) ) return preferred.id;
+	return controls.find( usable )?.id ?? null;
+
+}
+
 export function createEndScreen( ctx ) {
 
 	const { events, ride, view, dataset } = ctx;
@@ -63,8 +82,8 @@ export function createEndScreen( ctx ) {
 
 	}
 
-	/** 閉じる。フォーカスは操作ボタン（あれば）へ、なければ body 側へ戻す。 */
-	function close() {
+	/** 閉じる。フォーカスは操作ボタンへ戻す（移す先は focusTargetAfterClose）。 */
+	function close( reason ) {
 
 		if ( ! open ) return;
 		open = false;
@@ -75,8 +94,7 @@ export function createEndScreen( ctx ) {
 
 		const hadFocus = root.contains( document.activeElement );
 		if ( hadFocus ) document.activeElement.blur();
-		const firstControl = document.querySelector( '#hud-controls button' );
-		if ( hadFocus && firstControl ) firstControl.focus( { preventScroll: true } );
+		if ( hadFocus ) focusControl( reason );
 
 		clearTimeout( hideTimer );
 		hideTimer = setTimeout( () => {
@@ -87,9 +105,22 @@ export function createEndScreen( ctx ) {
 
 	}
 
+	function focusControl( reason ) {
+
+		const controls = [ ...document.querySelectorAll( '#hud-controls button' ) ].map( ( el ) => ( {
+			id: el.id,
+			disabled: el.disabled,
+			// CSS で隠れているボタン（display: none）にはフォーカスできない
+			hidden: el.hidden || el.getClientRects().length === 0
+		} ) );
+		const id = focusTargetAfterClose( reason, controls );
+		if ( id ) document.getElementById( id ).focus( { preventScroll: true } );
+
+	}
+
 	function showOverview() {
 
-		close();
+		close( 'overview' );
 		view.setView( 'overview' );
 
 	}
@@ -127,7 +158,7 @@ export function createEndScreen( ctx ) {
 	document.addEventListener( 'keydown', onKeyDown );
 
 	const offFinish = events.on( 'finish', show );
-	const offRestart = events.on( 'restart', close );
+	const offRestart = events.on( 'restart', () => close( 'restart' ) );
 
 	return {
 		dispose() {

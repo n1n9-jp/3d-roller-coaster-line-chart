@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readJson } from './helpers.js';
 import {
 	parseYMD, formatYearMonth, formatDate, periodOf, kickerText, descriptionText, chipTexts,
-	creditLine, metaDescription, dataSourceItems, BASE_DESCRIPTION, SAMPLE_NOTE, ERROR_TEXTS
+	creditLine, metaDescription, dataSourceItems, EVENTS_SOURCE_TEXT, BASE_DESCRIPTION, SAMPLE_NOTE, ERROR_TEXTS
 } from '../assets/js/ui/texts.js';
 
 const REAL_META = {
@@ -82,6 +82,26 @@ test( '情報パネルのデータ出典', () => {
 	assert.match( real.text, /米セントルイス連邦準備銀行 FRED（系列 NIKKEI225）経由で取得（2026年11月14日取得）/ );
 	assert.match( real.text, /週次値は各週の最終営業日の終値です。$/ );
 	assert.equal( real.link.href, REAL_META.sourceUrl );
+
+} );
+
+test( '情報パネルのデータ出典：実データは出来事の出典の段落が続き、サンプルは 1 段落だけ', () => {
+
+	const items = dataSourceItems( { ...REAL_META } );
+	assert.equal( items.length, 2 );
+	assert.equal( items[ 1 ].text, EVENTS_SOURCE_TEXT );
+	assert.equal( items[ 1 ].link, undefined );
+	// 出典の URL や取得日がなくても、出来事の出典は付く
+	assert.equal( dataSourceItems( { kind: 'real' } ).length, 2 );
+	assert.equal( dataSourceItems( { kind: 'real' } )[ 1 ].text, EVENTS_SOURCE_TEXT );
+
+	for ( const meta of [ { kind: 'sample' }, undefined, {} ] ) {
+
+		const sample = dataSourceItems( meta );
+		assert.equal( sample.length, 1 );
+		assert.ok( ! sample.some( ( item ) => item.text === EVENTS_SOURCE_TEXT ) );
+
+	}
 
 } );
 

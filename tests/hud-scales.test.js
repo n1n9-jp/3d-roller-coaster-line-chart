@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
 	yAxis, labelStep, labelIndices, formatYenTick, yearTicks, nearestStationIndex, formatYearMonth, formatYen
 } from '../assets/js/hud/scales.js';
+import { riddenEnd } from '../assets/js/hud/map.js';
 import { buildDataset } from '../assets/js/data.js';
 import { buildStationSegments, getXZAt } from '../assets/js/track.js';
 import { loadFixtures } from './helpers.js';
@@ -168,5 +169,18 @@ test( '表記：年月と値', () => {
 	assert.equal( formatYearMonth( '1990-01-08' ), '1990年1月' );
 	assert.equal( formatYen( 12214.4 ), '12,214' );
 	assert.equal( formatYen( 38791 ), '38,791' );
+
+} );
+
+test( '路線図：走行済みの弧の終わり。走行中は現在位置、一周して止まったときはデータ区間の終わり（連絡区間は含めない）', () => {
+
+	const dataEnd = 0.97;
+	assert.equal( riddenEnd( 0.4, false, dataEnd ), 0.4 );
+	assert.equal( riddenEnd( 0.9695, false, dataEnd ), 0.9695 );
+	assert.equal( riddenEnd( 0.97, true, dataEnd ), dataEnd );
+	assert.equal( riddenEnd( 1, true, dataEnd ), dataEnd ); // 進行位置が連絡区間にあっても、データ区間の終わりまで
+	assert.equal( riddenEnd( - 0.1, false, dataEnd ), 0 );
+	assert.equal( riddenEnd( 1.2, false, dataEnd ), 1 );
+	assert.equal( riddenEnd( 0.5, true ), 1 ); // 連絡区間がない（dataEnd 省略）なら全周
 
 } );

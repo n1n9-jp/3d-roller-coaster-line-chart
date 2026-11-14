@@ -142,7 +142,8 @@ export function interpolateClose( series, t, linkFraction ) {
 /**
  * 日付 'YYYY-MM-DD' が指す系列上の位置（小数の添字）。
  * 前後のデータ点の間は日数で線形補間する（間隔が 7 日でなくてもよい）。範囲外は両端に張り付く。
- * 位置を t（0..1）にするには、結果を ( dataset.raw.length - 1 ) で割る。
+ * これは系列の添字で、進行位置 progress ではない（周回には連絡区間があり、データ区間は 0 .. dataEnd）。
+ * 進行位置へは curve.indexToProgress（loop.js の indexToProgress）で変換する。
  */
 export function dateToIndex( dataset, date ) {
 

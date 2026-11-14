@@ -222,7 +222,7 @@
 	max-width: 480px;
 	padding: 12px 16px;
 	border-left: 3px solid var(--c-danger);
-	background: rgba( 255, 143, 143, 0.08 );
+	background: var( --c-danger-bg );
 	text-align: left;
 }
 

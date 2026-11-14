@@ -114,7 +114,8 @@ export function createButtons( ctx ) {
 			if ( ride.started ) ride.restart();
 
 		},
-		info: () => events.emit( 'infopanel:toggle' )
+		// trigger を渡す：クリックでボタンにフォーカスが移らないブラウザ（Safari、macOS の Firefox）でも、閉じたあとここへ戻せる
+		info: () => events.emit( 'infopanel:toggle', { trigger: buttons.info?.el } )
 	};
 
 	const removers = [];
