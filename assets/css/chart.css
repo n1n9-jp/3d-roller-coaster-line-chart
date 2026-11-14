@@ -1,4 +1,4 @@
-/* ミニグラフ（#hud-chart、中に見出し行と #graphCanvas）。担当：ミニグラフ。
+/* ミニグラフ（#hud-chart、中に見出し行と #graphCanvas）。
    スロットの位置とサイズは hud.css。ここでは見出し行と canvas の見た目、HUD が出るときの入りの動きを書く。
    canvas の大きさは CSS が決める（js/hud/layer.js が ResizeObserver で追従して、内部解像度を合わせる）。
    見出し（日経平均株価の推移）と単位（円）は HTML。canvas の中は軸と線だけ。 */
@@ -8,7 +8,7 @@
 	grid-template-columns: minmax(0, 1fr);
 	grid-template-rows: 20px minmax(0, 1fr); /* 見出し行 + canvas */
 	row-gap: 4px;
-	/* 入りの動き（仕様 5：HUD の行）。帯→ボタン→ミニグラフ→路線図の順に 60ms ずつ、フェード開始から 200ms 後 */
+	/* 入りの動き（HUD の行）。帯→ボタン→ミニグラフ→年代の輪の順に 60ms ずつ、フェード開始から 200ms 後 */
 	--hud-in: 300ms;
 	opacity: 0;
 	transform: translateY(var(--shift-md));

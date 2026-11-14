@@ -1,4 +1,4 @@
-/* 情報パネル（#info-panel）。担当：情報パネル。仕様 3「情報パネル」、仕様 5「動き」。
+/* 情報パネル（#info-panel）。
    #info-panel 自体が全面の背面（スクリム）で、中の .info-sheet がシート。
    L/M は右から、S（幅 720px 以下）は下から出る。開閉は ui/infopanel.js が .is-open と hidden で行う。 */
 

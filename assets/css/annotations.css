@@ -1,7 +1,7 @@
-/* イベントキャプション（#hud-caption）。担当：イベント注釈。
+/* イベントキャプション（#hud-caption）。
    スロットの位置とサイズは hud.css（L：下中央、M：パネルの上、S：ミニグラフの上、短い横長：左右のパネルの間）。俯瞰のあいだの M と短い横長だけ、この末尾で動かす。
    中身（.caption-card）は hud/annotations.js が出し入れする。表示していないあいだ、スロットは空。
-   左帯 3px --c-event、余白 12 16、出入りは仕様 5（入り 240ms ease-out、出 180ms ease-in。reduced-motion では
+   左帯 3px --c-event、余白 12 16、出入りは入り 240ms ease-out、出 180ms ease-in（reduced-motion では
    tokens の --shift-* が 0、--dur-* が 150ms になるので opacity だけが変わる）。 */
 
 .caption-card {
@@ -145,7 +145,7 @@
 
 /* ---- 俯瞰のあいだだけ、キャプションを輪と重ならない位置へ寄せる（キャプションが出るのは実データのときだけ）----
    俯瞰の構図（view.js、SCENE.overview.frame.captionInsets）が、この位置を空けて輪を置く。
-   M：ミニグラフと路線図の上（下から 256）では輪の下半分に重なるので、左上の凡例の下へ。
+   M：ミニグラフと年代の輪の上（下から 256）では輪の下半分に重なるので、左上の凡例の下へ。
    短い横長：左右のパネルの間（下中央）では輪の南端に重なるので、左の列（凡例の下、ミニグラフの上）へ。幅はミニグラフと同じ 220。 */
 @media (min-width: 721px) and (max-width: 1023.98px) and (min-height: 521px),
 	(min-width: 721px) and (max-width: 1023.98px) and (orientation: portrait) {

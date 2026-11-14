@@ -1,11 +1,11 @@
-// 終了画面（#end-screen）。'finish' で出し、'restart' で閉じる。担当：終了画面。
+// 終了画面（#end-screen）。'finish' で出し、'restart' で閉じる。
 // 要約の計算は ../summary.js（DOM に依存しない）。ここは表示・フォーカス・キー操作だけ。
-// 契約は specs/contract.md。createEndScreen( ctx ) は { update?, onViewChange?, onReset?, dispose? } を返す。
+// createEndScreen( ctx ) は { update?, onViewChange?, onReset?, dispose? } を返す。
 
 import { goHome } from './buttons.js';
 import { summarize, summaryTexts, lastPassedEvent, lastEventTexts } from '../summary.js';
 
-const CLOSE_MS = 200; // 閉じる動き（仕様 5）。css の閉じる遷移（--dur-fast、reduced-motion でも 150ms）以上にしておく
+const CLOSE_MS = 200; // 閉じる動き。css の閉じる遷移（--dur-fast、reduced-motion でも 150ms）以上にしておく
 
 /**
  * 終了画面を閉じたあと、フォーカスを移す先を決める（DOM に依存しない）。

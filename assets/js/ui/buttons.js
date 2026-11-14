@@ -46,7 +46,7 @@ export function describeButtons( { paused = false, finished = false, view = 'rid
 
 /**
  * ride へ渡す走行の係数を選ぶ（DOM に依存しない）。
- * reduced-motion の一人称のときだけ MOTION.reducedRide、それ以外は null（従来の値）。
+ * reduced-motion の一人称のときだけ MOTION.reducedRide、それ以外は null（ride の既定の値）。
  * 俯瞰ではカメラが動かないので、穏やかにする必要はない。
  */
 export function reducedRideMotion( { reduced, view }, reducedRide ) {

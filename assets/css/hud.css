@@ -1,4 +1,4 @@
-/* HUD の各スロットの配置だけ（仕様 3）。位置・サイズ・余白・safe-area を決める。
+/* HUD の各スロットの配置だけ。位置・サイズ・余白・safe-area を決める。
    スロットの中身の見た目は各機能の CSS（readout / chart / map / annotations / controls）が書く。
 
    モード：L（幅 1024px 以上、既定）／ M（721〜1023px）／ S（720px 以下）／ 短い横長（高さ 520px 以下かつ landscape）。
@@ -104,7 +104,7 @@
 		height: 220px;
 	}
 
-	/* 左右のパネルの間に 320px が入らないので、パネルの上に出す（仕様は未指定、本骨組みの決定） */
+	/* 左右のパネルの間に 320px が入らないので、パネルの上に出す */
 	#hud-caption {
 		bottom: calc(var(--hud-m) + 220px + 12px + var(--safe-b));
 		width: min(560px, calc(100vw - 2 * var(--hud-m)));

@@ -1,7 +1,7 @@
 // HUD の canvas 共通処理。
 // - 表示サイズは CSS（canvas の見た目の大きさ）で決まる。内部解像度は devicePixelRatio 倍（上限 2）。
 //   サイズの変化は ResizeObserver、devicePixelRatio だけの変化（ブラウザの拡大縮小、別の画面への移動）は matchMedia で追う。
-// - 変化しない部分（グリッド・軸・これからの線・駅名）は offscreen の canvas に、大きさが変わったときだけ描く。
+// - 変化しない部分（グリッド・軸・これからの線・年代ラベル）は offscreen の canvas に、大きさが変わったときだけ描く。
 //   毎フレームは、それを転写して、走行済みの線と現在位置だけを重ねる。
 // - 描画座標は常に CSS px の論理座標。
 

@@ -1,6 +1,6 @@
-/* 終了画面（#end-screen）。担当：終了画面。
-   全面に --c-scrim、中央にカード（仕様 3「終了画面」）。z-index は var(--z-end)。
-   出入り（仕様 5）：背面 400ms のフェード、カードは scale(--scale-in→1) と opacity 300ms。出は 200ms。
+/* 終了画面（#end-screen）。
+   全面に --c-scrim、中央にカード。z-index は var(--z-end)。
+   出入り：背面 400ms のフェード、カードは scale(--scale-in→1) と opacity 300ms。出は 200ms。
    JS が hidden を外し、次のフレームで .is-open を付ける。閉じるときは .is-open を外して 200ms 後に hidden。 */
 
 #end-screen {
@@ -21,7 +21,7 @@
 	transition: opacity var(--dur-slow) var(--ease-out);
 }
 
-/* 終了画面が出ている間は HUD を消す（仕様 5「HUD」の出）。#hud 本体のスタイルは hud.css */
+/* 終了画面が出ている間は HUD を消す（HUD の出）。#hud 本体のスタイルは hud.css */
 html[data-ended] #hud,
 html[data-ended] #hud.visible {
 	opacity: 0;

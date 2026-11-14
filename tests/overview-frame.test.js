@@ -143,7 +143,7 @@ test( 'fitOverview：避ける矩形を渡すと、点の投影がどの矩形�
 
 	}
 
-	// 避ける矩形が無ければ従来どおり（scale 1）
+	// 避ける矩形が無ければ縮めない（scale 1）
 	assert.equal( free.scale, 1 );
 	assert.deepEqual( fitOverview( points, { ...base, obstacles: [] } ).position, free.position );
 

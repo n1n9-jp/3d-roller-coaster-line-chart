@@ -1,4 +1,4 @@
-/* 操作ボタン（#hud-controls の中のボタン）。担当：操作ボタン。
+/* 操作ボタン（#hud-controls の中のボタン）。
    共通の見た目は base.css の .btn / .kbd。コンテナの位置とサイズは hud.css（変えない）。
    L（1200px 以上）：アイコン・ラベル・kbd チップを並べた横長。
    M（721〜1199px）と短い横長：44x44 のアイコンだけ（ラベルと kbd は隠す。名前は aria-label が伝える）。
@@ -14,7 +14,7 @@
 	min-width: 0;
 }
 
-/* ---- 出入り（仕様 5：HUD。上の要素は −8px、下の要素は +8px から 0 へ。帯のあと 60ms 遅らせる）---- */
+/* ---- 出入り（HUD。上の要素は −8px、下の要素は +8px から 0 へ。帯のあと 60ms 遅らせる）---- */
 #hud-controls {
 	opacity: 0;
 	transform: translateY( calc( -1 * var( --shift-md ) ) );

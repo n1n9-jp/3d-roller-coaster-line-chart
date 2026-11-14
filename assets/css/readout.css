@@ -1,4 +1,4 @@
-/* 現在値の帯（#hud-readout）と凡例（#hud-legend）。担当：現在値の帯。
+/* 現在値の帯（#hud-readout）と凡例（#hud-legend）。
    スロットの位置とサイズは hud.css。ここでは中の見た目だけを書く（凡例の見た目もここ）。 */
 
 /* ---- 現在値の帯 ---- */
@@ -13,7 +13,7 @@
 	row-gap: 4px;
 	column-gap: 12px;
 	padding-block: 9px;
-	/* 出入り（仕様 5：HUD の帯。#hud の opacity と重ねる。帯が最初、フェード開始から 200ms 後） */
+	/* 出入り（HUD の帯。#hud の opacity と重ねる。帯が最初、フェード開始から 200ms 後） */
 	opacity: 0;
 	transform: translateY( calc( -1 * var( --shift-md ) ) );
 	transition: opacity 300ms var(--ease-out), transform 300ms var(--ease-out);
@@ -92,7 +92,7 @@
 	font-size: var(--fs-12);
 }
 
-/* ---- S：720px 以下（仕様 3：1 行目に年月と前週比の％、2 行目に値） ---- */
+/* ---- S：720px 以下（1 行目に年月と前週比の％、2 行目に値） ---- */
 @media (max-width: 720px) {
 	#hud-readout {
 		grid-template-columns: minmax(0, 1fr) auto;

@@ -31,7 +31,7 @@ const jgbC = curveFor( jgb ); // 1986 年 7 月〜2026（約 4 周）
 // 1990 年 1 月〜2026（約 3.7 周）。値は 7,000〜72,000（元の値のままだと 75〜358 で、1 万円刻みの目盛りが 1 本も入らない）
 const nk37 = curveFor( rescaleSeries( stretchedSeries( nikkei, '1990-01-01', '2026-11-09' ), 7000, 72000 ) );
 
-// 書式の仮のもの（データの担当が ctx.dataset.format に入れるものと同じ形）
+// 書式の仮のもの（ctx.dataset.format と同じ形）
 const fmt = ( step, compactStep, unit ) => ( {
 	ticks( min, max, { compact = false } = {} ) {
 

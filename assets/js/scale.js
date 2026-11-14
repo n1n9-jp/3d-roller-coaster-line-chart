@@ -1,5 +1,5 @@
 // 3D の目盛り：等高線と値ラベル（一人称）、目盛りの壁と値ラベルの軸（俯瞰）、年代のスポークとラベル。
-// 機能モジュール（createScale( ctx )）。担当：高さ目盛り。
+// 機能モジュール（createScale( ctx )）。
 //
 // 刻みはデータの書式（ctx.dataset.format）が決める：format.ticks( min, max, { compact } ) と format.compact( v )（ラベルの文字列）。
 // 書式がまだ無いとき（日経平均）は FALLBACK_FORMAT（1 万円刻み、「2万円」）。書式が後から入れ替わったら作り直す。

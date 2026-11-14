@@ -52,7 +52,7 @@ test( '要約：周数は、期間の年数 ÷ 10（10 年で 1 周）', () => {
 
 } );
 
-test( '文言（ドル円）：見出し・リード・統計・変化の一行が仕様どおり', () => {
+test( '文言（ドル円）：見出し・リード・統計・変化の一行が期待どおり', () => {
 
 	const { usdjpy } = loadFixtures();
 	const t = summaryTexts( summarize( usdjpy ), datasetOf( 'usdjpy', usdjpy ) );

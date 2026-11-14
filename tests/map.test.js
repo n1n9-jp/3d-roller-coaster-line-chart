@@ -92,7 +92,7 @@ test( 'canvas に収める：縦横比を保ち、縁から inset 以上あけ�
 
 } );
 
-test( 'canvas に収める：5.6 周のL（190px）の拡大率は周の間隔が約 13px（仕様の見積もり）', () => {
+test( 'canvas に収める：5.6 周のL（190px）の拡大率は周の間隔が約 13px（見積もり）', () => {
 
 	const { points } = spiralSamples( CASES[ 'ドル円 5.6周' ] );
 	const fit = fitSpiral( points, 190, 190 );

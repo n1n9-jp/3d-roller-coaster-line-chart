@@ -553,7 +553,7 @@ test( 'scheduler：どの出来事も、通過から maxWaitMs 以内に出て�
 
 } );
 
-test( 'ANNOT.caption：仕様の値（表示 6000ms、reduced は 8000ms、入れ替えまで最低 3000ms）', () => {
+test( 'ANNOT.caption：既定の値（表示 6000ms、reduced は 8000ms、入れ替えまで最低 3000ms）', () => {
 
 	assert.equal( ANNOT.caption.showMs, 6000 );
 	assert.equal( ANNOT.caption.showMsReduced, 8000 );

@@ -101,7 +101,7 @@ test( 'キッカー・説明文・チップ・読み込み中の文言：3種類
 	assert.equal( loadingText( DATASETS.jgb10 ), '金利のデータを読み込んでいます' );
 	assert.equal( loadingText( DATASETS.nikkei ), '株価のデータを読み込んでいます' );
 
-	// 旧コースと合成データの言い回しは残っていない
+	// 以前の山手線のコースと合成データの言い回しは残っていない
 	for ( const def of Object.values( DATASETS ) ) {
 
 		const all = [ descriptionText( def, usdjpy ), ...chipTexts( def ) ].join( '' );
@@ -190,7 +190,7 @@ test( 'データの切り替えの項目：日経平均は、読み込めたと�
 
 } );
 
-test( '情報パネルのしくみ：データの名前・読み・目盛りの刻み。旧コースの記述はない', () => {
+test( '情報パネルのしくみ：データの名前・読み・目盛りの刻み。以前の山手線のコースの記述はない', () => {
 
 	assert.equal( stepLabel( DATASETS.usdjpy ), '50円' );
 	assert.equal( stepLabel( DATASETS.jgb10 ), '1%' );

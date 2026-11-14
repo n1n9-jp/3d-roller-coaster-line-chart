@@ -12,7 +12,7 @@
 //   'infopanel:toggle'                    { trigger? }（開いていれば閉じ、閉じていれば開く）
 //   'infopanel:close'                     なし
 //   'infopanel:change'                    { open }（infopanel.js。開閉したあとに発行）
-// ctx と state、モジュールのフックの契約は main.js と README の「開発」を参照。
+// ctx と state、モジュールのフックの決まりは main.js と README の「開発」を参照。
 
 export function createEvents() {
 

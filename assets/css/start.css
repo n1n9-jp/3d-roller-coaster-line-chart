@@ -1,4 +1,4 @@
-/* スタート画面（#start-screen）。担当：スタート画面。仕様 3「スタート画面」、仕様 5「動き」。
+/* スタート画面（#start-screen）。
    状態は data-state：loading（読み込み中）／ ready／ error／ leaving（START 直後のフェード）。 */
 
 #start-screen {

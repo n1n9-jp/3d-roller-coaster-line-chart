@@ -75,7 +75,7 @@ export function lastEventTexts( event ) {
 }
 
 /**
- * 要約から、終了画面に出す文言をまとめる（文言は仕様 5-4）。
+ * 要約から、終了画面に出す文言をまとめる。
  * dataset：{ def, format }（data.js の buildDataset の戻り値）。
  */
 export function summaryTexts( summary, dataset ) {

@@ -1,6 +1,6 @@
 // 起動処理：データ読み込み → 共有 ctx の作成 → 機能モジュールの生成 → ループ開始。
 // ここは「ctx を作る」「MODULES を順に生成する」「毎フレーム update を呼ぶ」だけ。機能のロジックは書かない。
-// 契約（ctx / state / モジュールのフック）は specs/contract.md。
+// ctx / state / モジュールのフックの決まりは README の「開発」を参照。
 
 import * as config from './config.js';
 import { MAX_DELTA_MS, MOVING_AVERAGE_WINDOW } from './config.js';
@@ -137,7 +137,7 @@ async function boot() {
 	let shownYear = null;
 
 	// 'viewchange' と 'restart' は、モジュールの生成より前に購読する。events は登録順に呼ぶので、
-	// main.js の onViewChange・onReset の配信が、各モジュールが自分で購読したハンドラより先になる（契約 6 章）。
+	// main.js の onViewChange・onReset の配信が、各モジュールが自分で購読したハンドラより先になる。
 	// 生成の途中で発行されても参照できるよう、modules は先に宣言しておく（生成が終わるまでは空）
 	let modules = [];
 	events.on( 'viewchange', ( { view: next } ) => callHook( 'onViewChange', next ) );
