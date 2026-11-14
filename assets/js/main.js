@@ -27,6 +27,7 @@ import { createButtons } from './ui/buttons.js';
 import { createEndScreen } from './ui/endscreen.js';
 import { createInfoPanel } from './ui/infopanel.js';
 import { createControls } from './controls.js';
+import { createSound } from './sound.js';
 
 // 機能モジュールの登録。1 モジュール 1 行。上から順に create( ctx ) を呼び、毎フレーム同じ順に update( state ) を呼ぶ。
 // 他のモジュールが作る scene のオブジェクトを使うモジュールは、それより下に置く。
@@ -45,7 +46,8 @@ const MODULES = [
 	createButtons, // UI：操作ボタン
 	createEndScreen, // UI：終了画面
 	createInfoPanel, // UI：情報パネル
-	createControls // キーボード
+	createControls, // キーボード
+	createSound // 音：データに連動するアンビエントサウンド（Web Audio）
 ];
 
 // 起動の途中で例外が出たときに、スタート画面へエラーを出すための参照（boot の外の catch が使う）
@@ -266,6 +268,8 @@ async function boot() {
 			resume: () => ride.resume(),
 			restart: () => ride.restart(),
 			setView: ( v ) => view.setView( v ),
+			// 音（sound.js）：getState() と検証用の engine
+			sound: modules.find( ( entry ) => entry.name === 'createSound' )?.hooks.debug ?? null,
 			ride,
 			ctx
 		};
