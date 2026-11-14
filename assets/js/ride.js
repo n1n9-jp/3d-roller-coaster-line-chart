@@ -338,6 +338,71 @@ export function createRide( curve, events = null, options = {} ) {
 		}
 	};
 
+	// ---- デモ走行（スタート画面の背景。乗車前だけ）----
+	//   ride.startDemo( { from, to } )  progress を from に置き、update のたびに本番と同じ式で進む。to に着いたら from へ戻る。
+	//                                   from と to が同じなら、その位置で止めて見せる（prefers-reduced-motion）
+	//   ride.demo                       デモ中か（boolean）
+	//   ride.start()                    デモ中なら、デモを終えて reset()（最初の週）してから、これまでどおり始める
+	// デモ中も started は false のまま（HUD・キャプション・音など、state.started を見るモジュールは乗車前のまま）。
+	// 既存の update / start の中身は変えずに包む
+	let demoRange = null;
+	const stepRide = ride.update;
+	const startRide = ride.start;
+
+	function placeDemo( t ) {
+
+		ride.progress = t;
+		ride.speed = baseAt( t ); // 平らなところの速さから
+		ride.updatePose( 1 );
+
+	}
+
+	Object.defineProperty( ride, 'demo', { enumerable: true, get: () => demoRange !== null } );
+
+	ride.startDemo = ( { from, to } ) => {
+
+		if ( ride.started || ! Number.isFinite( from ) || ! Number.isFinite( to ) ) return;
+		// 終点（'finish'）には届かないようにする
+		const a = Math.min( Math.max( from, 0 ), 0.99 );
+		demoRange = { from: a, to: Math.min( Math.max( to, a ), 0.99 ) };
+		placeDemo( a );
+
+	};
+
+	ride.update = ( deltaMs ) => {
+
+		if ( ! demoRange || ride.started ) return stepRide( deltaMs );
+		if ( demoRange.to <= demoRange.from ) return;
+		// 本番と同じ積分（速さ・向きの補間）で 1 フレーム進める。そのあいだだけ走行中として扱い、すぐ戻す
+		ride.started = true;
+		try {
+
+			stepRide( deltaMs );
+
+		} finally {
+
+			ride.started = false;
+
+		}
+
+		if ( ride.progress >= demoRange.to ) placeDemo( demoRange.from );
+
+	};
+
+	ride.start = () => {
+
+		if ( ride.started ) return;
+		if ( demoRange ) {
+
+			demoRange = null;
+			ride.reset();
+
+		}
+
+		startRide();
+
+	};
+
 	ride.reset();
 
 	return ride;

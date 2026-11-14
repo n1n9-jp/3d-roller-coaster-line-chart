@@ -18,7 +18,21 @@
 	transition: opacity var(--dur-slow) var(--ease-out);
 }
 
-/* 押した瞬間に操作を受け付けず、フェードアウトする。終わったら ui/start.js が hidden にする */
+/* 乗車を待っているあいだ（ready）は、背景を半透明にして、後ろのデモ走行（main.js・demo.js）を見せる。
+   中央は濃く、周辺ほど走行が見える。文字の読みやすさは、文字の後ろの面（.start-main・#start-credits）で保つ。
+   読み込み中・エラーは、上の不透明な背景のまま */
+#start-screen[data-state="ready"] {
+	background: radial-gradient(
+		120% 95% at 50% 45%,
+		color-mix(in srgb, var(--c-bg-1) 72%, transparent) 0%,
+		color-mix(in srgb, var(--c-bg-1) 52%, transparent) 45%,
+		color-mix(in srgb, var(--c-bg-0) 30%, transparent) 100%
+	);
+}
+
+/* 押した瞬間に操作を受け付けず、フェードアウトする。終わったら ui/start.js が hidden にする。
+   背景は押した瞬間に不透明へ戻す（ready の半透明の指定が外れる。background は transition しない）。
+   デモの位置から最初の週へ視点が切り替わるのは、この不透明な幕の後ろで、幕が薄れると最初の週が現れる */
 #start-screen[data-state="leaving"] {
 	opacity: 0;
 	pointer-events: none;
@@ -33,6 +47,18 @@
 	flex-direction: column;
 	align-items: center;
 	text-align: center;
+}
+
+/* 文字の後ろの面（ready のときだけ。後ろのデモ走行が透ける）。面の不透明度 88% で、真後ろを白いレール（#ffffff）が
+   通っても、いちばん薄い文字（--c-text-3）で 5.0:1、--c-text-2 で 6.8:1、--c-accent-text で 7.0:1。
+   縁は同じ色の影でぼかして、枠のある箱に見せない */
+#start-screen[data-state="ready"] .start-main {
+	--start-veil: color-mix(in srgb, var(--c-bg-1) 88%, transparent);
+	max-width: 616px;
+	padding: 24px 28px;
+	border-radius: var(--radius-card);
+	background: var(--start-veil);
+	box-shadow: 0 0 32px 20px var(--start-veil);
 }
 
 /* ---- キッカー・タイトル・説明 ---- */
@@ -391,8 +417,28 @@
 	display: none;
 }
 
+/* ready のときは、出典の行にも面を敷く（周辺は背景が薄く、後ろのレールが透けるため。不透明度は .start-main と同じ） */
+#start-screen[data-state="ready"] #start-credits {
+	width: auto;
+	margin: 12px 0 calc(16px + var(--safe-b));
+	padding: 6px 14px;
+	border-radius: var(--radius-btn);
+	background: color-mix(in srgb, var(--c-bg-1) 88%, transparent);
+}
+
 /* ---- S：幅 720px 以下 ---- */
 @media (max-width: 720px) {
+	/* 文字の後ろの面を敷く分、画面の左右の余白を詰めて、文字の幅は面のないときと同じにする */
+	#start-screen[data-state="ready"] {
+		padding-left: calc(12px + var(--safe-l));
+		padding-right: calc(12px + var(--safe-r));
+	}
+
+	#start-screen[data-state="ready"] .start-main {
+		padding: 20px 12px;
+		box-shadow: 0 0 24px 12px var(--start-veil);
+	}
+
 	.start-title {
 		/* 幅 360 でも「3Dジェットコースター」が 1 行に収まる大きさまで縮める */
 		font-size: min(30px, 8vw);
@@ -449,6 +495,11 @@
 	.start-main {
 		max-width: 640px;
 		padding: 4px 0;
+	}
+
+	#start-screen[data-state="ready"] .start-main {
+		max-width: 680px;
+		padding: 8px 20px;
 	}
 
 	.start-kicker {

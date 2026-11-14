@@ -765,3 +765,140 @@ test( '速度の上限は下限を下回らない（係数が極端に小さく�
 	assert.ok( ride.progress > 0 );
 
 } );
+
+// ---- デモ走行（スタート画面の背景）----
+
+function newDemoRide() {
+
+	const events = createEvents();
+	const emitted = [];
+	for ( const name of [ 'start', 'pause', 'resume', 'restart', 'finish' ] ) events.on( name, () => emitted.push( name ) );
+	const ride = createRide( new TrackCurve( dataset.smoothed ), events );
+	return { ride, emitted };
+
+}
+
+test( 'startDemo を呼ばなければ、従来どおり乗車前は進まない', () => {
+
+	const { ride, emitted } = newDemoRide();
+	assert.equal( ride.demo, false );
+	run( ride, FRAME_MS, 3000 );
+	assert.equal( ride.progress, START_PROGRESS );
+	assert.equal( ride.started, false );
+	assert.deepEqual( emitted, [] );
+
+} );
+
+test( 'startDemo：乗車前に from から本番と同じ速さの式で進む（started は false のまま、何も発行しない）', () => {
+
+	const { ride, emitted } = newDemoRide();
+	ride.startDemo( { from: 0.3, to: 0.5 } );
+	assert.equal( ride.demo, true );
+	assert.equal( ride.progress, 0.3 );
+	run( ride, FRAME_MS, 2000 );
+	assert.ok( ride.progress > 0.3 && ride.progress < 0.5, `progress=${ride.progress}` );
+	assert.equal( ride.started, false );
+	assert.deepEqual( emitted, [] );
+
+	// 本番と同じ式：同じ位置・同じ速さから本番で進めたときと一致する
+	const real = createRide( new TrackCurve( dataset.smoothed ) );
+	const { ride: demo } = newDemoRide();
+	demo.startDemo( { from: 0.3, to: 0.9 } );
+	real.started = true;
+	real.progress = demo.progress;
+	real.speed = demo.speed;
+	real.updatePose( 1 );
+	run( demo, FRAME_MS, 1500 );
+	run( real, FRAME_MS, 1500 );
+	assert.ok( Math.abs( demo.progress - real.progress ) < 1e-12 );
+	assert.ok( Math.abs( demo.speed - real.speed ) < 1e-9 );
+
+} );
+
+test( 'startDemo：to に着いたら from へ戻って繰り返す（終点の finish は発行しない）', () => {
+
+	const { ride, emitted } = newDemoRide();
+	const from = 0.40, to = 0.401;
+	ride.startDemo( { from, to } );
+	let wrapped = 0;
+	let prev = ride.progress;
+	for ( let i = 0; i < 600; i ++ ) {
+
+		ride.update( FRAME_MS );
+		assert.ok( ride.progress >= from && ride.progress < to + 1e-3, `progress=${ride.progress}` );
+		if ( ride.progress < prev ) wrapped ++;
+		prev = ride.progress;
+
+	}
+
+	assert.ok( wrapped >= 2, `wrapped=${wrapped}` );
+	assert.equal( ride.finished, false );
+	assert.deepEqual( emitted, [] );
+
+	// 終点を指定しても 'finish' に届かない
+	const { ride: end, emitted: endEmitted } = newDemoRide();
+	end.startDemo( { from: 0.98, to: 1 } );
+	run( end, FRAME_MS, 20000 );
+	assert.equal( end.finished, false );
+	assert.deepEqual( endEmitted, [] );
+
+} );
+
+test( 'startDemo：from と to が同じなら止めて見せる（prefers-reduced-motion）', () => {
+
+	const { ride } = newDemoRide();
+	ride.startDemo( { from: 0.45, to: 0.45 } );
+	run( ride, FRAME_MS, 2000 );
+	assert.equal( ride.progress, 0.45 );
+	assert.equal( ride.demo, true );
+
+} );
+
+test( 'デモのあとの start()：進行位置・速さ・姿勢を最初の週の状態に戻し、started にして start を同期で 1 回だけ発行する', () => {
+
+	const { ride, emitted } = newDemoRide();
+	const fresh = createRide( new TrackCurve( dataset.smoothed ) );
+	ride.startDemo( { from: 0.3, to: 0.5 } );
+	run( ride, FRAME_MS, 2000 );
+
+	ride.start();
+
+	assert.deepEqual( emitted, [ 'start' ] );
+	assert.equal( ride.started, true );
+	assert.equal( ride.demo, false );
+	assert.equal( ride.progress, START_PROGRESS );
+	assert.ok( Math.abs( ride.speed - fresh.speed ) < 1e-12 );
+	assert.ok( ride.position.distanceTo( fresh.position ) < 1e-9 );
+	assert.ok( Math.abs( ride.quaternion.angleTo( fresh.quaternion ) ) < 1e-9 );
+
+	// 2 回目は何もしない。以後は本番の走行（最初の週から進む）
+	ride.start();
+	assert.deepEqual( emitted, [ 'start' ] );
+	run( ride, FRAME_MS, 1000 );
+	fresh.started = true;
+	run( fresh, FRAME_MS, 1000 );
+	assert.ok( Math.abs( ride.progress - fresh.progress ) < 1e-12 );
+
+	// 乗車後は startDemo を受け付けない
+	ride.startDemo( { from: 0.6, to: 0.7 } );
+	assert.equal( ride.demo, false );
+	assert.ok( ride.progress < 0.1 );
+
+} );
+
+test( "'start' のハンドラの中で、進行位置はもう最初の週（音などが同期で読む）", () => {
+
+	const events = createEvents();
+	const ride = createRide( new TrackCurve( dataset.smoothed ), events );
+	let seen = null;
+	events.on( 'start', () => {
+
+		seen = { progress: ride.progress, started: ride.started, demo: ride.demo };
+
+	} );
+	ride.startDemo( { from: 0.3, to: 0.5 } );
+	run( ride, FRAME_MS, 500 );
+	ride.start();
+	assert.deepEqual( seen, { progress: START_PROGRESS, started: true, demo: false } );
+
+} );
