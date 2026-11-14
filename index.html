@@ -19,6 +19,13 @@
 		<link type="text/css" rel="stylesheet" href="./assets/css/main.css">
 		<!-- 起動のフォールバック：モジュールの読み込み自体に失敗したとき（ファイルが 404、構文エラー、file:// で開いたなど）は
 		     ui/start.js も動かないので、ここでスタート画面にエラーを出す。「読み込み中」のあいだだけ働く。 -->
+		<!-- Google Analytics（Google タグ マネージャーのコンテナ GTM-NLWNN8WH 経由） -->
+		<script async src="https://www.googletagmanager.com/gtm.js?id=GTM-NLWNN8WH"></script>
+		<script>
+			window.dataLayer = window.dataLayer || [];
+			function gtag(){dataLayer.push(arguments);}
+			gtag('js', new Date());
+		</script>
 		<script>
 			( function () {
 

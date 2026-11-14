@@ -381,6 +381,10 @@ tests/
   track.test.js                 螺旋のコース
 ```
 
+## アクセス解析
+
+`index.html` の `<head>` で、Google タグ マネージャーのコンテナ（`GTM-NLWNN8WH`）を読み込み、Google Analytics でアクセスを計測しています。外部への通信はこの計測だけで、描画・データ・音はすべてリポジトリ内のファイルで動きます。フォークして公開するときは、このタグを自分のものに差し替えるか、削除してください。
+
 ## ライセンスとクレジット
 
 - 3D 描画：[three.js](https://threejs.org/)（MIT License）。`assets/js/three.core.js` と `assets/js/three.module.js` を同梱しています。ライセンス全文は `assets/LICENSE-three.js.txt` にあります。
