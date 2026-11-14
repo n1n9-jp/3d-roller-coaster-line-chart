@@ -1,4 +1,4 @@
-// 操作ボタン（#hud-controls）：一時停止／再生、俯瞰／一人称、最初から、情報。担当：操作ボタン。
+// 操作ボタン（#hud-controls）：一時停止／再生、俯瞰／一人称、最初から、トップ（スタート画面へ戻る）、情報。
 //
 // ボタンは index.html の [hud-controls] に書いてある（data-action で見分ける）。ここでは次の 3 つをする。
 //   1. 押されたら ride / view / events を呼ぶ（click だけ。タッチもキーボード（Space・Enter）も同じ経路）。
@@ -18,11 +18,13 @@ const ICONS = {
 	person: '<circle cx="12" cy="7.5" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/>',
 	// 最初から（↺）
 	restart: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+	// トップ（家）
+	home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M10 20v-6h4v6"/>',
 	info: '<circle cx="12" cy="12" r="9.5"/><path d="M12 16.5v-5"/><path d="M12 7.6h.01"/>'
 };
 
 /**
- * 状態から、4 つのボタンの表示を決める（DOM に依存しない）。
+ * 状態から、5 つのボタンの表示を決める（DOM に依存しない）。
  * @param {{ paused?: boolean, finished?: boolean, view?: 'ride'|'overview', infoOpen?: boolean }} state
  * @returns 各ボタンの { label, ariaLabel, icon, disabled }（情報は expanded も）
  */
@@ -36,6 +38,7 @@ export function describeButtons( { paused = false, finished = false, view = 'rid
 			? { label: '一人称', ariaLabel: '一人称に戻る（W）', icon: 'person', disabled: false }
 			: { label: '俯瞰', ariaLabel: '俯瞰で見る（W）', icon: 'eye', disabled: false },
 		restart: { label: '最初から', ariaLabel: '最初から乗り直す（R）', icon: 'restart', disabled: false },
+		home: { label: 'トップ', ariaLabel: 'スタート画面に戻る（T）', icon: 'home', disabled: false },
 		info: { label: '情報', ariaLabel: '情報パネルを開く（I）', icon: 'info', disabled: false, expanded: Boolean( infoOpen ) }
 	};
 
@@ -57,6 +60,13 @@ function setIcon( svg, name ) {
 	if ( svg.dataset.icon === name ) return;
 	svg.dataset.icon = name;
 	svg.innerHTML = ICONS[ name ];
+
+}
+
+/** スタート画面へ戻る：ページを開き直す。 */
+export function goHome() {
+
+	window.location.reload();
 
 }
 
@@ -114,6 +124,8 @@ export function createButtons( ctx ) {
 			if ( ride.started ) ride.restart();
 
 		},
+		// スタート画面へ戻る。ページを開き直す（URL の ?data= は残るので、選んでいたデータのスタート画面になる）
+		home: () => ( ctx.ui?.goHome ?? goHome )(),
 		// trigger を渡す：クリックでボタンにフォーカスが移らないブラウザ（Safari、macOS の Firefox）でも、閉じたあとここへ戻せる
 		info: () => events.emit( 'infopanel:toggle', { trigger: buttons.info?.el } )
 	};

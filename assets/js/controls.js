@@ -2,11 +2,14 @@
 //   SPACE : 一時停止と再生のトグル
 //   W     : 押している間だけ俯瞰（離すと、押す前の視点に戻る）
 //   R     : 最初から
+//   T     : スタート画面へ戻る（ページを開き直す）
 // フォーカスがボタン・リンク・入力欄にあるときは SPACE を横取りしない（ボタンの操作を優先する。
 // Space・Enter はそのボタンの click になるので、ショートカットと二重に働かない）。
 // W を押しているあいだに、画面上のボタンで視点を選び直したときは、離したあとその視点にとどまる。
 // 修飾キー（Ctrl / Cmd / Alt）つきは無視する（Ctrl+R のリロードなどを妨げない）。
 // 画面上のボタンは ui/buttons.js。
+
+import { goHome } from './ui/buttons.js';
 
 const INTERACTIVE = 'button, a[href], input, select, textarea, summary, [role="button"], [contenteditable=""], [contenteditable="true"]';
 const TEXT_INPUT = 'input, select, textarea, [contenteditable=""], [contenteditable="true"]';
@@ -70,6 +73,12 @@ export function createControls( { ride, view, events = null } ) {
 
 			if ( e.repeat || ! ride.started ) return;
 			ride.restart();
+
+		} else if ( e.key === 't' || e.key === 'T' ) {
+
+			// スタート画面へ戻る（走行を始めたあとだけ。スタート画面では何もしない）
+			if ( e.repeat || ! ride.started ) return;
+			goHome();
 
 		}
 

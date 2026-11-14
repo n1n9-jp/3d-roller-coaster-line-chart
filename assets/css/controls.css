@@ -1,8 +1,8 @@
 /* 操作ボタン（#hud-controls の中のボタン）。担当：操作ボタン。
    共通の見た目は base.css の .btn / .kbd。コンテナの位置とサイズは hud.css（変えない）。
-   L（1024px 以上）：アイコン・ラベル・kbd チップを並べた横長。
-   M（721〜1023px）と短い横長：44x44 のアイコンだけ（ラベルと kbd は隠す。名前は aria-label が伝える）。
-   S（720px 以下）：画面下に 4 等分。アイコンとラベルを横に並べ、kbd は出さない。 */
+   L（1200px 以上）：アイコン・ラベル・kbd チップを並べた横長。
+   M（721〜1199px）と短い横長：44x44 のアイコンだけ（ラベルと kbd は隠す。名前は aria-label が伝える）。
+   S（720px 以下）：画面下に 5 等分。アイコンの下にラベルを置き、kbd は出さない。 */
 
 #hud-controls .ctl-btn {
 	position: relative;
@@ -28,7 +28,7 @@
 }
 
 /* ---- M と短い横長：アイコンだけ ---- */
-@media (max-width: 1023.98px), (max-height: 520px) and (orientation: landscape) {
+@media (max-width: 1199.98px), (max-height: 520px) and (orientation: landscape) {
 	#hud-controls .ctl-btn {
 		width: 44px;
 		padding: 0;
@@ -40,9 +40,10 @@
 	}
 }
 
-/* ---- S（短い横長を除く）：4 等分、アイコンとラベルを横に ---- */
+/* ---- S（短い横長を除く）：5 等分、アイコンの下にラベル ---- */
 @media (max-width: 720px) and (min-height: 521px), (max-width: 720px) and (orientation: portrait) {
 	#hud-controls {
+		gap: 6px;
 		transform: translateY( var( --shift-md ) );
 	}
 
@@ -52,30 +53,24 @@
 
 	#hud-controls .ctl-btn {
 		flex: 1 1 0;
+		flex-direction: column;
 		width: auto;
 		min-width: 0;
 		height: 48px;
-		padding: 0 4px;
-		gap: 4px;
-		font-size: var(--fs-13);
-	}
-
-	#hud-controls .ctl-label {
-		display: inline;
-	}
-}
-
-/* 幅 360 前後：4 つのラベルが収まるよう、アイコンと文字を少し詰める */
-@media (max-width: 380px) and (min-height: 521px), (max-width: 380px) and (orientation: portrait) {
-	#hud-controls .ctl-btn {
 		padding: 0 2px;
-		gap: 3px;
-		font-size: var(--fs-12);
+		gap: 2px;
+		font-size: var(--fs-11, 11px);
+		line-height: 1;
 	}
 
 	#hud-controls .ctl-btn svg {
 		width: 18px;
 		height: 18px;
+	}
+
+	#hud-controls .ctl-label {
+		display: inline;
+		white-space: nowrap;
 	}
 }
 

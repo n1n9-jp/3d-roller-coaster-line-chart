@@ -13,6 +13,7 @@ test( '通常（走行中・一人称）：一時停止／俯瞰／最初から�
 	assert.deepEqual( d[ 'toggle-pause' ], { label: '一時停止', ariaLabel: '一時停止（Space）', icon: 'pause', disabled: false } );
 	assert.deepEqual( d.view, { label: '俯瞰', ariaLabel: '俯瞰で見る（W）', icon: 'eye', disabled: false } );
 	assert.deepEqual( d.restart, { label: '最初から', ariaLabel: '最初から乗り直す（R）', icon: 'restart', disabled: false } );
+	assert.deepEqual( d.home, { label: 'トップ', ariaLabel: 'スタート画面に戻る（T）', icon: 'home', disabled: false } );
 	assert.deepEqual( d.info, { label: '情報', ariaLabel: '情報パネルを開く（I）', icon: 'info', disabled: false, expanded: false } );
 
 } );
@@ -58,7 +59,7 @@ test( '引数なしでも既定の状態（走行中・一人称・パネルは�
 
 test( 'aria-label にはショートカットのキーが入り、表示ラベルと食い違わない', () => {
 
-	const keys = { 'toggle-pause': 'Space', view: 'W', restart: 'R', info: 'I' };
+	const keys = { 'toggle-pause': 'Space', view: 'W', restart: 'R', home: 'T', info: 'I' };
 	for ( const state of [ {}, { paused: true }, { view: 'overview' }, { finished: true }, { infoOpen: true } ] ) {
 
 		const d = describeButtons( state );
