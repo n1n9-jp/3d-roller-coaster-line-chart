@@ -1,11 +1,13 @@
-/* 路線図（#hud-map、中に見出し 2 行と #mapCanvas）。担当：路線図。
-   スロットの位置とサイズは hud.css。ここでは見出し（山手線 外回り / いま：駅名付近）と canvas の見た目、
-   HUD が出るときの入りの動きを書く。canvas の大きさは CSS が決める（js/hud/layer.js が追従する）。 */
+/* 螺旋の図（#hud-map、中に見出し 2 行と #mapCanvas）。担当：螺旋の図。
+   スロットの位置とサイズは hud.css。ここでは見出し（年代の輪（10年で1周） / いま：○年）と canvas の見た目、
+   HUD が出るときの入りの動きを書く。canvas は正方形（パネルの内側の幅いっぱい）で、
+   大きさは CSS が決める（js/hud/layer.js が追従する）。 */
 
 #hud-map {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
 	grid-template-rows: 32px minmax(0, 1fr); /* 見出し 2 行 + canvas */
+	row-gap: 4px;
 	--hud-in: 300ms;
 	opacity: 0;
 	transform: translateY(var(--shift-md));
@@ -43,7 +45,10 @@
 	grid-row: 2;
 	display: block;
 	width: 100%;
-	height: 100%;
+	height: auto;
+	aspect-ratio: 1;
+	justify-self: center;
+	align-self: start;
 	min-width: 0;
 	min-height: 0;
 }
@@ -52,6 +57,7 @@
 @media (max-width: 720px), (max-height: 520px) and (orientation: landscape) {
 	#hud-map {
 		grid-template-rows: minmax(0, 1fr);
+		row-gap: 0;
 	}
 
 	.map-head {
