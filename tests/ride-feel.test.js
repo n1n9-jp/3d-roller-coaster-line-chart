@@ -3,10 +3,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRide } from '../assets/js/ride.js';
-import { createView, rideCameraPosition, overviewMode, overviewFrame, fitOverview, overviewFov } from '../assets/js/view.js';
+import { createView, rideCameraPosition, overviewMode } from '../assets/js/view.js';
 import { TrackCurve } from '../assets/js/track.js';
 import { buildDataset } from '../assets/js/data.js';
-import { overviewSubjectPoints } from '../assets/js/curtain.js';
 import { Scene, PerspectiveCamera, Object3D } from '../assets/js/three.core.js';
 import {
 	FRAME_MS, SPEED, SCENE, MOTION, TRAIN_RAIL_OFFSET
@@ -263,54 +262,4 @@ test( 'HUD のモード：M（721〜1023px）は medium', () => {
 
 } );
 
-test( '俯瞰の枠：サンプルは従来の余白のまま、実データはキャプションを避けた余白', () => {
-
-	// サンプル：従来の値（輪の大きさを変えない）
-	assert.deepEqual( overviewFrame( 'wide', 'sample' ).insets, { top: 184, right: 24, bottom: 40, left: 24 } );
-	assert.deepEqual( overviewFrame( 'medium', 'sample' ).insets, { top: 184, right: 24, bottom: 40, left: 24 } );
-	assert.deepEqual( overviewFrame( 'narrow', 'sample' ).insets, { top: 148, right: 12, bottom: 206, left: 12 } );
-	assert.deepEqual( overviewFrame( 'short', 'sample' ).insets, { top: 88, right: 24, bottom: 12, left: 24 } );
-	assert.deepEqual( overviewFrame( 'wide', null ).insets, overviewFrame( 'wide', 'sample' ).insets );
-
-	for ( const mode of [ 'wide', 'medium', 'narrow', 'short' ] ) {
-
-		assert.notDeepEqual( overviewFrame( mode, 'real' ).insets, overviewFrame( mode, 'sample' ).insets, mode );
-
-	}
-
-} );
-
-// 実データのキャプションが出る場所（CSS px。hud.css と annotations.css。高さは長い見出しでの実測より少し大きく）
-//   L：下中央、下から 24、高さ 96 まで／ M（俯瞰）：凡例の下、上から 152、高さ 92 まで
-//   S：ミニグラフの上、下から 204、高さ 100 まで／ 短い横長（俯瞰）：左の列、左から 24、幅 220
-const CAPTION = {
-	wide: ( w, h ) => ( { top: h - 24 - 96, bottom: h - 24, left: 0, right: w } ),
-	medium: ( w ) => ( { top: 152, bottom: 152 + 92, left: 24, right: 24 + Math.min( 560, w - 48 ) } ),
-	narrow: ( w, h ) => ( { top: h - 204 - 100, bottom: h - 204, left: 0, right: w } ),
-	short: ( w, h ) => ( { top: 0, bottom: h, left: 24, right: 24 + 220 } )
-};
-
-test( '俯瞰の構図（実データ・56 年分）：螺旋が、キャプションの出る場所と重ならない', () => {
-
-	for ( const [ name, curve ] of curves.slice( 1 ) ) {
-
-		const points = overviewSubjectPoints( curve.arcCurve );
-		for ( const [ w, h ] of [ [ 1440, 900 ], [ 1024, 768 ], [ 800, 900 ], [ 390, 844 ], [ 844, 390 ] ] ) {
-
-			const mode = overviewMode( w, h );
-			const frame = overviewFrame( mode, 'real' );
-			const fit = fitOverview( points, { width: w, height: h, fovDeg: overviewFov( w / h ), elevationDeg: SCENE.overview.elevationDeg, ...frame } );
-			const b = fit.bounds;
-			// NDC → CSS px
-			const box = { left: ( b.x0 + 1 ) / 2 * w, right: ( b.x1 + 1 ) / 2 * w, top: ( 1 - b.y1 ) / 2 * h, bottom: ( 1 - b.y0 ) / 2 * h };
-			const c = CAPTION[ mode ]( w, h );
-			const overlaps = box.left < c.right && box.right > c.left && box.top < c.bottom && box.bottom > c.top;
-			assert.ok( ! overlaps, `${name} ${w}x${h}（${mode}）: 螺旋 ${JSON.stringify( box )} とキャプション ${JSON.stringify( c )}` );
-			// 螺旋が小さくなりすぎない（画面の短い辺の 4 割以上）
-			assert.ok( Math.max( box.right - box.left, box.bottom - box.top ) > 0.4 * Math.min( w, h ), `${name} ${w}x${h}: ${JSON.stringify( box )}` );
-
-		}
-
-	}
-
-} );
+// 俯瞰の構図（HUD を避ける・追加の点・大きさの下限）は tests/overview-frame.test.js
