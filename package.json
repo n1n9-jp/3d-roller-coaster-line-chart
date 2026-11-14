@@ -1,0 +1,11 @@
+{
+  "name": "3d-roller-coaster-line-chart",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "日経平均の週次終値をレールの高さに、山手線一周を水平の経路に割り当てた 3D ジェットコースター",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "test": "node --test \"tests/**/*.test.js\""
+  }
+}
