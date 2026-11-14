@@ -81,39 +81,13 @@
 	margin: 0;
 }
 
-/* ---- サンプルデータの注記（仕様 1-4 のバッジ） ---- */
-.start-sample {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	min-height: 24px;
-	margin: -8px 0 20px;
-	padding: 2px 10px;
-	border: 1px solid var(--c-accent);
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--c-accent) 14%, transparent);
-	color: var(--c-accent-text);
-	font-size: var(--fs-12);
-	line-height: var(--lh-12);
-	font-weight: 600;
-	text-align: left;
-}
-
-.start-sample svg {
-	flex: none;
-	fill: none;
-	stroke: currentColor;
-	stroke-width: 1.5;
-	stroke-linecap: round;
-}
-
 /* データが決まる前（読み込み中）とエラーのときは、データから作る文言（キッカー・説明・注記・チップ）を出さない。
-   読み込みが終わって ready になったときに、静かに現れる */
-#start-screen:is( [data-state="loading"], [data-state="error"] ) :is( .start-kicker, .start-desc, .start-sample, .start-chips ) {
+   読み込みが終わって ready になったときに、静かに現れる。データの切り替えは、選び直す手段なので、常に出す */
+#start-screen:is( [data-state="loading"], [data-state="error"] ) :is( .start-kicker, .start-desc, .start-chips ) {
 	display: none;
 }
 
-#start-screen[data-state="ready"] :is( .start-kicker, .start-desc, .start-sample, .start-chips ) {
+#start-screen[data-state="ready"] :is( .start-kicker, .start-desc, .start-chips ) {
 	animation: start-fade var(--dur-base) var(--ease-out) both;
 }
 
@@ -129,7 +103,7 @@
 	flex-wrap: wrap;
 	justify-content: center;
 	gap: 8px;
-	margin: 0 0 28px;
+	margin: 0 0 20px;
 	padding: 0;
 	list-style: none;
 }
@@ -149,6 +123,83 @@
 
 .start-chips li:empty {
 	display: none;
+}
+
+/* ---- データの切り替え（リンクの組。選んでいる項目は面・枠・文字色・チェックで示す） ---- */
+.start-data {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	margin: 0 0 24px;
+}
+
+.start-data-label {
+	margin: 0 0 6px;
+	color: var(--c-text-3);
+	font-size: var(--fs-12);
+	line-height: var(--lh-12);
+}
+
+.start-data-list {
+	display: inline-flex;
+	gap: 2px;
+	margin: 0;
+	padding: 3px;
+	list-style: none;
+	border: 1px solid var(--c-seg-border);
+	border-radius: 12px;
+}
+
+.start-data-list li {
+	display: flex;
+}
+
+.start-data-list a {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	min-width: 104px;
+	height: 40px;
+	padding: 0 16px;
+	border-radius: 9px;
+	color: var(--c-text-2);
+	font-size: var(--fs-14);
+	line-height: 1.2;
+	font-weight: 600;
+	text-align: center;
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.start-data-list a:hover:not( [aria-current] ) {
+	background: var(--c-btn-hover);
+	color: var(--c-text-1);
+}
+
+.start-data-list a[aria-current="page"] {
+	background: var(--c-seg-selected-bg);
+	box-shadow: inset 0 0 0 1px var(--c-accent);
+	color: var(--c-accent-text);
+}
+
+.start-data-list a:focus-visible {
+	outline: 2px solid var(--c-focus);
+	outline-offset: 2px;
+}
+
+.start-data-list svg {
+	display: none;
+	flex: none;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.start-data-list a[aria-current="page"] svg {
+	display: block;
 }
 
 /* ---- 主ボタン・状態・エラー ---- */
@@ -310,6 +361,30 @@
 		min-width: 0;
 	}
 
+	/* 組の幅は 100%（最大 360）で、項目は同じ幅に分ける */
+	.start-data {
+		width: 100%;
+	}
+
+	.start-data-list {
+		width: 100%;
+		max-width: 360px;
+	}
+
+	.start-data-list li {
+		flex: 1 1 0;
+		min-width: 0;
+	}
+
+	.start-data-list a {
+		flex: 1 1 auto;
+		min-width: 0;
+		height: 44px;
+		padding: 0 4px;
+		gap: 4px;
+		font-size: var(--fs-13);
+	}
+
 	.start-error {
 		max-width: 100%;
 	}
@@ -348,16 +423,19 @@
 		line-height: var(--lh-14);
 	}
 
-	.start-sample {
-		margin: 0 0 8px;
+	/* チップは説明文と同じ内容なので隠す。切り替えのラベルも隠す（nav の名前は aria-labelledby のまま読み上げられる） */
+	.start-chips,
+	.start-data-label {
+		display: none;
 	}
 
-	.start-chips {
-		margin-bottom: 12px;
+	.start-data {
+		margin: 0 0 12px;
 	}
 
-	.start-chips li {
-		min-height: 28px;
+	.start-data-list a {
+		height: 36px;
+		min-width: 96px;
 	}
 
 	#start-btn {

@@ -2,18 +2,18 @@
 <html lang="ja">
 	<head>
 		<meta charset="utf-8">
-		<title>日経平均株価 3Dジェットコースター</title>
-		<meta name="description" content="1990年からの日経平均株価（週次終値）をレールの高さにした、山手線一周のジェットコースター。株価の上げ下げを一人称視点で体感できます。">
+		<title>為替と金利の 3Dジェットコースター</title>
+		<meta name="description" content="ドル円の為替レートと10年国債の金利を、レールの高さにしたらせん形のジェットコースター。10年で1周し、年代ごとの上げ下げを一人称視点で体感できます。">
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 		<meta name="theme-color" content="#0b1733">
-		<meta property="og:title" content="日経平均株価 3Dジェットコースター">
-		<meta property="og:description" content="1990年からの日経平均株価（週次終値）をレールの高さにした、山手線一周のジェットコースター。株価の上げ下げを一人称視点で体感できます。">
+		<meta property="og:title" content="為替と金利の 3Dジェットコースター">
+		<meta property="og:description" content="ドル円の為替レートと10年国債の金利を、レールの高さにしたらせん形のジェットコースター。10年で1周し、年代ごとの上げ下げを一人称視点で体感できます。">
 		<meta property="og:type" content="website">
 		<meta property="og:locale" content="ja_JP">
 		<meta property="og:image" content="./assets/og.png">
 		<meta property="og:image:width" content="1200">
 		<meta property="og:image:height" content="630">
-		<meta property="og:image:alt" content="山手線の輪の形をしたレールを見下ろした画面。走行済みの区間が琥珀色、これからの区間が白と青で描かれている。">
+		<meta property="og:image:alt" content="らせん形のレールを斜め上から見下ろした画面。中心の1971年から外側へ、10年ごとの輪が重なり、走行済みの区間が琥珀色、これからの区間が白で描かれている。">
 		<meta name="twitter:card" content="summary_large_image">
 		<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
 		<link type="text/css" rel="stylesheet" href="./assets/css/main.css">
@@ -79,22 +79,27 @@
 		<div id="start-screen" data-state="loading">
 			<div class="start-main">
 				<p id="start-kicker" class="start-kicker"></p>
-				<h1 class="start-title"><span>日経平均株価</span> <span>3Dジェットコースター</span></h1>
+				<h1 id="start-title" class="start-title"><span>為替と金利の</span> <span>3Dジェットコースター</span></h1>
 				<p id="start-desc" class="start-desc"></p>
-				<p id="start-sample" class="start-sample" hidden>
-					<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="5.25"/><path d="M6 3.2v3.3M6 8.4v.1"/></svg>
-					<span></span>
-				</p>
 				<ul class="start-chips">
-					<li>高さ＝株価（週次終値）</li>
-					<li id="start-chip-loop"></li>
+					<li id="start-chip-a"></li>
+					<li id="start-chip-b"></li>
 				</ul>
+				<!-- データの切り替え：選ぶとその URL で開き直すので、意味はリンク（ui/start.js が href と aria-current を URL から決める）。
+				     日経平均は、?data=nikkei で開いて読み込めたときだけ JS が足す。 -->
+				<nav id="start-data" class="start-data" aria-labelledby="start-data-label">
+					<p id="start-data-label" class="start-data-label">データを選ぶ</p>
+					<ul class="start-data-list">
+						<li><a href="./" data-dataset-id="usdjpy" aria-current="page"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" focusable="false"><path d="M2.5 7.5l3 3 6-7"/></svg>ドル円</a></li>
+						<li><a href="?data=jgb10" data-dataset-id="jgb10"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" focusable="false"><path d="M2.5 7.5l3 3 6-7"/></svg>国債金利</a></li>
+					</ul>
+				</nav>
 				<div class="start-action">
 					<button id="start-btn" class="btn btn--primary" type="button" disabled aria-disabled="true" aria-busy="true">
 						<span class="start-spinner" aria-hidden="true"></span>
 						<span class="start-btn-label">読み込み中…</span>
 					</button>
-					<p id="start-message" role="status">株価データを読み込んでいます</p>
+					<p id="start-message" role="status">データを読み込んでいます</p>
 					<div id="start-error" class="start-error" role="alert" hidden>
 						<h2 id="start-error-title"></h2>
 						<p id="start-error-body"></p>
@@ -208,7 +213,7 @@
 				<div class="info-body" tabindex="0">
 					<section>
 						<h3>しくみ</h3>
-						<p>レールの高さは日経平均株価の週次終値です。乗り心地をなめらかにするため、レールの形には<span id="info-window">4</span>週の移動平均を使っています（画面の数値は実際の終値です）。水平の経路は山手線の駅の位置で、大崎駅を出発して外回りに一周します。線路の脇の等高線は1万円ごとの高さを示します。<span id="info-link-note">最後の短い区間は、出発点の高さへ戻るための連絡区間で、データはありません。走行はその手前で終わります。</span></p>
+						<div id="info-mechanism"></div>
 					</section>
 					<section>
 						<h3>操作</h3>
@@ -228,15 +233,14 @@
 					<section>
 						<h3>データ出典</h3>
 						<div id="info-sources"></div>
-						<p>駅の位置：<a href="https://ekidata.jp/" target="_blank" rel="noopener">駅データ.jp</a>のデータを加工しています。</p>
 					</section>
 					<section>
 						<h3>クレジット</h3>
-						<p>3D描画：<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a>（MIT License）。レールの形状は three.js のサンプル「webxr_vr_rollercoaster」をもとにしています。</p>
+						<p>3D描画：<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a>（MIT License）。レールの形状は three.js の公式の例「webxr_vr_rollercoaster」をもとにしています。</p>
 					</section>
 					<section>
 						<h3>ご注意</h3>
-						<p>このコンテンツは株価の動きを体感するためのもので、投資の助言ではありません。</p>
+						<p>このコンテンツは為替・金利・株価の動きを体感するためのもので、投資の助言ではありません。</p>
 					</section>
 				</div>
 			</div>

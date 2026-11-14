@@ -1,12 +1,13 @@
 // 情報パネル（#info-panel）：開閉、フォーカスの閉じ込め、走行の一時停止と復帰、データ出典の差し込み。担当：情報パネル。
-// 文面の大半は index.html の #info-panel の中にある。ここでは、データで変わる部分（出典、移動平均の週数、連絡区間の一文）だけ入れる。
+// 操作の表などの固定の文面は index.html の #info-panel の中にある。ここでは、データで変わる部分（しくみの説明、データの出典、
+// 出来事の出典）を入れる。
 //
 // 開く：スタート画面の「操作方法と出典」、キー I、'infopanel:open'（payload は { trigger?: Element }。trigger があれば、閉じたときそこへフォーカスを戻す）、
 //       'infopanel:toggle'。
 // 閉じる：閉じるボタン、Esc、パネルの外側（背面）のクリック、キー I、'infopanel:close'。
 // 開閉は <html data-info-open> と 'infopanel:change'（payload は { open }）で知らせる。
 
-import { dataSourceItems } from './texts.js';
+import { mechanismParagraphs, dataSourceItems, eventsSourceItem } from './texts.js';
 
 const FOCUSABLE = 'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 const TEXT_INPUT = 'input, select, textarea, [contenteditable=""], [contenteditable="true"]';
@@ -16,7 +17,7 @@ const CLOSE_MS = 220; // 閉じる演出（200ms）のあと hidden にするま
 
 export function createInfoPanel( ctx ) {
 
-	const { ride, events, dataset, curve, config, ui } = ctx;
+	const { ride, events, dataset, config, ui } = ctx;
 	const panel = ui.infoPanel;
 	const sheet = panel.querySelector( '.info-sheet' );
 	const closeButton = panel.querySelector( '#info-close' );
@@ -25,7 +26,7 @@ export function createInfoPanel( ctx ) {
 
 	// ---- データで変わる部分 ----
 
-	// スタート画面の文言（期間・出典の一行・サンプルの注記）もここで入れる（start.js は ctx を受け取れないため）
+	// スタート画面の文言（タイトル・期間・出典の一行）もここで入れる（start.js は ctx を受け取れないため）
 	try {
 
 		ui.startScreen?.setData?.( ctx );
@@ -36,32 +37,69 @@ export function createInfoPanel( ctx ) {
 
 	}
 
-	const windowSpan = panel.querySelector( '#info-window' );
-	if ( windowSpan && config.MOVING_AVERAGE_WINDOW ) windowSpan.textContent = String( config.MOVING_AVERAGE_WINDOW );
+	const def = dataset.def;
 
-	// 連絡区間が無い設定のときは、その一文を出さない
-	const linkNote = panel.querySelector( '#info-link-note' );
-	if ( linkNote && ! ( curve.linkFraction > 0 ) ) linkNote.hidden = true;
-
-	const sources = panel.querySelector( '#info-sources' );
-	for ( const item of dataSourceItems( dataset.meta ) ) {
+	// しくみ（データの名前、移動平均の週数、目盛りの刻み）
+	const mechanism = panel.querySelector( '#info-mechanism' );
+	mechanism.replaceChildren( ...mechanismParagraphs( def, config.MOVING_AVERAGE_WINDOW ).map( ( text ) => {
 
 		const paragraph = document.createElement( 'p' );
-		paragraph.append( item.text );
-		if ( item.link ) {
+		paragraph.textContent = text;
+		return paragraph;
 
-			const anchor = document.createElement( 'a' );
-			anchor.href = item.link.href;
-			anchor.target = '_blank';
-			anchor.rel = 'noopener';
-			anchor.textContent = item.link.label;
-			paragraph.append( ' ', anchor );
+	} ) );
+
+	// データ出典：{ name?, parts: [ { text, href? } ] } を段落にする
+	function paragraphOf( item ) {
+
+		const paragraph = document.createElement( 'p' );
+		if ( item.name ) {
+
+			const strong = document.createElement( 'strong' );
+			strong.className = 'info-source-name';
+			strong.textContent = item.name;
+			paragraph.append( strong );
 
 		}
 
-		sources.append( paragraph );
+		for ( const part of item.parts ) {
+
+			if ( ! part.href ) {
+
+				paragraph.append( part.text );
+				continue;
+
+			}
+
+			const anchor = document.createElement( 'a' );
+			anchor.href = part.href;
+			anchor.target = '_blank';
+			anchor.rel = 'noopener';
+			anchor.textContent = part.text;
+			paragraph.append( anchor );
+
+		}
+
+		return paragraph;
 
 	}
+
+	const sources = panel.querySelector( '#info-sources' );
+	sources.replaceChildren( ...dataSourceItems( def, dataset.meta ).map( paragraphOf ) );
+
+	// 出来事の出典は、出来事の読み込みが終わってから（件数が 1 以上のときだけ）。
+	// 出来事は別のモジュールがデータごとに用意して、'eventsready'（{ events, sources? }）で知らせる
+	let eventsParagraph = null;
+	const offEventsReady = events.on( 'eventsready', ( payload ) => {
+
+		eventsParagraph?.remove();
+		eventsParagraph = null;
+		const item = eventsSourceItem( payload?.events, payload?.sources );
+		if ( ! item ) return;
+		eventsParagraph = paragraphOf( item );
+		sources.append( eventsParagraph );
+
+	} );
 
 	// ---- 開閉 ----
 
@@ -242,6 +280,7 @@ export function createInfoPanel( ctx ) {
 			clearTimeout( hideTimer );
 			window.removeEventListener( 'keydown', onKeyDown, true );
 			startInfoButton?.removeEventListener( 'click', onStartInfoClick );
+			offEventsReady();
 			for ( const off of offs ) off();
 
 		}
