@@ -9,8 +9,9 @@
 //   縦線       床からレールまで
 //   年ラベル   俯瞰のときだけ、ひし形の上に「2008」。重なるものは間引く
 //
-// 俯瞰のラベルの優先順位は「年ラベル ＞ 値ラベルの軸 ＞ 駅名」（labels.js）。年ラベルは HUD と年ラベルどうしだけを避けて置き、
-// 置いた矩形を共有の掲示板（getLabelBoard( ctx )）の 'event' 層に登録する。値ラベルと駅名（scale.js）はそれを避ける。
+// 俯瞰のラベルの優先順位は「値ラベルの軸 ＞ 年代のラベル ＞ 年ラベル」（labels.js）。年ラベルは HUD・軸・年代のラベル
+// （scale.js が掲示板の 'axis'・'axis-leader'・'decade' 層に先に置いたもの）と年ラベルどうしを避けて置き、
+// 置いた矩形を共有の掲示板（getLabelBoard( ctx )）の 'event' 層に登録する。
 //
 // 大きさ
 //   一人称：ワールド座標の固定値（config.js の ANNOT.marker）。アーチの半径はカメラが通る高さ
@@ -238,7 +239,7 @@ export function createMarkers( ctx ) {
 
 	let lastNowMs = 0;
 
-	/** 俯瞰：このフレームのカメラで年ラベルを置き、置いた矩形を返す。scale.js も掲示板から（先に）呼ぶ。 */
+	/** 俯瞰：このフレームのカメラで年ラベルを置き、置いた矩形を返す。 */
 	function layoutAllOverview( nowMs ) {
 
 		if ( items.length === 0 || ctx.view?.current !== 'overview' ) return [];
@@ -247,7 +248,9 @@ export function createMarkers( ctx ) {
 		camera.updateMatrixWorld();
 		// HUD の部品（帯・凡例・ミニグラフ・路線図・ボタン・キャプション）の下に入る年ラベルは出さない（読めなくなるため）。
 		// HUD の矩形は labels.js の共有の読み取り（400ms ごと。値ラベル・駅名と同じ判定）
-		const accepted = { hud: board.hud.read( nowMs, `${rendererSize.x}x${rendererSize.y}` ), labels: [] };
+		// 優先順位は「値ラベルの軸 ＞ 年代のラベル ＞ 年ラベル」。軸と年代のラベル（scale.js が先に置いた矩形）も避ける
+		const hud = board.hud.read( nowMs, `${rendererSize.x}x${rendererSize.y}` );
+		const accepted = { hud: [ ...hud, ...board.get( 'axis', 'axis-leader', 'decade' ) ], labels: [] };
 		for ( const item of items ) layoutOverview( item, nowMs, rendererSize.y, rendererSize.x, accepted );
 		return accepted.labels;
 

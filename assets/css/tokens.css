@@ -41,6 +41,12 @@
 	--c-contour: #6d8ccf;
 	--c-contour-label: #dbe4f7;
 	--c-contour-label-bg: rgba(11, 23, 51, 0.72);
+	--c-spoke: #52659a; /* 右下の螺旋の図の年代のスポーク（破線 3/2） */
+	--c-decade-label-bg: rgba(28, 44, 85, 0.92); /* 3D の年代のラベルの地（HUD_COLORS.decadeLabelBg） */
+
+	/* スタート画面のデータの切り替え */
+	--c-seg-border: #6276aa;
+	--c-seg-selected-bg: color-mix(in srgb, var(--c-accent) 16%, transparent);
 
 	/* フォント */
 	--font-sans: system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN",

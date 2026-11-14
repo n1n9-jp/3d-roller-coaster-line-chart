@@ -1,13 +1,12 @@
-// 3D 空間に出すラベル（値ラベル・年ラベル・駅名）の、画面上の矩形の登録と衝突判定。DOM と three.js に依存しない。
+// 3D 空間に出すラベル（値ラベル・年代のラベル・出来事の年ラベル）の、画面上の矩形の登録と衝突判定。DOM と three.js に依存しない。
 //
 // 矩形はすべて「中心 x, y と幅 w, 高さ h（CSS px、画面の左上が原点、y は下向き）」。
 //
-// 俯瞰の優先順位は「出来事の年ラベル ＞ 値ラベルの軸 ＞ 駅名」。モジュールの登録順（main.js の MODULES）は
-// scale.js（値ラベル・駅名）→ markers.js（年ラベル）なので、毎フレームの update もこの順に呼ばれる。
-// そこで、年ラベルは HUD と年ラベルどうしだけを避けて置き、共有の掲示板（getLabelBoard( ctx )）の 'event' 層に、
-// 「このフレームのカメラで年ラベルを置き直して矩形を返す関数」を登録する（provide）。
-// scale.js は掲示板の 'event' 層を読み（その場で計算される）、それを避けて軸と駅名を置く。
-// 年ラベルの位置は値ラベルに依存しないので循環せず、視点の切り替えやリサイズの直後のフレームでも食い違わない。
+// 俯瞰の優先順位は「値ラベルの軸 ＞ 年代のラベル ＞ 出来事の年ラベル」。モジュールの登録順（main.js の MODULES）は
+// scale.js（軸・年代のラベル）→ markers.js（年ラベル）なので、毎フレームの update もこの順に呼ばれる。
+// scale.js は HUD を避けて軸を置き、HUD と軸を避けて年代のラベルを置き、共有の掲示板（getLabelBoard( ctx )）の
+// 'axis'（ラベル）・'axis-leader'（引き出し線を細かい矩形にしたもの）・'decade' の層に登録する。
+// markers.js は同じフレームでそれと HUD を読み、避けて年ラベルを置き、'event' 層に登録する。
 
 /** 2 つの矩形が、margin 以内に近い（重なる）か。 */
 export function rectsOverlap( a, b, margin = 0 ) {
@@ -169,7 +168,7 @@ export function spreadAxis( ys, minGap, bounds = null ) {
 }
 
 /**
- * ラベルの掲示板：層（'event'、'axis'、'station' など）ごとに、いま画面に出している矩形を持つ。
+ * ラベルの掲示板：層（'axis'、'axis-leader'、'decade'、'event'）ごとに、いま画面に出している矩形を持つ。
  * set で層の中身を置き換え、get で読む（層を省くと全部）。
  */
 export function createLabelBoard() {
@@ -216,7 +215,7 @@ export function createLabelBoard() {
 }
 
 /**
- * HUD のパネルの矩形を読む関数を作る（ラベルを重ねない相手）。値ラベル・駅名・年ラベルで同じものを使う。
+ * HUD のパネルの矩形を読む関数を作る（ラベルを重ねない相手）。値ラベル・年代のラベル・年ラベルで同じものを使う。
  * slots：ctx.ui.slots（readout、legend、chart、map、caption、controls）。要素は getBoundingClientRect を持つものなら何でもよい
  * （DOM に依存しない。テストでは偽の要素を渡せる）。操作ボタンの入れ物は横いっぱいに広がることがあるので、ボタンごとに見る。
  * 読み直しは intervalMs ごと（レイアウトの強制計算を毎フレーム起こさない）。画面の大きさ（sizeKey）が変わったときと、

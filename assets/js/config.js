@@ -127,6 +127,7 @@ export const PALETTE = {
 	markerRing: 0xffffff, // マーカーの輪・高さ線
 	event: 0x45b4f0, // イベントの目印
 	contour: 0x6d8ccf, // 等高線
+	decadeSpoke: 0x9aa8cc, // 年代のスポーク（北。不透明度 0.7）
 	hemisphereSky: 0xcdd8ff, // 半球光（空）
 	hemisphereGround: 0x1a2b55, // 半球光（地）
 	directional: 0xffffff, // 平行光
@@ -153,7 +154,9 @@ export const HUD_COLORS = {
 	plotGrid: '#24365f', // グラフのグリッド（細線）
 	plotAxis: '#3a4b75', // 基線
 	contourLabel: '#dbe4f7',
-	contourLabelBg: 'rgba(11, 23, 51, 0.72)'
+	contourLabelBg: 'rgba(11, 23, 51, 0.72)',
+	spoke: '#52659a', // 右下の螺旋の図の年代のスポーク（破線）
+	decadeLabelBg: 'rgba(28, 44, 85, 0.92)' // 3D の年代のラベルの地（文字は text1）
 };
 
 // ---- 以下は空の節。各担当が自分の節にだけ値を足す ----
@@ -278,55 +281,83 @@ export const RAIL = {
 	}
 };
 
-// CONTOUR：等高線と値ラベルの定数（刻み、外側へのずらし、ラベルの大きさ・配置の駅番号など）。担当：高さ目盛り。
-// 色は PALETTE.contour と HUD_COLORS（contourLabel、contourLabelBg）。
+// CONTOUR：3D の目盛り（等高線・値ラベル・目盛りの壁・年代のスポークとラベル）の定数。担当：高さ目盛り。
+// 刻みはデータの書式（ctx.dataset.format.ticks）が決める。色は PALETTE（contour、decadeSpoke）と
+// HUD_COLORS（contourLabel、contourLabelBg、decadeLabelBg）。
 export const CONTOUR = {
-	// 等高線：1 万円刻み。駅の多角形を外側へ offset ずらした輪。5 万円の倍数の線だけ少し強くする
-	stepYen: 10000,
+	// 一人称の等高線：螺旋の中心線を外側（半径が増える向き）へ offset ずらした線を、各刻みの高さに全長 1 本ずつ。
+	// 弧長 segment ごとの折れ線。strong の線（日経平均の 5 万円など。書式の strongEvery）だけ少し強くする
 	offset: 1.5,
-	line: { opacity: 0.55, strongOpacity: 0.85, strongEveryYen: 50000 },
+	segment: 1.5,
+	line: { opacity: 0.55, strongOpacity: 0.85 },
+	// 等高線は一人称だけ：視点の補間 blend が hideFrom..hideTo で 1 → 0 に薄くなる
+	rideFade: { hideFrom: 0, hideTo: 0.5 },
 	// 値ラベル（Sprite）：テクスチャは値ごとに 1 枚。fontPx は pillHeight に対する文字の大きさ（画面上の文字の高さの基準）
 	label: {
-		// ピルの幅は文字の幅 + 左右の padding（狭い画面でも置けるよう、仕様の 384 固定より詰める）
 		pillHeight: 96, padding: 38, radius: 48, border: 2, fontPx: 56,
-		// 一人称のラベルは、等高線の輪からさらに extraOffset 外の輪に置く。y は等高線 + lift
+		// 一人称のラベルは、等高線からさらに extraOffset 外に置く。y は等高線 + lift
 		extraOffset: 3,
 		lift: 0.9
 	},
 	// 画面上の文字の高さ（px）。実行時のカメラの距離・画角と表示サイズから、Sprite の大きさ（ワールド単位）を決める
-	// ride：基準距離 rideDistance にあるラベルの文字の高さ（近づくほど大きく、遠いほど小さい。fog で霞む）
-	// overview：俯瞰では距離によらずこの高さにそろえる（幅 compactMaxWidth 以下の画面は compact）
+	// ride：基準距離 rideDistance にあるラベルの文字の高さ（近づくほど大きく、遠いほど小さい）
+	// overview：俯瞰では距離によらずこの高さにそろえる（compact の画面は overviewCompact）
 	textPx: { ride: 14, overview: 15, overviewCompact: 14 },
 	rideDistance: 25,
+	// 狭い画面（幅 compactMaxWidth 以下、または高さ compactMaxHeight 以下）：俯瞰の壁は粗い刻み（ticks の compact）
 	compactMaxWidth: 720,
-	// 一人称：カメラに近いラベル（駅名など。値ラベルは ride.minDistance）は薄くして消す（hideBelow 以下で 0、fullAbove 以上で 1）
-	nearFade: { hideBelow: 8, fullAbove: 18 },
-	// 一人称：遠いラベル（駅名など。値ラベルは ride.maxDistance）は消す（fadeStart から薄くなり、hideAbove 以上で 0）
-	farFade: { fadeStart: 45, hideAbove: 75 },
-	// 俯瞰：駅名（床の高さ、輪の外側）。priority の順に置き、compact では maxCompact 個まで
-	stationNames: {
-		priority: [ '東京', '新宿', '池袋', '品川', '渋谷', '上野', '大崎' ],
-		maxCompact: 4,
-		y: 0.3,
-		offset: 8
-	},
-	// 一人称の値ラベル：いまの高さを挟む上下の等高線に 1 つずつ。置き場所の候補は、ラベルの輪の各辺を subdivisions 等分した点。
+	compactMaxHeight: 520,
+	// 一人称の値ラベル：いまの値を挟む上下の等高線に 1 つずつ。置き場所の候補は、ラベルの線（等高線のさらに外）の上を
+	// 弧長 sampleSpacing ごとに取った点のうち、いまの位置から前方 aheadMax まで（後ろは behind まで）。
 	// カメラから minDistance より近い場所、maxDistance より遠い場所、画面の端から insetPx 以内は使わない。
-	// 文字の高さは、距離によらず minTextPx〜maxTextPx に収める（遠くても 10px 未満にしない、近くても大きくしすぎない）。
-	// 奥行き idealDepth に近く、画面の中央に近い（centerWeight）ほど良い
-	ride: { minTextPx: 10, maxTextPx: 18, minDistance: 7, maxDistance: 70, subdivisions: 6, idealDepth: 24, centerWeight: 10, insetPx: 8 },
-	// 俯瞰の値ラベルの軸：輪の 1 点（アンカー）から、各等高線へ引き出し線（長さ leaderPx + leaderExtraPx のどれか。端の横線 stubPx）を出し、
-	// ラベルを縦に並べる。ラベルの間は gapPx 以上。画面の端から insetPx 内側。HUD・年ラベルとの隙間 margin。
-	// 列は、空いた場所を探して上下に shiftPx 刻みで shiftSteps 段までずらせる。選ぶときの重み：
-	//   shiftWeight：ずらした 1px あたり（ラベル 1 つごと）、extraWeight：引き出し線を延ばした 1px あたり、
-	//   preferUpper：アンカーが画面の下にあるほど、inwardPenalty：列を輪の内側へ出すとき、railWeight：レールにかぶる点 1 つあたり
-	axis: {
-		leaderPx: 34, leaderPxCompact: 24, leaderExtraPx: [ 0, 40, 90 ], stubPx: 7, gapPx: 4, insetPx: 8, margin: 6,
-		shiftPx: 16, shiftSteps: 16,
-		shiftWeight: 0.5, extraWeight: 1, preferUpper: 400, inwardPenalty: 300, railWeight: 60,
-		leaderOpacity: 0.9
+	// 文字の高さは、距離によらず minTextPx〜maxTextPx に収める。奥行き idealDepth に近く、画面の中央に近い（centerWeight）ほど良い
+	ride: {
+		minTextPx: 10, maxTextPx: 18, minDistance: 7, maxDistance: 70, idealDepth: 24, centerWeight: 10, insetPx: 8,
+		sampleSpacing: 2, aheadMax: 110, behind: 10
 	},
-	// 俯瞰：駅名・HUD のパネルとの最小の隙間（px）
+	// 俯瞰の目盛りの壁：西（angleDeg 270。上から見て時計回りの角度、北 = 0）のスポーク上に、
+	// 半径 innerRadius − innerInset から 外径 + outerInset まで。高さは横線のいちばん下から上まで。
+	// 横線は PALETTE.contour（ラベルを付ける線は labeledOpacity）、0 の線（範囲にあるとき）は zeroColor。
+	// 両端の柱は床から最上段まで。面は両端と最下段・最上段に囲まれた矩形
+	wall: {
+		angleDeg: 270,
+		innerInset: 3,
+		outerInset: 4,
+		lineOpacity: 0.75,
+		labeledOpacity: 0.95,
+		zeroColor: 0xdbe4f7,
+		zeroOpacity: 0.9,
+		postOpacity: 0.5,
+		fillOpacity: 0.06,
+		// 視点の補間 blend が fadeFrom を超えたところから現れる（一人称では出さない）
+		fadeFrom: 0.5,
+		// 横線が maxLabels 本を超えるときは、1 本おき（値が 2 × step の倍数の線）にだけラベルを付ける
+		maxLabels: 7
+	},
+	// 俯瞰の値ラベルの軸：壁の外側の端（アンカー）から、各横線の高さで外へ（画面の左へ）引き出し線
+	// （長さ leaderPx。端の横線 stubPx）を出し、ラベルを下から上へ縦に並べる。ラベルの間は gapPx 以上。
+	// 画面の端から insetPx 内側。HUD との隙間 margin。列は、HUD を避けて上下に shiftPx 刻みで shiftSteps 段までずらせる
+	axis: {
+		leaderPx: 30, leaderPxCompact: 22, stubPx: 7, gapPx: 4, insetPx: 8, margin: 6,
+		shiftPx: 12, shiftSteps: 20,
+		leaderOpacity: 0.9,
+		// 俯瞰の構図（view.setOverviewExtras）に足す、ラベルの列の外側の余白（px）
+		extraPadPx: 10
+	},
+	// 年代のスポーク（北へ延びる床の上の細い線）：中心から 外径 + spokeExtra まで、床の上 y
+	spoke: { y: 0.06, extra: 6, opacity: 0.7 },
+	// 年代のラベル（「1990年」）：角丸の長方形（枠なし）。canvas は値ラベルと同じ高さ（pillHeight 96 に文字 56）
+	decade: {
+		radius: 32, padding: 30,
+		// 俯瞰：スポークと各周の交点の床（y）に中心を合わせる。文字の高さ textPx（compact は textPxCompact）
+		y: 0.3, textPx: 14, textPxCompact: 13,
+		// 隣のラベルと重なるときは、左右交互（sideGapPx だけスポークから離す）。それでも重なるときは 20 年ごと
+		sideGapPx: 4, gapPx: 3,
+		// 一人称：前方の次の境目だけ、レールの上 lift に出す。弧長で minDistance〜maxDistance 先のとき。
+		// 文字の高さは基準距離 rideDistance で textPx.ride、minTextPx〜maxTextPx に収める
+		ride: { lift: 4.6, minDistance: 9, maxDistance: 75, minTextPx: 11, maxTextPx: 20 }
+	},
+	// 俯瞰：年代のラベル・HUD のパネルとの最小の隙間（px）
 	declutter: { margin: 4 },
 	// 表示・非表示の切り替えのなめらかさ（時定数 ms）
 	fadeMs: 110
