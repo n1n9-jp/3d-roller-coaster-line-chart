@@ -7,7 +7,7 @@
 // ■ 速度
 //   速さは「年/秒」（ride.speed）で持ち、データの期間 T 年で progress / ms（ride.velocity = speed / ( T × 1000 )）に換算する。
 //   目標の速さ = 基準の速さ base( r ) × 勾配による倍率。base( r ) = SPEED.yearsPerSecond × ( r / 基準の半径 )^(−radiusExponent)。
-//   倍率 = clamp( exp( − gravityPerYear × dy/dτ ), minFactor, maxFactor )。dy/dτ は 1 年あたりの高さの変化（dy/dt ÷ T）。
+//   倍率 = clamp( exp( − gravityPerYear × dy/dτ ), minFactor, maxFactor )。dy/dτ は 1 年あたりの高さの変化（前後 SPEED.gradientWindowYears 年の弦の勾配）。
 //   これで、期間の違うデータでも、1 年あたりの秒数と勾配の効き方がそろう（config.js の SPEED）。
 
 // 走行の「穏やかさ」に関わる係数（傾き・向きの補間・速度の上限・勾配の効き・速度の追従の速さ）は、createRide の options で渡せる。
@@ -150,6 +150,22 @@ export function createRide( curve, events = null, options = {} ) {
 	const perYearPerSecond = 1 / ( years * 1000 );
 	const radiusAt = typeof curve.radiusAt === 'function' ? ( t ) => curve.radiusAt( t ) : () => 0;
 	const baseAt = ( t ) => baseYearsPerSecond( radiusAt( Math.min( Math.max( t, 0 ), 1 ) ) );
+
+	// 速さの倍率に使う勾配（1 年あたりの高さの変化）：進行位置の前後 SPEED.gradientWindowYears 年の弦の勾配。
+	// 1 日の差分では週ごとの細かい揺れが速さに乗り、数か月〜数年かけて下る・上るという地形の起伏と速さが対応しなくなる。
+	// 水平の長さを持たない曲線（テスト用。getPointAt の高さが勾配と対応しない）では、その点の勾配
+	function windowedGradientPerYear( t, heightGradient ) {
+
+		const half = SPEED.gradientWindowYears / years;
+		if ( ! lengthPerProgress || ! ( half > 0 ) ) return heightGradient / years;
+		const t1 = Math.max( 0, t - half );
+		const t2 = Math.min( 1, t + half );
+		if ( t2 <= t1 ) return heightGradient / years;
+		const y1 = curve.getPointAt( t1 ).y;
+		const y2 = curve.getPointAt( t2 ).y;
+		return ( y2 - y1 ) / ( ( t2 - t1 ) * years );
+
+	}
 
 	const ride = {
 		/** 0..1。データの最初の日付から最後の日付まで（時間に比例）。 */
@@ -304,12 +320,13 @@ export function createRide( curve, events = null, options = {} ) {
 			// 60fps の 1 フレームで ORIENTATION_BLEND_PER_FRAME だけ近づく補間を、時間で換算する
 			const blend = 1 - Math.pow( 1 - motion.orientationBlendPerFrame, delta / FRAME_MS );
 			const heightGradient = ride.updatePose( blend );
+			const speedGradient = windowedGradientPerYear( ride.progress, heightGradient );
 
 			// 高さの勾配から目標の速度を決め、一次遅れで近づく（重力効果）。下りで速く、上りで遅くなる。
 			// 1 フレームのあいだ目標は一定とみなし、指数で厳密に積分する（フレームレートによらない）
 			// 勾配は 1 年あたりに直す（dy/dt ÷ T）
 			const base = baseAt( ride.progress );
-			const target = base * speedFactor( heightGradient / years, motion );
+			const target = base * speedFactor( speedGradient, motion );
 			ride.speed = target + ( ride.speed - target ) * Math.exp( - delta / Math.max( 1, motion.speedResponseMs ) );
 			// 範囲に収める（setMotion で上限が下がったときは、すぐに収める。上限は下限より下げない）
 			const [ lo, hi ] = speedFactorRange( motion );

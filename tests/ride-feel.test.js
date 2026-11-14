@@ -14,10 +14,13 @@ import { readJson, series1990 as makeSeries1990 } from './helpers.js';
 
 const series1990 = makeSeries1990();
 
-// 1990 年始まり（36 年）、手元にあれば日経平均の実データ（data/local/。git には入らない）、1971 年始まり（56 年、約 5.6 周。同梱のドル円の実データそのもの）
+// 1990 年始まり（36 年）、手元にあれば日経平均の実データ（data/local/。git には入らない。37 年）、
+// 1986 年始まり（40 年、約 4 周。同梱の 10 年国債の金利。値動きの形がほかと違い、勾配による加減速が出にくい）、
+// 1971 年始まり（56 年、約 5.6 周。同梱のドル円の実データそのもの）
 const SERIES = [ [ '1990 年始まり', series1990 ] ];
 const localUrl = new URL( '../data/local/nikkei225.json', import.meta.url );
 if ( existsSync( localUrl ) ) SERIES.push( [ '実データ', JSON.parse( readFileSync( localUrl, 'utf8' ) ) ] );
+SERIES.push( [ '10年国債の金利（1986 年始まり）', readJson( 'data/jgb10.json' ) ] );
 SERIES.push( [ 'ドル円（1971 年始まり）', readJson( 'data/usdjpy.json' ) ] );
 
 const curves = SERIES.map( ( [ name, data ] ) => [ name, new TrackCurve( buildDataset( data ).smoothed ) ] );
@@ -159,7 +162,7 @@ function lap( curve, motion ) {
 
 }
 
-test( '速度：最初から最後まで、上限と下限の間の跳びがほとんどなく、中間の値をとる時間が半分以上。所要時間は 36 年分で 150〜200 秒、56 年分で 230〜300 秒（60fps）', () => {
+test( '速度：最初から最後まで、上限と下限の間の跳びがほとんどなく、中間の値をとる時間が半分以上。所要時間は 36〜37 年分で 150〜200 秒、40 年分で 160〜210 秒、56 年分で 230〜300 秒（60fps）', () => {
 
 	for ( const [ name, curve ] of curves ) {
 
@@ -167,7 +170,7 @@ test( '速度：最初から最後まで、上限と下限の間の跳びがほ�
 		assert.ok( r.finished, name );
 		assert.ok( r.jumps <= 3, `${name}: 跳び ${r.jumps} 回` );
 		assert.ok( r.middleShare >= 0.5, `${name}: 中間の割合 ${r.middleShare}` );
-		const [ lo, hi ] = curve.years > 50 ? [ 230, 300 ] : [ 150, 200 ];
+		const [ lo, hi ] = curve.years > 50 ? [ 230, 300 ] : curve.years > 38 ? [ 160, 210 ] : [ 150, 200 ];
 		assert.ok( r.seconds >= lo && r.seconds <= hi, `${name}: ${curve.years.toFixed( 1 )} 年分で ${r.seconds} 秒` );
 		// 1 フレームの変化は、倍率の範囲の 5% 未満
 		assert.ok( r.maxStep < 0.05 * ( SPEED.maxFactor - SPEED.minFactor ), `${name}: 1 フレームの最大の変化 ${r.maxStep}` );
@@ -201,7 +204,8 @@ test( '速度：長い下りで速く、長い上りで遅い（区間の平均�
 		const mean = ( list ) => list.reduce( ( s, r ) => s + r.v, 0 ) / list.length;
 		const downhill = mean( rows.slice( 0, q ) ); // 下りの強い 1/4
 		const uphill = mean( rows.slice( - q ) ); // 上りの強い 1/4
-		// 倍率の範囲（0.85〜2.5）と勾配の効き（年あたり 0.08）は控えめなので、差は 15% 以上を目安にする
+		// 倍率の範囲（0.85〜2.5）と勾配の効き（年あたり 0.08）は控えめなので、差は 15% 以上を目安にする。
+		// 倍率に使う勾配は前後 SPEED.gradientWindowYears 年の弦（1 日の差分だと、10年国債の金利で 1.14 倍にとどまる）
 		assert.ok( downhill > uphill * 1.15, `${name}: 下り ${downhill} / 上り ${uphill}` );
 
 	}

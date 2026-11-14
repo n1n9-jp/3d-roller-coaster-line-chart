@@ -475,6 +475,16 @@ test( '重力：下りが続けば上限へ、上りが続けば下限へ、な�
 
 } );
 
+/** 速さの倍率に使う勾配（dy/dt）：進行位置の前後 SPEED.gradientWindowYears 年の弦（ride.js と同じ）。 */
+function windowedGradient( curve, progress ) {
+
+	const half = SPEED.gradientWindowYears / curve.years;
+	const t1 = Math.max( 0, progress - half );
+	const t2 = Math.min( 1, progress + half );
+	return ( curve.getPointAt( t2 ).y - curve.getPointAt( t1 ).y ) / ( t2 - t1 );
+
+}
+
 test( '実データの曲線：下りの区間で速度が増え、上りの区間で減る', () => {
 
 	const curve = new TrackCurve( dataset.smoothed );
@@ -484,7 +494,7 @@ test( '実データの曲線：下りの区間で速度が増え、上りの区�
 	for ( let i = 0; i < 400; i ++ ) {
 
 		const progress = i / 400;
-		const gradient = curve.getHeightGradientAt( progress );
+		const gradient = windowedGradient( curve, progress );
 		if ( Math.abs( gradient ) < 100 ) continue;
 
 		const ride = createRide( curve );
@@ -494,7 +504,7 @@ test( '実データの曲線：下りの区間で速度が増え、上りの区�
 		const before = ride.velocity;
 		ride.update( FRAME_MS );
 		// update は先に progress を進めるので、進めた先の勾配で調整される。符号が変わらない点だけを見る
-		const after = curve.getHeightGradientAt( ride.progress );
+		const after = windowedGradient( curve, ride.progress );
 		if ( Math.sign( after ) !== Math.sign( gradient ) ) continue;
 
 		if ( gradient < 0 ) {

@@ -14,6 +14,14 @@
 //     区間 s の先頭頂点 = 102·s + 12·floor( s/2 )、総頂点数 = 102·D + 12·floor( D/2 )（D = 1500 で 162,000）
 //   区間の中では「枕木 + 中央の管」（構造部）が先、「レール 2 本」が後ろに連続するので、1 区間は 2 つの連続範囲で塗れる。
 //
+// ■ 助走の区間（始点のねじれの回避）
+//   RollerCoasterGeometry は、最初の区間の始端の断面を、曲線の向きによらず固定の向き（東向き）で作る。螺旋の始点の向きは
+//   データによって違うので、最初の区間だけレールがねじれて交差して見える。そこで rail.js は、曲線を runUpCurve で包んで
+//   始点の手前に接線方向へ 1 区間分の助走の点を足し、分割数を 1 増やして作る（RUN_UP_SEGMENTS）。助走の区間（s = 0。偶数なので枕木はなく、
+//   102 頂点）は setDrawRange で描かない（railDrawStart）。実際の区間 k（0..D-1）は、ジオメトリの区間 s = k + RUN_UP_SEGMENTS になる。
+//   区間と弧長の対応（区間 k は弧長の割合 ( k/D, (k+1)/D ]）と、下の「状態」「更新」は、助走を除いた区間 k の番号で書いてある。
+//   createRailPainter / buildRailColorMap の runUp オプションが、k → s の換算を持つ（省略すると助走なし = 従来どおり）。
+//
 // ■ 状態
 //   レールは弧長（水平）で等間隔に標本化してある（rail.js が curve.arcCurve を渡す）。区間 s は弧長の割合 ( s/D, (s+1)/D ]。
 //   進行位置 progress（時間に比例）は、curve.arcFractionAt で弧長の割合 f に直してから区間を決める。
@@ -55,6 +63,53 @@ export function railVertexCount( divisions ) {
 
 }
 
+/** 助走の区間の数（rail.js が曲線の始点の手前に足す）。 */
+export const RUN_UP_SEGMENTS = 1;
+
+/** 助走の区間を除いて描くときの、描き始める頂点番号（setDrawRange の start）。 */
+export function railDrawStart( runUp = RUN_UP_SEGMENTS ) {
+
+	return segmentStartIndex( runUp );
+
+}
+
+/**
+ * 曲線 curve（弧長の割合 f で引ける arcCurve。実際の分割数 divisions）に、始点の手前の助走を足した曲線。
+ * 分割数 divisions + runUp で標本化すると、標本 i（i / ( divisions + runUp )）は i < runUp が助走、それ以降が元の f = ( i - runUp ) / divisions。
+ * 助走の点は、始点から、水平の単位接線の逆向きへ 1 区間分（全長 / divisions）、高さは最初の区間の勾配のまま延ばしたもの
+ * （助走の区間の向きが始点の接線に合い、最初の本当の区間の始端の断面が、接線の向きで作られる）。
+ */
+export function runUpCurve( curve, divisions, runUp = RUN_UP_SEGMENTS ) {
+
+	const total = divisions + runUp;
+	const length = curve.totalLength / divisions; // 1 区間の水平の長さ
+	const start = curve.getPointAt( 0 ).clone();
+	const rise = curve.getPointAt( 1 / divisions ).y - start.y; // 最初の区間で上る高さ
+	const tangent = curve.getTangentAt( 0 ).clone();
+	const point = start.clone();
+	const out = tangent.clone();
+
+	return {
+		totalLength: curve.totalLength,
+		getPointAt( u ) {
+
+			const f = ( u * total - runUp ) / divisions;
+			if ( f >= 0 ) return point.copy( curve.getPointAt( Math.min( 1, f ) ) );
+			const back = - f * divisions; // 始点から戻る区間数（0..runUp）
+			return point.set( start.x - tangent.x * length * back, start.y - rise * back, start.z - tangent.z * length * back );
+
+		},
+		getTangentAt( u ) {
+
+			const f = ( u * total - runUp ) / divisions;
+			if ( f >= 0 ) return out.copy( curve.getTangentAt( Math.min( 1, f ) ) );
+			return out.copy( tangent );
+
+		}
+	};
+
+}
+
 /** 弧長の割合 f（0..1）のときに走行済みになっている区間の数（先頭からの連続）。 */
 export function riddenSegmentCount( fraction, divisions ) {
 
@@ -73,16 +128,18 @@ export function segmentState( s, riddenCount ) {
 /**
  * 生成済みの RollerCoasterGeometry から、頂点番号と区間・部位の対応表を作る。
  * 頂点数が式と合わない（同梱ファイルが変わったなど）ときは例外を投げる。
+ * divisions は実際の区間の数。ジオメトリは先頭に助走の区間を runUp 個持つ（分割数 divisions + runUp で作ったもの）。
+ * segmentStart・structureEnd・segmentOf は、助走を含むジオメトリの区間の番号 s で引く（実際の区間 k は s = k + runUp）。
  */
-export function buildRailColorMap( geometry, divisions ) {
+export function buildRailColorMap( geometry, divisions, runUp = 0 ) {
 
 	const color = geometry.getAttribute( 'color' );
-	const D = divisions;
+	const D = divisions + runUp;
 	const expected = railVertexCount( D );
 
 	if ( ! color || color.count !== expected ) {
 
-		throw new Error( `rail-colors: color 属性の頂点数 ${color && color.count} が想定 ${expected} と一致しません（divisions=${D}）` );
+		throw new Error( `rail-colors: color 属性の頂点数 ${color && color.count} が想定 ${expected} と一致しません（divisions=${divisions}、助走 ${runUp}）` );
 
 	}
 
@@ -120,7 +177,7 @@ export function buildRailColorMap( geometry, divisions ) {
 
 	}
 
-	return { divisions: D, vertexCount: expected, segmentStart, structureEnd, segmentOf, partOf };
+	return { divisions, runUp, vertexCount: expected, segmentStart, structureEnd, segmentOf, partOf };
 
 }
 
@@ -149,12 +206,12 @@ export function railPaletteFrom( palette = PALETTE ) {
  * fraction は弧長の割合（0..1。curve.arcFractionAt( progress )）。
  *
  * @param geometry  RollerCoasterGeometry（弧長で等間隔に標本化したもの）
- * @param divisions 生成時の分割数
- * @param options   { palette?: PALETTE と同じ形 }
+ * @param divisions 実際の区間の数（助走を除く）
+ * @param options   { palette?: PALETTE と同じ形, runUp?: ジオメトリの先頭にある助走の区間の数（省略は 0）}
  */
-export function createRailPainter( geometry, divisions, { palette } = {} ) {
+export function createRailPainter( geometry, divisions, { palette, runUp = 0 } = {} ) {
 
-	const map = buildRailColorMap( geometry, divisions );
+	const map = buildRailColorMap( geometry, divisions, runUp );
 	const colors = railPaletteFrom( palette );
 	const attribute = geometry.getAttribute( 'color' );
 	const array = attribute.array;
@@ -177,29 +234,30 @@ export function createRailPainter( geometry, divisions, { palette } = {} ) {
 
 	}
 
-	/** 区間 [ s0, s1 ) を、走行済み区間数 count の状態で塗る。戻り値は書き換えた頂点数。 */
-	function paintRange( s0, s1, count ) {
+	/** 実際の区間 [ k0, k1 ) を、走行済み区間数 count の状態で塗る（k = -runUp .. -1 が助走）。戻り値は書き換えた頂点数。 */
+	function paintRange( k0, k1, count ) {
 
-		for ( let s = s0; s < s1; s ++ ) {
+		for ( let k = k0; k < k1; k ++ ) {
 
-			const [ structure, rail ] = colors[ segmentState( s, count ) ];
+			const s = k + runUp;
+			const [ structure, rail ] = colors[ segmentState( k, count ) ];
 			fill( segmentStart[ s ], structureEnd[ s ], structure );
 			fill( structureEnd[ s ], segmentStart[ s + 1 ], rail );
 
 		}
 
-		return segmentStart[ s1 ] - segmentStart[ s0 ];
+		return segmentStart[ k1 + runUp ] - segmentStart[ k0 + runUp ];
 
 	}
 
 	function paintAll( fraction = 0 ) {
 
 		riddenCount = riddenSegmentCount( fraction, divisions );
-		paintRange( 0, divisions, riddenCount );
+		paintRange( - runUp, divisions, riddenCount ); // 助走の区間も塗る（描かないが、頂点の色が未定のままにならないように）
 		attribute.clearUpdateRanges(); // 範囲なし = 全体を転送
 		attribute.needsUpdate = true;
 		fullUploadPending = true;
-		return { segments: divisions, vertices: map.vertexCount };
+		return { segments: divisions + runUp, vertices: map.vertexCount };
 
 	}
 
@@ -215,7 +273,7 @@ export function createRailPainter( geometry, divisions, { palette } = {} ) {
 			const vertices = paintRange( s0, s1, next );
 			riddenCount = next;
 			// 全体の転送が控えているフレームでは範囲を足さない（足すとその範囲だけの転送になる）
-			if ( ! fullUploadPending ) attribute.addUpdateRange( segmentStart[ s0 ] * 3, vertices * 3 );
+			if ( ! fullUploadPending ) attribute.addUpdateRange( segmentStart[ s0 + runUp ] * 3, vertices * 3 );
 			attribute.needsUpdate = true;
 			result = { segments: s1 - s0, vertices };
 
@@ -249,11 +307,12 @@ export function createRailColors( ctx ) {
 	if ( ! rail ) throw new Error( 'rail-colors: scene に rail がありません' );
 
 	const geometry = rail.geometry;
-	const divisions = rail.userData.divisions;
+	const divisions = rail.userData.divisions; // 助走を除く、実際の区間の数
+	const runUp = rail.userData.runUpSegments ?? 0;
 	// 毎フレーム一部を書き換えるので、最初の描画（バッファの生成）より前に設定する
 	geometry.getAttribute( 'color' ).setUsage( DynamicDrawUsage );
 
-	const painter = createRailPainter( geometry, divisions );
+	const painter = createRailPainter( geometry, divisions, { runUp } );
 	// 進行位置（時間に比例）→ 弧長の割合（レールの区間は弧長で等間隔）
 	const fractionOf = ( progress ) => curve.arcFractionAt( progress );
 	painter.paintAll( fractionOf( ride.progress ) );
