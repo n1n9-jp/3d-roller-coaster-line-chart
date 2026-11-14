@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-	contourValues, offsetRing, formatContourLabel, labelWorldHeight, screenTextPx, placeLabels
+	contourValues, offsetRing, formatContourLabel, formatContourShort, labelWorldHeight, screenTextPx, placeLabels
 } from '../assets/js/scale.js';
 import { buildDataset } from '../assets/js/data.js';
 import { TrackCurve, buildStationSegments } from '../assets/js/track.js';
@@ -115,6 +115,14 @@ test( 'ラベルの書式：1 万円刻みの値を、桁区切りと「円」�
 	assert.equal( formatContourLabel( 70000 ), '70,000円' );
 	assert.equal( formatContourLabel( 100000 ), '100,000円' );
 	assert.equal( formatContourLabel( 999 ), '999円' );
+
+} );
+
+test( '狭い画面の軸のラベル：「1万円」「7万円」（1 万円刻みでないときは小数 1 桁）', () => {
+
+	assert.equal( formatContourShort( 10000 ), '1万円' );
+	assert.equal( formatContourShort( 70000 ), '7万円' );
+	assert.equal( formatContourShort( 15000 ), '1.5万円' );
 
 } );
 

@@ -9,6 +9,9 @@
 //   縦線       床からレールまで
 //   年ラベル   俯瞰のときだけ、ひし形の上に「2008」。重なるものは間引く
 //
+// 俯瞰のラベルの優先順位は「年ラベル ＞ 値ラベルの軸 ＞ 駅名」（labels.js）。年ラベルは HUD と年ラベルどうしだけを避けて置き、
+// 置いた矩形を共有の掲示板（getLabelBoard( ctx )）の 'event' 層に登録する。値ラベルと駅名（scale.js）はそれを避ける。
+//
 // 大きさ
 //   一人称：ワールド座標の固定値（config.js の ANNOT.marker）。アーチの半径はカメラが通る高さ
 //     （レール中心線の 0〜2.6 上、勾配が急なほど高い）を内側に収められる値にしてある。
@@ -18,6 +21,7 @@
 import * as THREE from 'three';
 import { PALETTE, HUD_COLORS, FONT_SANS, ANNOT } from './config.js';
 import { ensureEvents } from './events-data.js';
+import { collidesAny, insideViewport, getLabelBoard } from './labels.js';
 
 const DEG = Math.PI / 180;
 
@@ -60,6 +64,7 @@ export function createMarkers( ctx ) {
 	if ( ctx.dataset?.meta?.kind !== 'real' ) return {};
 
 	const { scene, curve, camera, renderer } = ctx;
+	const board = getLabelBoard( ctx );
 	const M = ANNOT.marker;
 	const O = M.overview;
 
@@ -210,7 +215,7 @@ export function createMarkers( ctx ) {
 		label.position.set( 0, labelY, 0 );
 		label.scale.set( labelWidthPx / ppu, labelHeightPx / ppu, 1 );
 
-		// 重なるラベルは間引く（時系列で先のものを残す）。画面の外や、カメラの後ろも出さない
+		// 重なるラベルは間引く（時系列で先のものを残す）。画面からはみ出すものや、カメラの後ろも出さない
 		projected.set( position.x, position.y + labelY, position.z ).project( camera );
 		let show = projected.z > -1 && projected.z < 1;
 		if ( show ) {
@@ -218,12 +223,12 @@ export function createMarkers( ctx ) {
 			const rect = {
 				x: ( projected.x * 0.5 + 0.5 ) * widthPx,
 				y: ( 1 - ( projected.y * 0.5 + 0.5 ) ) * heightPx,
-				halfW: labelWidthPx / 2 + O.labelPad,
-				halfH: labelHeightPx / 2 + O.labelPad
+				w: labelWidthPx,
+				h: labelHeightPx
 			};
-			if ( rect.x < - rect.halfW || rect.x > widthPx + rect.halfW || rect.y < - rect.halfH || rect.y > heightPx + rect.halfH ) show = false;
-			else if ( accepted.some( ( other ) => Math.abs( other.x - rect.x ) < other.halfW + rect.halfW && Math.abs( other.y - rect.y ) < other.halfH + rect.halfH ) ) show = false;
-			else accepted.push( rect );
+			if ( ! insideViewport( rect, { width: widthPx, height: heightPx } ) ) show = false;
+			else if ( collidesAny( rect, accepted.hud, O.labelPad ) || collidesAny( rect, accepted.labels, O.labelPad * 2 ) ) show = false;
+			else accepted.labels.push( rect );
 
 		}
 
@@ -231,36 +236,39 @@ export function createMarkers( ctx ) {
 
 	}
 
-	function hudRects() {
+	let lastNowMs = 0;
 
-		const rects = [];
-		for ( const slot of Object.values( ctx.ui?.slots ?? {} ) ) {
+	/** 俯瞰：このフレームのカメラで年ラベルを置き、置いた矩形を返す。scale.js も掲示板から（先に）呼ぶ。 */
+	function layoutAllOverview( nowMs ) {
 
-			const r = slot?.getBoundingClientRect?.();
-			if ( ! r || r.width === 0 || r.height === 0 ) continue;
-			rects.push( { x: r.left + r.width / 2, y: r.top + r.height / 2, halfW: r.width / 2, halfH: r.height / 2 } );
-
-		}
-
-		return rects;
+		if ( items.length === 0 || ctx.view?.current !== 'overview' ) return [];
+		renderer.getSize( rendererSize );
+		if ( ! ( rendererSize.x > 0 && rendererSize.y > 0 ) ) return [];
+		camera.updateMatrixWorld();
+		// HUD の部品（帯・凡例・ミニグラフ・路線図・ボタン・キャプション）の下に入る年ラベルは出さない（読めなくなるため）。
+		// HUD の矩形は labels.js の共有の読み取り（400ms ごと。値ラベル・駅名と同じ判定）
+		const accepted = { hud: board.hud.read( nowMs, `${rendererSize.x}x${rendererSize.y}` ), labels: [] };
+		for ( const item of items ) layoutOverview( item, nowMs, rendererSize.y, rendererSize.x, accepted );
+		return accepted.labels;
 
 	}
+
+	board.provide( 'event', () => layoutAllOverview( lastNowMs ) );
 
 	return {
 		update( state ) {
 
+			lastNowMs = state.nowMs;
 			if ( items.length === 0 ) return;
 
 			if ( state.view === 'overview' ) {
 
-				renderer.getSize( rendererSize );
-				// HUD の部品（帯・凡例・ミニグラフ・路線図・ボタン・キャプション）の下に入る年ラベルは出さない（読めなくなるため）
-				const accepted = hudRects();
-				for ( const item of items ) layoutOverview( item, state.nowMs, rendererSize.y, rendererSize.x, accepted );
+				board.set( 'event', layoutAllOverview( state.nowMs ) );
 
 			} else {
 
 				for ( const item of items ) layoutRide( item, state.nowMs );
+				board.set( 'event', [] );
 
 			}
 
@@ -268,6 +276,7 @@ export function createMarkers( ctx ) {
 		dispose() {
 
 			disposed = true;
+			board.clear( 'event' );
 			reducedQuery?.removeEventListener?.( 'change', onReducedChange );
 			scene.remove( group );
 			for ( const item of items ) {

@@ -254,12 +254,7 @@ export const CONTOUR = {
 	label: {
 		// ピルの幅は文字の幅 + 左右の padding（狭い画面でも置けるよう、仕様の 384 固定より詰める）
 		pillHeight: 96, padding: 38, radius: 48, border: 2, fontPx: 56,
-		// 配置する駅の番号。等高線の輪からさらに extraOffset 外へ、y は等高線 + lift
-		stations: [ 0, 5, 10, 15, 20, 25 ],
-		// 俯瞰で、上の駅に置けなかった等高線のためだけに使う予備の駅（狭い画面で、7 本の等高線に 1 つずつ付けるため）
-		spareStations: [ 2, 8, 13, 17, 22, 27, 3, 14 ],
-		// 予備の駅のうち先頭の何か所を、一人称でも使うか（前方にラベルが途切れないよう、駅の間隔を詰める）
-		rideSpareCount: 6,
+		// 一人称のラベルは、等高線の輪からさらに extraOffset 外の輪に置く。y は等高線 + lift
 		extraOffset: 3,
 		lift: 0.9
 	},
@@ -269,9 +264,9 @@ export const CONTOUR = {
 	textPx: { ride: 14, overview: 15, overviewCompact: 14 },
 	rideDistance: 25,
 	compactMaxWidth: 720,
-	// 一人称：カメラに近いラベルは薄くして消す（hideBelow 以下で 0、fullAbove 以上で 1）
+	// 一人称：カメラに近いラベル（駅名など。値ラベルは ride.minDistance）は薄くして消す（hideBelow 以下で 0、fullAbove 以上で 1）
 	nearFade: { hideBelow: 8, fullAbove: 18 },
-	// 一人称：遠いラベルは消す（fadeStart から薄くなり、hideAbove 以上で 0。基準距離で文字が 14px なら、75 で 5px）
+	// 一人称：遠いラベル（駅名など。値ラベルは ride.maxDistance）は消す（fadeStart から薄くなり、hideAbove 以上で 0）
 	farFade: { fadeStart: 45, hideAbove: 75 },
 	// 俯瞰：駅名（床の高さ、輪の外側）。priority の順に置き、compact では maxCompact 個まで
 	stationNames: {
@@ -280,9 +275,24 @@ export const CONTOUR = {
 		y: 0.3,
 		offset: 8
 	},
-	// 俯瞰：ラベル・駅名・HUD のパネルが重ならないよう、優先順に置いて重なるものを間引く
-	// margin：ラベルどうし・HUD との最小の隙間（px）。maxPerLevel：1 本の等高線あたりの値ラベルの上限
-	declutter: { margin: 4, maxPerLevel: 6, maxPerLevelCompact: 3 },
+	// 一人称の値ラベル：いまの高さを挟む上下の等高線に 1 つずつ。置き場所の候補は、ラベルの輪の各辺を subdivisions 等分した点。
+	// カメラから minDistance より近い場所、maxDistance より遠い場所、画面の端から insetPx 以内は使わない。
+	// 文字の高さは、距離によらず minTextPx〜maxTextPx に収める（遠くても 10px 未満にしない、近くても大きくしすぎない）。
+	// 奥行き idealDepth に近く、画面の中央に近い（centerWeight）ほど良い
+	ride: { minTextPx: 10, maxTextPx: 18, minDistance: 7, maxDistance: 70, subdivisions: 6, idealDepth: 24, centerWeight: 10, insetPx: 8 },
+	// 俯瞰の値ラベルの軸：輪の 1 点（アンカー）から、各等高線へ引き出し線（長さ leaderPx + leaderExtraPx のどれか。端の横線 stubPx）を出し、
+	// ラベルを縦に並べる。ラベルの間は gapPx 以上。画面の端から insetPx 内側。HUD・年ラベルとの隙間 margin。
+	// 列は、空いた場所を探して上下に shiftPx 刻みで shiftSteps 段までずらせる。選ぶときの重み：
+	//   shiftWeight：ずらした 1px あたり（ラベル 1 つごと）、extraWeight：引き出し線を延ばした 1px あたり、
+	//   preferUpper：アンカーが画面の下にあるほど、inwardPenalty：列を輪の内側へ出すとき、railWeight：レールにかぶる点 1 つあたり
+	axis: {
+		leaderPx: 34, leaderPxCompact: 24, leaderExtraPx: [ 0, 40, 90 ], stubPx: 7, gapPx: 4, insetPx: 8, margin: 6,
+		shiftPx: 16, shiftSteps: 16,
+		shiftWeight: 0.5, extraWeight: 1, preferUpper: 400, inwardPenalty: 300, railWeight: 60,
+		leaderOpacity: 0.9
+	},
+	// 俯瞰：駅名・HUD のパネルとの最小の隙間（px）
+	declutter: { margin: 4 },
 	// 表示・非表示の切り替えのなめらかさ（時定数 ms）
 	fadeMs: 110
 };
