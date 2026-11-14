@@ -1,0 +1,86 @@
+[
+	{
+		"date": "1971-08-15",
+		"title": "ニクソン・ショック",
+		"note": "米国が金とドルの交換を停止。360円の固定相場が終わる",
+		"source": "https://www.mof.go.jp/english/pri/publication/policy_1972-1990/Chapter1-3.pdf"
+	},
+	{
+		"date": "1973-02-14",
+		"title": "変動相場制へ移行",
+		"note": "円は固定相場を離れ、市場で値が決まる仕組みになった",
+		"source": "https://www.mof.go.jp/english/pri/publication/policy_1972-1990/Chapter1-3.pdf"
+	},
+	{
+		"date": "1978-11-01",
+		"title": "米国がドル防衛策を発表",
+		"note": "公定歩合の引き上げと協調介入を発表。円高が一服した",
+		"source": "https://history.state.gov/historicaldocuments/frus1977-80v03/d175"
+	},
+	{
+		"date": "1985-09-22",
+		"title": "プラザ合意",
+		"note": "G5がドル高の是正で合意。翌週、円は急騰した",
+		"source": "https://g7.utoronto.ca/finance/fm850922.htm"
+	},
+	{
+		"date": "1994-06-29",
+		"title": "初めて100円を割る",
+		"note": "この統計では、1971年以降で初めて100円より円高に",
+		"source": "https://www.federalreserve.gov/releases/h10/hist/"
+	},
+	{
+		"date": "1995-04-19",
+		"title": "円高が進み、当時の最高値圏に",
+		"note": "週の値は4月に82〜84円台。5月が1990年代で最も円高",
+		"source": "https://www.federalreserve.gov/releases/h10/hist/"
+	},
+	{
+		"date": "1998-06-17",
+		"title": "日米の協調介入",
+		"note": "日本と米国がそろって、円買い・ドル売りの介入を実施",
+		"source": "https://www.newyorkfed.org/newsevents/news/markets/1998/fx980730.html"
+	},
+	{
+		"date": "2004-03-16",
+		"title": "大規模な円売り介入が終わる",
+		"note": "2003年からの円売り介入は計35兆円超。次は2010年",
+		"source": "https://www.mof.go.jp/policy/international_policy/reference/feio/foreign_exchange_intervention_operations.csv"
+	},
+	{
+		"date": "2011-03-18",
+		"title": "震災後に円売り介入",
+		"note": "日本と米国が、円売り・ドル買いの為替介入を実施",
+		"source": "https://www.newyorkfed.org/newsevents/news/markets/2011/fx110513"
+	},
+	{
+		"date": "2011-10-28",
+		"title": "75円台まで円高、円売り介入へ",
+		"note": "この統計で最も円高。10月31日に約8兆円の介入",
+		"source": "https://www.mof.go.jp/policy/international_policy/reference/feio/foreign_exchange_intervention_operations.csv"
+	},
+	{
+		"date": "2013-04-04",
+		"title": "日銀が量的・質的金融緩和",
+		"note": "「量・質ともに次元の違う金融緩和」を決定",
+		"source": "https://www.boj.or.jp/mopo/mpmdeci/mpr_2013/k130404a.pdf"
+	},
+	{
+		"date": "2022-09-22",
+		"title": "24年ぶりの円買い介入",
+		"note": "投入額は2兆8382億円。円買い介入は1998年以来",
+		"source": "https://www.mof.go.jp/policy/international_policy/reference/feio/foreign_exchange_intervention_operations.csv"
+	},
+	{
+		"date": "2024-06-28",
+		"title": "160円台、1986年以来の円安水準",
+		"note": "7月11日・12日に計5.5兆円の円買い介入",
+		"source": "https://www.mof.go.jp/policy/international_policy/reference/feio/foreign_exchange_intervention_operations.csv"
+	},
+	{
+		"date": "2026-07-24",
+		"title": "163円台、1986年以来の円安水準",
+		"note": "7月30日から3日間で計15.4兆円の円買い介入",
+		"source": "https://www.mof.go.jp/policy/international_policy/reference/feio/data/quarter/2026_3Q.html"
+	}
+]

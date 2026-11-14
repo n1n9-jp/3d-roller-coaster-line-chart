@@ -17,6 +17,7 @@ export const MAX_DELTA_MS = 100;
 //   step：目盛りの刻み（ミニグラフ・3D 共通）、stepCompact：狭い画面用の粗い刻み
 //   statLabels：終了画面の最高値・最安値のラベル
 //   changeMode：前週比の書き方（'yen-fx'：円安・円高つきの円、'point'：ポイント、'percent'：円と％）
+//   eventsUrl：主要な出来事の注釈（data/events/*.json。events-data.js）。値は書かず、キャプションの値は表示中のデータから引く
 export const DEFAULT_DATASET = 'usdjpy';
 export const DATASETS = {
 	usdjpy: {
@@ -35,7 +36,8 @@ export const DATASETS = {
 		statLabels: { max: '最高値（最も円安）', min: '最安値（最も円高）' },
 		changeMode: 'yen-fx',
 		chips: [ '高さ＝1ドルの円の値段', '高いほど円安' ],
-		creditShort: '米連邦準備制度理事会（FRB）「H.10」'
+		creditShort: '米連邦準備制度理事会（FRB）「H.10」',
+		eventsUrl: './data/events/usdjpy.json'
 	},
 	jgb10: {
 		id: 'jgb10',
@@ -53,7 +55,8 @@ export const DATASETS = {
 		statLabels: { max: '最も高い金利', min: '最も低い金利' },
 		changeMode: 'point',
 		chips: [ '高さ＝10年国債の金利', '長期金利の代表的な指標' ],
-		creditShort: '財務省「国債金利情報」を加工して作成'
+		creditShort: '財務省「国債金利情報」を加工して作成',
+		eventsUrl: './data/events/jgb10.json'
 	},
 	nikkei: {
 		id: 'nikkei',
@@ -72,6 +75,7 @@ export const DATASETS = {
 		changeMode: 'percent',
 		chips: [ '高さ＝株価（週次終値）', '手元で取得したデータ' ],
 		creditShort: '日本経済新聞社「日経平均株価」（手元で取得）',
+		eventsUrl: './data/events/nikkei.json',
 		localOnly: true
 	}
 };
@@ -121,7 +125,7 @@ export const SPEED_RESPONSE_MS = 1000;
 
 /**
  * 期間 years 年のデータで、1 フレーム（MAX_DELTA_MS）に進みうる progress の最大（内側の周、下りの上限の倍率）。
- * 出来事のキャプションの「位置が飛んだ」の判定（ANNOT.caption.maxStepProgress）に使う。
+ * 出来事のキャプションの「位置が飛んだ」の判定（events-data.js の captionStepLimit。ANNOT.caption.stepMargin 倍）に使う。
  */
 export function maxProgressPerFrame( years ) {
 
@@ -389,8 +393,7 @@ export const CONTOUR = {
 
 // ANNOT：イベント注釈の定数（目印の大きさ、キャプションの表示時間、イベント一覧の置き場所など）。担当：イベント注釈。
 export const ANNOT = {
-	// 出来事の一覧（data/events.json）。実データ（dataset.meta.kind === 'real'）のときだけ読む
-	eventsUrl: './data/events.json',
+	// 出来事の一覧はデータごと（DATASETS[ id ].eventsUrl）。選んだデータの分だけ読む
 	// キャプション（時間はすべて ride の時間 state.timeMs。一時停止中は進まない）
 	caption: {
 		showMs: 6000, // 表示時間
@@ -398,9 +401,10 @@ export const ANNOT = {
 		minShowMs: 3000, // 表示中に次の出来事が来たとき、入れ替えるまでに最低限見せる時間
 		maxWaitMs: 3000, // 通過してからこれ以上待たされた出来事は、画面の位置と合わなくなるので出さない
 		outMs: 180, // 出（入れ替えるとき、次を出す前にフェードアウトを待つ時間。実時間）
-		// 1 フレームで進みうる progress の最大の 2 倍。これより大きい変化は「位置が飛んだ」とみなし、飛び越えた出来事を出さない。
-		// progress あたりの速さはデータの期間で変わるので、データごとに maxProgressPerFrame( curve.years ) × 2 を使うのが正しい。
-		// この既定値は、想定する最も短いデータ（30 年）の値（短いほど大きい = 判定がゆるい側）
+		// 「位置が飛んだ」の判定：1 フレームで進みうる progress の最大（maxProgressPerFrame( curve.years )）の stepMargin 倍を超える変化。
+		// progress あたりの速さはデータの期間で変わるので、データごとに求める（events-data.js の captionStepLimit）
+		stepMargin: 2,
+		// 期間を持たない曲線（テスト用）や、スケジューラの既定値：想定する最も短いデータ（30 年）での値（短いほど大きい = 判定がゆるい側）
 		maxStepProgress: 2 * maxProgressPerFrame( 30 )
 	},
 	// 3D の目印（長さはワールド座標の単位。レールの高さは 3〜35）

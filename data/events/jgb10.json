@@ -1,0 +1,74 @@
+[
+	{
+		"date": "1990-09-28",
+		"title": "期間中で最も高い金利",
+		"note": "10年金利が8%台に乗り、この統計の最高になった",
+		"source": "https://www.mof.go.jp/jgbs/reference/interest_rate/data/jgbcm_all.csv"
+	},
+	{
+		"date": "1999-02-12",
+		"title": "日銀のゼロ金利政策",
+		"note": "コールレートを、できるだけ低めに誘導する方針を決定",
+		"source": "https://www.boj.or.jp/mopo/mpmdeci/mpr_1999/k990212c.htm"
+	},
+	{
+		"date": "2001-03-19",
+		"title": "日銀が量的緩和を導入",
+		"note": "金融調節の操作目標を、当座預金残高に変更した",
+		"source": "https://www.boj.or.jp/mopo/mpmdeci/mpr_2001/k010319a.htm"
+	},
+	{
+		"date": "2003-06-12",
+		"title": "当時の最低水準を記録",
+		"note": "0.4%台まで低下。9月には1.5%台まで急上昇した",
+		"source": "https://www.mof.go.jp/jgbs/reference/interest_rate/data/jgbcm_all.csv"
+	},
+	{
+		"date": "2006-07-14",
+		"title": "日銀がゼロ金利を解除",
+		"note": "無担保コールレートの誘導目標を0.25%程度に",
+		"source": "https://www.boj.or.jp/mopo/mpmdeci/mpr_2006/k060714.pdf"
+	},
+	{
+		"date": "2013-04-04",
+		"title": "日銀が量的・質的金融緩和",
+		"note": "「量・質ともに次元の違う金融緩和」を決定",
+		"source": "https://www.boj.or.jp/mopo/mpmdeci/mpr_2013/k130404a.pdf"
+	},
+	{
+		"date": "2016-01-29",
+		"title": "マイナス金利の導入を決定",
+		"note": "日銀当座預金の一部に、年0.1%のマイナス金利を適用",
+		"source": "https://www.boj.or.jp/mopo/mpmdeci/mpr_2016/k160129a.pdf"
+	},
+	{
+		"date": "2016-09-21",
+		"title": "長短金利操作を導入",
+		"note": "10年金利をゼロ%程度で推移させる方針に",
+		"source": "https://www.boj.or.jp/mopo/mpmdeci/mpr_2016/k160921a.pdf"
+	},
+	{
+		"date": "2022-12-20",
+		"title": "長期金利の変動幅を拡大",
+		"note": "変動幅を±0.25%程度から±0.5%程度に広げた",
+		"source": "https://www.boj.or.jp/mopo/mpmdeci/mpr_2022/k221220a.pdf"
+	},
+	{
+		"date": "2024-03-19",
+		"title": "マイナス金利を解除",
+		"note": "長短金利操作の枠組みも終え、金融政策を見直した",
+		"source": "https://www.boj.or.jp/mopo/mpmdeci/mpr_2024/k240319a.pdf"
+	},
+	{
+		"date": "2025-12-19",
+		"title": "政策金利を0.75%程度に",
+		"note": "10年金利は、週の値でも1999年以来の2%台に",
+		"source": "https://www.boj.or.jp/mopo/mpmdeci/mpr_2025/k251219a.pdf"
+	},
+	{
+		"date": "2026-09-25",
+		"title": "約30年ぶりの3%台",
+		"note": "日銀は9月18日に政策金利を1.25%程度へ引き上げた",
+		"source": "https://www.boj.or.jp/mopo/mpmdeci/mpr_2026/k260918a.pdf"
+	}
+]
