@@ -8,7 +8,7 @@ import { TrackCurve } from '../assets/js/track.js';
 import { SPIRAL } from '../assets/js/config.js';
 import { loadFixtures, readJson, stretchedSeries } from './helpers.js';
 
-const { nikkei } = loadFixtures();
+const { usdjpy: nikkei } = loadFixtures();
 
 // 周の数の違う 3 通り（約 5.6 周 = 1971 年〜、約 4 周 = 1986 年〜、約 3.7 周 = 1990 年〜）と、手元の日経平均と同じ形
 const CASES = {
